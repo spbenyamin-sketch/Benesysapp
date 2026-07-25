@@ -1,0 +1,72 @@
+{
+  "expo": {
+    "name": "Billing App",
+    "slug": "billing-app",
+    "owner": "bennydeepa",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "billingapp",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "icon": "./assets/expo.icon",
+      "infoPlist": {
+        "NSSpeechRecognitionUsageDescription": "Allow Billing App to recognise Tamil and English speech for voice billing.",
+        "NSMicrophoneUsageDescription": "Allow Billing App to use the microphone so you can add bills by speaking."
+      }
+    },
+    "android": {
+      "package": "com.benesys.billingapp",
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "backgroundImage": "./assets/images/android-icon-background.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#208AEF",
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 76
+        }
+      ],
+      "expo-sqlite",
+      "expo-sharing",
+      "expo-mail-composer",
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Allow Billing App to use the microphone so you can add bills by speaking.",
+          "speechRecognitionPermission": "Allow Billing App to recognise Tamil and English speech for voice billing.",
+          "androidSpeechServicePackages": [
+            "com.google.android.googlequicksearchbox",
+            "com.google.android.as"
+          ]
+        }
+      ],
+      "expo-secure-store"
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "f66add12-35e2-4662-b11a-f6e84701f5f1"
+      }
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  // Terminal font fallback: Cascadia Mono has no Tamil glyphs, so Tamil output
+  // (voice command examples, item aliases) renders as overlapping garbage.
+  // Nirmala UI ships with Windows and covers Indic scripts — ASCII still uses
+  // the monospace font, only the Tamil falls through to Nirmala UI.
+  "terminal.integrated.fontFamily": "monospace",
+  "editor.codeActionsOnSave": {
+    "source.fixAll": "explicit",
+    "source.organizeImports": "explicit",
+    "source.sortMembers": "explicit"
+  }
+}
