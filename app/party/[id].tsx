@@ -21,8 +21,8 @@ export default function PartyLedgerScreen() {
   const { lang } = useVoice();
   const [ledger, setLedger] = useState<PartyLedger | null | undefined>(undefined);
 
-  // Voice: "மொத்தம்" reads the balance out; "பேமெண்ட்" opens the payment screen
-  // already pointed at this party.
+  // Voice: "மொத்தம்" reads the balance out · "பேமெண்ட்" opens the payment screen
+  // already pointed at this party · "எடிட்" / "டெலிட்" the header buttons.
   useVoiceCommands((intent) => {
     if (!ledger) return false;
     if (intent.kind === 'total') {
@@ -32,6 +32,19 @@ export default function PartyLedgerScreen() {
     if (intent.kind === 'navigate' && intent.target === 'newPayment') {
       router.push({ pathname: '/payment/new', params: { partyId } });
       return lang === 'ta-IN' ? 'பணம் பதிவு' : 'Record payment';
+    }
+    if (intent.kind === 'navigate' && intent.target === 'newSale') {
+      router.push({ pathname: '/invoice/new', params: { type: 'sale', partyId } });
+      return lang === 'ta-IN' ? 'புது விற்பனை' : 'New sale';
+    }
+    if (intent.kind !== 'action') return false;
+    if (intent.action === 'edit') {
+      router.push({ pathname: '/party/edit/[id]', params: { id: partyId } });
+      return true;
+    }
+    if (intent.action === 'delete') {
+      confirmDelete();
+      return true;
     }
     return false;
   });

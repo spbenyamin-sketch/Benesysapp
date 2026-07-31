@@ -9,8 +9,10 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
+import ItemPhoto from '@/components/ItemPhoto';
 import { listItems } from '@/modules/items/service';
 import { createQuickBill, type QuickCartLine } from '@/modules/pos/service';
 import { getDefaultTaxMode } from '@/modules/settings/service';
@@ -24,6 +26,10 @@ import type { Item } from '@/db/schema';
 export default function QuickBillScreen() {
   const router = useRouter();
   const { lang } = useVoice();
+  // Two columns of picture tiles, sized to the screen so the photo is as big as
+  // it can be — this screen is meant to be workable without reading anything.
+  const { width } = useWindowDimensions();
+  const photoSize = Math.floor((width - GRID_PAD * 2 - TILE_GAP) / 2) - TILE_PAD * 2;
   const [items, setItems] = useState<Item[]>([]);
   const [query, setQuery] = useState('');
   const [cart, setCart] = useState<Record<number, number>>({}); // itemId → qty (units)
@@ -77,6 +83,14 @@ export default function QuickBillScreen() {
       return copy;
     });
   const clear = () => setCart({});
+
+  // Emptying a half-built bill by mistake is the one un-undoable tap here.
+  const confirmClear = () => {
+    Alert.alert('Clear the bill?', 'All selected items will be removed.', [
+      { text: 'No', style: 'cancel' },
+      { text: 'Clear', style: 'destructive', onPress: clear },
+    ]);
+  };
 
   const cartLines: QuickCartLine[] = useMemo(
     () =>
@@ -148,6 +162,12 @@ export default function QuickBillScreen() {
         clear();
         setQuery('');
         return t('cleared', lang);
+      case 'action':
+        // No record to delete here — "நீக்கு" on the counter means empty the cart.
+        if (intent.action !== 'delete') return false;
+        clear();
+        setQuery('');
+        return t('cleared', lang);
       case 'total':
         if (cartLines.length === 0) return t('cartEmpty', lang);
         setCartOpen(true);
@@ -204,15 +224,41 @@ export default function QuickBillScreen() {
           const qty = cart[item.id] ?? 0;
           return (
             <Pressable style={[styles.tile, qty > 0 && styles.tileActive]} onPress={() => add(item.id)}>
-              {qty > 0 ? (
-                <View style={styles.qtyBadge}>
-                  <Text style={styles.qtyBadgeText}>{qty}</Text>
-                </View>
-              ) : null}
+              <View>
+                <ItemPhoto uri={item.imageUri} name={item.name} size={photoSize} radius={12} />
+                {qty > 0 ? (
+                  <>
+                    <View style={styles.qtyBadge}>
+                      <Text style={styles.qtyBadgeText}>{qty}</Text>
+                    </View>
+                    {/* Take the whole line off the bill in one tap. */}
+                    <Pressable style={styles.tileDrop} onPress={() => drop(item.id)} hitSlop={6}>
+                      <Text style={styles.tileDropText}>✕</Text>
+                    </Pressable>
+                  </>
+                ) : null}
+              </View>
+
               <Text style={styles.tileName} numberOfLines={2}>
                 {item.name}
               </Text>
               <Text style={styles.tilePrice}>{formatMoney(item.salePrice)}</Text>
+
+              {qty > 0 ? (
+                <View style={styles.tileStepper}>
+                  <Pressable style={styles.tileStepBtn} onPress={() => dec(item.id)}>
+                    <Text style={styles.tileStepText}>−</Text>
+                  </Pressable>
+                  <Text style={styles.tileStepQty}>{qty}</Text>
+                  <Pressable style={styles.tileStepBtn} onPress={() => add(item.id)}>
+                    <Text style={styles.tileStepText}>+</Text>
+                  </Pressable>
+                </View>
+              ) : (
+                <View style={styles.tileAdd}>
+                  <Text style={styles.tileAddText}>+ Add</Text>
+                </View>
+              )}
             </Pressable>
           );
         }}
@@ -220,6 +266,10 @@ export default function QuickBillScreen() {
 
       {totalQty > 0 ? (
         <View style={styles.bar}>
+          <Pressable style={styles.barClear} onPress={confirmClear}>
+            <Text style={styles.barClearIcon}>🗑</Text>
+            <Text style={styles.barClearText}>Clear</Text>
+          </Pressable>
           <Pressable style={styles.barInfo} onPress={() => setCartOpen(true)}>
             <Text style={styles.barCount}>{totalQty} item{totalQty > 1 ? 's' : ''} · view</Text>
             <Text style={styles.barTotal}>{formatMoney(totals.grandTotal)}</Text>
@@ -239,8 +289,8 @@ export default function QuickBillScreen() {
           <Pressable style={styles.sheet} onPress={() => {}}>
             <View style={styles.sheetHead}>
               <Text style={styles.sheetTitle}>Cart</Text>
-              <Pressable onPress={clear} hitSlop={8}>
-                <Text style={styles.clearText}>Clear</Text>
+              <Pressable onPress={confirmClear} hitSlop={8}>
+                <Text style={styles.clearText}>🗑  Clear all</Text>
               </Pressable>
             </View>
             <FlatList
@@ -249,6 +299,7 @@ export default function QuickBillScreen() {
               style={styles.cartList}
               renderItem={({ item: l }) => (
                 <View style={styles.cartRow}>
+                  <ItemPhoto uri={l.item.imageUri} name={l.item.name} size={40} />
                   <View style={styles.cartLeft}>
                     <Text style={styles.cartName} numberOfLines={1}>
                       {l.item.name}
@@ -266,6 +317,9 @@ export default function QuickBillScreen() {
                       <Text style={styles.stepText}>+</Text>
                     </Pressable>
                   </View>
+                  <Pressable style={styles.cartDrop} onPress={() => drop(l.item.id)} hitSlop={6}>
+                    <Text style={styles.cartDropText}>✕</Text>
+                  </Pressable>
                 </View>
               )}
             />
@@ -292,6 +346,8 @@ export default function QuickBillScreen() {
 }
 
 const TILE_GAP = 12;
+const GRID_PAD = 12;
+const TILE_PAD = 8;
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#fff' },
@@ -320,34 +376,71 @@ const styles = StyleSheet.create({
     borderColor: '#208AEF',
   },
   taxChipText: { fontSize: 12, fontWeight: '700', color: '#208AEF' },
-  grid: { padding: TILE_GAP, gap: TILE_GAP, paddingBottom: 96 },
+  grid: { padding: GRID_PAD, gap: TILE_GAP, paddingBottom: 110 },
   rowWrap: { gap: TILE_GAP },
   tile: {
     flex: 1,
-    minHeight: 84,
-    borderRadius: 14,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: '#e5e5e5',
     backgroundColor: '#fafafa',
-    padding: 12,
-    justifyContent: 'space-between',
+    padding: TILE_PAD,
+    gap: 4,
   },
-  tileActive: { borderColor: '#208AEF', backgroundColor: '#eef6ff' },
-  tileName: { fontSize: 15, fontWeight: '600', color: '#111' },
-  tilePrice: { fontSize: 14, color: '#208AEF', fontWeight: '700' },
+  tileActive: { borderColor: '#208AEF', borderWidth: 2, backgroundColor: '#eef6ff' },
+  tileName: { fontSize: 16, fontWeight: '600', color: '#111', marginTop: 4 },
+  tilePrice: { fontSize: 18, color: '#208AEF', fontWeight: '800' },
+  // Big, obvious "this tile does something" affordance — no reading required.
+  tileAdd: {
+    marginTop: 2,
+    borderRadius: 10,
+    backgroundColor: '#eaf3fe',
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  tileAddText: { color: '#208AEF', fontWeight: '700', fontSize: 15 },
+  tileStepper: {
+    marginTop: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#cfe3fb',
+  },
+  tileStepBtn: { width: 44, paddingVertical: 6, alignItems: 'center' },
+  tileStepText: { fontSize: 24, lineHeight: 28, color: '#208AEF', fontWeight: '700' },
+  tileStepQty: { fontSize: 18, fontWeight: '700', color: '#111', minWidth: 24, textAlign: 'center' },
   qtyBadge: {
     position: 'absolute',
-    top: 8,
-    right: 8,
-    minWidth: 22,
-    height: 22,
-    borderRadius: 11,
+    top: 6,
+    left: 6,
+    minWidth: 30,
+    height: 30,
+    borderRadius: 15,
     backgroundColor: '#208AEF',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 6,
+    paddingHorizontal: 8,
+    borderWidth: 2,
+    borderColor: '#fff',
   },
-  qtyBadgeText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+  qtyBadgeText: { color: '#fff', fontSize: 15, fontWeight: '800' },
+  tileDrop: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#c0392b',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  tileDropText: { color: '#fff', fontSize: 15, fontWeight: '800', lineHeight: 18 },
   emptyWrap: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
   empty: { color: '#999', textAlign: 'center', lineHeight: 22 },
   bar: {
@@ -361,7 +454,16 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     elevation: 6,
   },
-  barInfo: { flex: 1, paddingHorizontal: 16, paddingVertical: 12, justifyContent: 'center' },
+  barClear: {
+    backgroundColor: '#2b2b2b',
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 1,
+  },
+  barClearIcon: { fontSize: 16 },
+  barClearText: { color: '#e88', fontSize: 11, fontWeight: '700' },
+  barInfo: { flex: 1, paddingHorizontal: 14, paddingVertical: 12, justifyContent: 'center' },
   barCount: { color: '#bbb', fontSize: 12 },
   barTotal: { color: '#fff', fontSize: 18, fontWeight: '700' },
   barBtn: { backgroundColor: '#208AEF', paddingHorizontal: 28, alignItems: 'center', justifyContent: 'center' },
@@ -381,7 +483,16 @@ const styles = StyleSheet.create({
     borderTopColor: '#eee',
     gap: 12,
   },
-  cartLeft: { flexShrink: 1, gap: 3 },
+  cartLeft: { flex: 1, flexShrink: 1, gap: 3 },
+  cartDrop: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#fdecea',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cartDropText: { color: '#c0392b', fontSize: 15, fontWeight: '800' },
   cartName: { fontSize: 15, fontWeight: '600', color: '#111' },
   cartSub: { fontSize: 13, color: '#888' },
   stepper: { flexDirection: 'row', alignItems: 'center', gap: 12 },

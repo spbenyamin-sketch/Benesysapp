@@ -71,7 +71,8 @@ export default function InvoiceDetailScreen() {
     }
   };
 
-  // Voice: "பிரிண்ட்" / "ஷேர்" / "மொத்தம்" / "பணம் பெறு" (→ payment screen).
+  // Voice: "பிரிண்ட்" / "ஷேர்" / "மொத்தம்" / "பணம் பெறு" (→ payment screen) /
+  // "டெலிட்" (→ the delete confirmation).
   useVoiceCommands((intent) => {
     if (!detail) return false;
     switch (intent.kind) {
@@ -83,6 +84,17 @@ export default function InvoiceDetailScreen() {
         return t('sharing', lang);
       case 'total':
         return totalLine(formatMoney(detail.invoice.grandTotal), lang);
+      case 'navigate':
+        if (intent.target !== 'newPayment') return false;
+        router.push({
+          pathname: '/payment/new',
+          params: { partyId: detail.invoice.partyId, invoiceId: detail.invoice.id },
+        });
+        return lang === 'ta-IN' ? 'பணம் பதிவு' : 'Record payment';
+      case 'action':
+        if (intent.action !== 'delete') return false;
+        confirmDelete();
+        return true;
       default:
         return false;
     }

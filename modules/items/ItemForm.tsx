@@ -1,10 +1,22 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import Button from '@/components/Button';
+import ItemPhoto from '@/components/ItemPhoto';
 import SelectField from '@/components/SelectField';
 import TextField from '@/components/TextField';
+import { captureItemPhoto, deleteItemPhoto, pickItemPhoto } from '@/modules/items/images';
 import { createItem, updateItem } from '@/modules/items/service';
+import { matchOption } from '@/modules/voice/match';
 import { useVoiceCommands } from '@/modules/voice/VoiceProvider';
 import { ITEM_CATEGORIES, ITEM_UNITS } from '@/utils/constants';
 import {
@@ -35,7 +47,29 @@ export default function ItemForm({ item }: { item?: Item }) {
   const [taxRate, setTaxRate] = useState(item ? taxRateToInput(item.taxRate) : '');
   const [openingStock, setOpeningStock] = useState(item ? qtyToInput(item.openingStock) : '');
   const [voiceAlias, setVoiceAlias] = useState(item?.voiceAlias ?? '');
+  const [imageUri, setImageUri] = useState<string | null>(item?.imageUri ?? null);
   const [saving, setSaving] = useState(false);
+
+  // Photos are copied into the app's storage as soon as they are picked, so a
+  // replaced/removed one is deleted right away — except the item's ORIGINAL
+  // photo, which stays until the form is actually saved.
+  const originalImage = item?.imageUri ?? null;
+
+  const choosePhoto = async (source: () => Promise<string | null>) => {
+    try {
+      const uri = await source();
+      if (!uri) return;
+      if (imageUri && imageUri !== originalImage) deleteItemPhoto(imageUri);
+      setImageUri(uri);
+    } catch (e) {
+      Alert.alert('No picture added', (e as Error)?.message ?? String(e));
+    }
+  };
+
+  const removePhoto = () => {
+    if (imageUri && imageUri !== originalImage) deleteItemPhoto(imageUri);
+    setImageUri(null);
+  };
 
   const save = async () => {
     const trimmedName = name.trim();
@@ -56,9 +90,12 @@ export default function ItemForm({ item }: { item?: Item }) {
         taxRate: parseTaxRateToBasisPoints(taxRate),
         openingStock: stock,
         voiceAlias: voiceAlias.trim() || null,
+        imageUri,
       };
       if (editing) {
         await updateItem(item.id, data);
+        // Safe now that the row no longer points at it.
+        if (originalImage && originalImage !== imageUri) deleteItemPhoto(originalImage);
       } else {
         await createItem({ ...data, currentStock: stock });
       }
@@ -69,7 +106,8 @@ export default function ItemForm({ item }: { item?: Item }) {
     }
   };
 
-  // Voice: "பெயர் சர்க்கரை", "ரேட் நாற்பது", "வரி ஐந்து", "சேமி".
+  // Voice: "பெயர் சர்க்கரை", "ரேட் நாற்பது", "வரி ஐந்து", "யூனிட் கிலோ",
+  // "எச்எஸ்என் 1701", "இருப்பு ஐம்பது", "சேமி".
   useVoiceCommands((intent) => {
     if (intent.kind === 'submit') {
       void save();
@@ -84,11 +122,27 @@ export default function ItemForm({ item }: { item?: Item }) {
       case 'amount':
         setSalePrice(intent.value);
         return true;
+      case 'purchase':
+        setPurchasePrice(intent.value);
+        return true;
       case 'qty':
+      case 'stock':
         setOpeningStock(intent.value);
         return true;
       case 'tax':
         setTaxRate(intent.value);
+        return true;
+      case 'hsn':
+        setHsnCode(intent.value);
+        return true;
+      case 'unit':
+        setUnit(matchOption(intent.value, ITEM_UNITS) ?? intent.value);
+        return true;
+      case 'category':
+        setCategory(matchOption(intent.value, ITEM_CATEGORIES) ?? intent.value);
+        return true;
+      case 'alias':
+        setVoiceAlias(intent.value);
         return true;
       default:
         return false;
@@ -101,6 +155,29 @@ export default function ItemForm({ item }: { item?: Item }) {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+        <View style={styles.photoRow}>
+          <ItemPhoto uri={imageUri} name={name || '?'} size={92} />
+          <View style={styles.photoButtons}>
+            <Text style={styles.photoLabel}>Picture</Text>
+            <Text style={styles.hint}>
+              Shown as a big button on the Quick Bill counter — tap the picture to add it.
+            </Text>
+            <View style={styles.photoActions}>
+              <Pressable style={styles.photoBtn} onPress={() => choosePhoto(captureItemPhoto)}>
+                <Text style={styles.photoBtnText}>📷  Camera</Text>
+              </Pressable>
+              <Pressable style={styles.photoBtn} onPress={() => choosePhoto(pickItemPhoto)}>
+                <Text style={styles.photoBtnText}>🖼  Gallery</Text>
+              </Pressable>
+            </View>
+            {imageUri ? (
+              <Pressable onPress={removePhoto} hitSlop={8}>
+                <Text style={styles.photoRemove}>Remove picture</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        </View>
+
         <TextField label="Name" value={name} onChangeText={setName} placeholder="Item name" required />
         <View style={styles.row}>
           <View style={styles.col}>
@@ -206,4 +283,18 @@ const styles = StyleSheet.create({
   col: { flex: 1 },
   hint: { fontSize: 12, color: '#888', marginTop: -6 },
   save: { marginTop: 8 },
+  photoRow: { flexDirection: 'row', gap: 14, alignItems: 'flex-start' },
+  photoButtons: { flex: 1, gap: 8 },
+  photoLabel: { fontSize: 13, fontWeight: '600', color: '#444' },
+  photoActions: { flexDirection: 'row', gap: 8, marginTop: 2 },
+  photoBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    alignItems: 'center',
+  },
+  photoBtnText: { fontSize: 14, fontWeight: '600', color: '#208AEF' },
+  photoRemove: { fontSize: 13, color: '#c0392b', fontWeight: '600' },
 });

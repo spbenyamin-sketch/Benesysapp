@@ -25,7 +25,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="quickbill"
         options={{
-          title: 'Bill',
+          title: 'Quick Bill',
           tabBarIcon: ({ color }) => <TabIcon emoji="🧾" color={color} />,
         }}
       />

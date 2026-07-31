@@ -133,6 +133,12 @@ export default function PaymentForm({
         setAmount('');
         setNotes('');
         return t('cleared', lang);
+      case 'action':
+        // Nothing to delete here — clear what has been typed instead.
+        if (intent.action !== 'delete') return false;
+        setAmount('');
+        setNotes('');
+        return t('cleared', lang);
       case 'submit':
         void save();
         return true;

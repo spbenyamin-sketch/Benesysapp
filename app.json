@@ -56,7 +56,14 @@
           ]
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Billing App to use your photos so you can put a picture on each item.",
+          "cameraPermission": "Allow Billing App to use the camera so you can photograph an item."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

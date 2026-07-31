@@ -91,6 +91,13 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
   const stack = useRef<Registration[]>([]);
   const disposeRef = useRef<(() => void) | null>(null);
+  // The two voice settings that must work from ANY screen. They live on the
+  // provider, so the global handler reaches them through a ref (the setters are
+  // declared further down and would otherwise be a circular dependency).
+  const settingsRef = useRef({
+    setLang: (_l: VoiceLang) => {},
+    setSpeak: (_on: boolean) => {},
+  });
   // Mirrors of state the native callbacks need — those closures are created once
   // and would otherwise capture stale values.
   const listeningRef = useRef(false);
@@ -144,6 +151,26 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         case 'help':
           setHelpOpen(true);
           return l === 'ta-IN' ? 'கமாண்ட் பட்டியல்' : 'Command list';
+        case 'action':
+          // Voice language / speak-back work everywhere; every other action
+          // belongs to a screen and only reaches here when that screen has no
+          // such button.
+          switch (intent.action) {
+            case 'langTamil':
+              settingsRef.current.setLang('ta-IN');
+              return 'தமிழ்';
+            case 'langEnglish':
+              settingsRef.current.setLang('en-IN');
+              return 'English';
+            case 'speakOn':
+              settingsRef.current.setSpeak(true);
+              return l === 'ta-IN' ? 'பதில் சொல்லும்' : 'Speaking replies';
+            case 'speakOff':
+              settingsRef.current.setSpeak(false);
+              return l === 'ta-IN' ? 'அமைதியா இருக்கும்' : 'Silent replies';
+            default:
+              return t('notHere', l);
+          }
         case 'unknown':
           return t('notUnderstood', l);
         default:
@@ -252,6 +279,11 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     if (!on) stopSpeaking();
     void setVoiceSpeak(on);
   }, []);
+
+  // Hand the global handler the latest setters (see settingsRef above).
+  useEffect(() => {
+    settingsRef.current = { setLang: changeLang, setSpeak: changeSpeakBack };
+  }, [changeLang, changeSpeakBack]);
 
   // Never leave the microphone hot if the app tears down.
   useEffect(

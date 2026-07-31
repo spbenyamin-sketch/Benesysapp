@@ -53,7 +53,13 @@ function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-export default function InvoiceForm({ type }: { type: InvoiceType }) {
+export default function InvoiceForm({
+  type,
+  initialPartyId,
+}: {
+  type: InvoiceType;
+  initialPartyId?: number;
+}) {
   const router = useRouter();
   const { lang } = useVoice();
   const titles = TITLES[type];
@@ -61,7 +67,7 @@ export default function InvoiceForm({ type }: { type: InvoiceType }) {
 
   const [parties, setParties] = useState<Party[]>([]);
   const [items, setItems] = useState<Item[]>([]);
-  const [partyId, setPartyId] = useState<number | null>(null);
+  const [partyId, setPartyId] = useState<number | null>(initialPartyId ?? null);
   const [date, setDate] = useState(todayISO());
   const [discountStr, setDiscountStr] = useState('');
   const [lines, setLines] = useState<LineDraft[]>([]);
@@ -247,6 +253,13 @@ export default function InvoiceForm({ type }: { type: InvoiceType }) {
       case 'total':
         return totalLine(formatMoney(totals.grandTotal), lang);
       case 'clear':
+        setLines([]);
+        setDiscountStr('');
+        return t('cleared', lang);
+      case 'action':
+        // Nothing on this screen can be edited or deleted as a record — a bare
+        // "delete" means "throw away what I have typed so far".
+        if (intent.action !== 'delete') return false;
         setLines([]);
         setDiscountStr('');
         return t('cleared', lang);

@@ -1,6 +1,7 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import ItemPhoto from '@/components/ItemPhoto';
 import { listItems } from '@/modules/items/service';
 import { bestMatch, spokenNames } from '@/modules/voice/match';
 import { t } from '@/modules/voice/phrases';
@@ -95,6 +96,7 @@ export default function ItemsScreen() {
               style={styles.row}
               onPress={() => router.push({ pathname: '/item/[id]', params: { id: item.id } })}
             >
+              <ItemPhoto uri={item.imageUri} name={item.name} size={46} />
               <View style={styles.rowLeft}>
                 <Text style={styles.name}>{item.name}</Text>
                 <Text style={styles.sub}>

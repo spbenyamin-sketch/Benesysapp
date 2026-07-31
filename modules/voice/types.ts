@@ -36,12 +36,47 @@ export type VoiceField =
   | 'phone'
   | 'amount'
   | 'rate'
+  | 'purchase'
   | 'qty'
+  | 'stock'
   | 'discount'
   | 'tax'
   | 'city'
+  | 'state'
+  | 'address'
+  | 'gstin'
+  | 'hsn'
+  | 'unit'
+  | 'category'
+  | 'prefix'
+  | 'email'
+  | 'alias'
   | 'date'
   | 'notes';
+
+/**
+ * Buttons — not fields — that a screen exposes: "எடிட்", "டெலிட்", "பேக்அப்",
+ * "லாக் ஆன்"… Each screen consumes the ones it actually has on screen, so the
+ * same word does the right thing in each place ("delete" = this invoice on the
+ * invoice screen, = empty the cart on Quick Bill).
+ */
+export type VoiceAction =
+  | 'edit'
+  | 'delete'
+  | 'adjustStock'
+  | 'markCustomer'
+  | 'markSupplier'
+  | 'backup'
+  | 'restore'
+  | 'signOut'
+  | 'lockOn'
+  | 'lockOff'
+  | 'autoBackupOn'
+  | 'autoBackupOff'
+  | 'speakOn'
+  | 'speakOff'
+  | 'langTamil'
+  | 'langEnglish';
 
 export type VoiceIntent =
   /** "ரெண்டு டீ" / "add 2 tea" — add qty of an item to the current cart/invoice. */
@@ -72,6 +107,8 @@ export type VoiceIntent =
   | { kind: 'setTaxMode'; mode: 'inclusive' | 'exclusive' }
   /** "எக்செல்" / "export excel". */
   | { kind: 'exportExcel' }
+  /** "எடிட்" / "டெலிட்" / "பேக்அப்" — press a button on the current screen. */
+  | { kind: 'action'; action: VoiceAction }
   /** "முகப்பு" / "go to items" — jump to another screen. */
   | { kind: 'navigate'; target: NavTarget }
   /** "பின்னால" / "back". */

@@ -180,8 +180,8 @@ export const FILLER = [
 import type { NavTarget } from './types';
 
 export const NAV_WORDS: { target: NavTarget; words: string[] }[] = [
-  { target: 'newSale', words: ['புதுவிற்பனை', 'விற்பனைபில்', 'சேல்ஸ்பில்', 'newsale', 'salesinvoice', 'newinvoice', 'saleinvoice'] },
-  { target: 'newPurchase', words: ['புதுகொள்முதல்', 'கொள்முதல்பில்', 'newpurchase', 'purchasebill', 'purchaseinvoice'] },
+  { target: 'newSale', words: ['புதுவிற்பனை', 'விற்பனைபில்', 'சேல்ஸ்பில்', 'விற்பனை', 'சேல்ஸ்', 'newsale', 'salesinvoice', 'newinvoice', 'saleinvoice', 'sale', 'sales', 'vithpanai', 'virpanai'] },
+  { target: 'newPurchase', words: ['புதுகொள்முதல்', 'கொள்முதல்பில்', 'கொள்முதல்', 'பர்ச்சேஸ்', 'newpurchase', 'purchasebill', 'purchaseinvoice', 'purchase', 'kolmudhal'] },
   { target: 'newQuotation', words: ['மதிப்பீடு', 'கோட்டேஷன்', 'quotation', 'quote', 'estimate'] },
   { target: 'newChallan', words: ['சலான்', 'டெலிவரி', 'challan', 'delivery', 'deliverynote'] },
   { target: 'newPayment', words: ['பணம்பெறு', 'பேமெண்ட்', 'ரசீது', 'payment', 'receipt', 'collect', 'paid'] },
@@ -200,18 +200,78 @@ export const NAV_WORDS: { target: NavTarget; words: string[] }[] = [
 ];
 
 // ── Named form fields ────────────────────────────────────────────────────────
-import type { VoiceField } from './types';
+// Order matters: the parser takes the FIRST entry whose keyword appears, so
+// "ஜிஎஸ்டி நம்பர்" must be read as GSTIN before "நம்பர்" is read as a phone.
+import type { VoiceAction, VoiceField } from './types';
 
 export const FIELD_WORDS: { field: VoiceField; words: string[] }[] = [
+  { field: 'gstin', words: ['ஜிஎஸ்டின்', 'ஜிஎஸ்டிநம்பர்', 'gstin', 'gstnumber', 'gstno'] },
+  { field: 'hsn', words: ['எச்எஸ்என்', 'ஹெச்எஸ்என்', 'hsn', 'sac', 'hsncode', 'saccode'] },
   { field: 'phone', words: ['போன்', 'மொபைல்', 'நம்பர்', 'கைபேசி', 'phone', 'mobile', 'number', 'contact'] },
+  { field: 'email', words: ['ஈமெயில்', 'இமெயில்', 'மெயில்', 'email', 'mail', 'gmail'] },
   { field: 'name', words: ['பெயர்', 'நேம்', 'peyar', 'name'] },
+  { field: 'alias', words: ['குரல்பெயர்', 'வாய்ஸ்பெயர்', 'voicename', 'alias', 'nickname'] },
+  { field: 'purchase', words: ['கொள்முதல்விலை', 'கொள்முதல்', 'வாங்கியவிலை', 'purchaseprice', 'purchaserate', 'costprice', 'buyingprice', 'purchase'] },
   { field: 'rate', words: ['ரேட்', 'விலை', 'வெலை', 'price', 'rate', 'cost', 'mrp'] },
+  { field: 'stock', words: ['இருப்பு', 'ஸ்டாக்', 'ஓப்பனிங்', 'stock', 'opening', 'openingstock', 'inventory'] },
   { field: 'qty', words: ['அளவு', 'எண்ணிக்கை', 'குவாண்டிட்டி', 'qty', 'quantity'] },
+  { field: 'unit', words: ['யூனிட்', 'அலகு', 'unit', 'uom', 'measure'] },
+  { field: 'category', words: ['வகை', 'கேட்டகிரி', 'category', 'group'] },
   { field: 'discount', words: ['தள்ளுபடி', 'டிஸ்கவுண்ட்', 'கழிவு', 'discount', 'off'] },
   { field: 'amount', words: ['தொகை', 'அமௌண்ட்', 'பணம்', 'amount', 'value'] },
+  { field: 'address', words: ['முகவரி', 'அட்ரஸ்', 'விலாசம்', 'address', 'vilasam'] },
   { field: 'city', words: ['ஊர்', 'நகரம்', 'சிட்டி', 'city', 'town', 'place'] },
+  { field: 'state', words: ['மாநிலம்', 'ஸ்டேட்', 'state'] },
+  { field: 'prefix', words: ['ப்ரிபிக்ஸ்', 'பிரிபிக்ஸ்', 'prefix', 'invoiceprefix', 'billprefix'] },
   { field: 'date', words: ['தேதி', 'டேட்', 'thethi', 'date'] },
   { field: 'notes', words: ['குறிப்பு', 'நோட்ஸ்', 'note', 'notes', 'remark', 'remarks'] },
+];
+
+/** Fields whose value is spoken text, not a number. */
+export const TEXT_FIELDS: VoiceField[] = ['name', 'city', 'state', 'address', 'category', 'unit', 'alias', 'notes'];
+
+/** Fields spoken as a code — keep the digits, drop the spaces, upper-case it. */
+export const CODE_FIELDS: VoiceField[] = ['gstin', 'hsn', 'prefix'];
+
+// ── Who the bill is for ──────────────────────────────────────────────────────
+/** Words that mean "the customer/supplier on this form", e.g. "பார்ட்டி ராஜேஷ்". */
+export const PARTY_WORDS = [
+  'வாடிக்கையாளர்', 'கஸ்டமர்', 'பார்ட்டி', 'சப்ளையர்', 'வியாபாரி', 'கடைக்காரர்',
+  'customer', 'client', 'party', 'supplier', 'vendor', 'buyer', 'seller',
+  'vaadikaiyalar', 'kastamar', 'partyname',
+];
+
+/** Words for choosing/entering a value — stripped before the spoken name. */
+export const PICK_WORDS = ['இடு', 'இடுங்க', 'தேர்ந்தெடு', 'செலக்ட்', 'idu', 'select', 'choose', 'pick', 'enter', 'type'];
+
+// ── Screen buttons ───────────────────────────────────────────────────────────
+// `pure` entries fire only when the whole clause is that word (+ filler), so
+// "நீக்கு" alone deletes the record while "டீ நீக்கு" still removes a line.
+// `with` entries need a second keyword too ("லாக் ஆன்", "backup off").
+
+export const ON_WORDS = ['ஆன்', 'போடு', 'போடுங்க', 'வை', 'ஆரம்பி', 'வேணும்', 'on', 'enable', 'start', 'yes'];
+export const OFF_WORDS = ['ஆஃப்', 'ஆப்', 'நிறுத்து', 'வேண்டாம்', 'off', 'disable', 'stop', 'no', 'mute'];
+
+/** "பேக்அப்" starts with "பேக்"/"back" — these keep it from meaning "go back". */
+export const BACKUP_WORDS = ['பேக்அப்', 'பேக்கப்', 'ஆட்டோபேக்அப்', 'backup', 'backupnow', 'autobackup', 'automaticbackup'];
+
+export const ACTION_WORDS: { action: VoiceAction; words: string[]; with?: string[]; pure?: boolean }[] = [
+  { action: 'autoBackupOff', words: ['ஆட்டோபேக்அப்', 'தானியங்கிபேக்அப்', 'autobackup', 'automaticbackup'], with: OFF_WORDS },
+  { action: 'autoBackupOn', words: ['ஆட்டோபேக்அப்', 'தானியங்கிபேக்அப்', 'autobackup', 'automaticbackup'], with: ON_WORDS },
+  { action: 'restore', words: ['ரீஸ்டோர்', 'மீட்டெடு', 'restore', 'recover', 'import'] },
+  { action: 'backup', words: ['பேக்அப்', 'பேக்கப்', 'நகல்', 'backup', 'backupnow'] },
+  { action: 'signOut', words: ['சைன்அவுட்', 'லாக்அவுட்', 'வெளியேறு', 'signout', 'logout', 'sign'] },
+  { action: 'lockOff', words: ['லாக்', 'பூட்டு', 'lock', 'applock'], with: OFF_WORDS },
+  { action: 'lockOn', words: ['லாக்', 'பூட்டு', 'lock', 'applock'], with: ON_WORDS },
+  { action: 'speakOff', words: ['பேசு', 'ஸ்பீக்', 'ஒலி', 'சத்தம்', 'speak', 'speech', 'sound', 'voice'], with: OFF_WORDS },
+  { action: 'speakOn', words: ['பேசு', 'ஸ்பீக்', 'ஒலி', 'சத்தம்', 'speak', 'speech', 'sound', 'voice'], with: ON_WORDS },
+  { action: 'langTamil', words: ['தமிழ்', 'தமிழ்ல', 'tamil', 'tamizh'] },
+  { action: 'langEnglish', words: ['ஆங்கிலம்', 'இங்கிலீஷ்', 'english', 'anglam'] },
+  { action: 'markSupplier', words: ['சப்ளையர்', 'supplier', 'vendor'], with: ['ஆக்கு', 'ஆக', 'மாத்து', 'aakku', 'set', 'make', 'change', 'mark'] },
+  { action: 'markCustomer', words: ['கஸ்டமர்', 'வாடிக்கையாளர்', 'customer', 'buyer'], with: ['ஆக்கு', 'ஆக', 'மாத்து', 'aakku', 'set', 'make', 'change', 'mark'] },
+  { action: 'adjustStock', words: ['ஸ்டாக்மாத்து', 'இருப்புமாத்து', 'அட்ஜஸ்ட்', 'stockadjust', 'adjuststock', 'adjust'] },
+  { action: 'edit', words: ['திருத்து', 'எடிட்', 'மாத்து', 'மாற்று', 'edit', 'modify', 'rename', 'thiruthu'], pure: true },
+  { action: 'delete', words: ['டெலிட்', 'நீக்கு', 'நீக்குங்க', 'அழிச்சுடு', 'delete', 'remove'], pure: true },
 ];
 
 export const PAYMENT_MODE_WORDS: { mode: 'cash' | 'upi' | 'card' | 'bank'; words: string[] }[] = [

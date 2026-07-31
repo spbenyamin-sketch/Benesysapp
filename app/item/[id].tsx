@@ -2,6 +2,8 @@ import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-rou
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Button from '@/components/Button';
+import ItemPhoto from '@/components/ItemPhoto';
+import { deleteItemPhoto } from '@/modules/items/images';
 import { deleteItem, getItem } from '@/modules/items/service';
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
 import { formatMoney, formatQty, formatTaxRate } from '@/utils/format';
@@ -14,7 +16,8 @@ export default function ItemDetailScreen() {
   const { lang } = useVoice();
   const [item, setItem] = useState<Item | null | undefined>(undefined);
 
-  // Voice: "மொத்தம்" reads stock + price; "மாத்து" opens the edit form.
+  // Voice: "மொத்தம்" reads stock + price · "எடிட்" opens the edit form ·
+  // "ஸ்டாக் மாத்து" the adjust screen · "டெலிட்" removes the item.
   useVoiceCommands((intent) => {
     if (!item) return false;
     if (intent.kind === 'total') {
@@ -26,7 +29,20 @@ export default function ItemDetailScreen() {
       router.push({ pathname: '/item/adjust/[id]', params: { id: itemId } });
       return true;
     }
-    return false;
+    if (intent.kind !== 'action') return false;
+    switch (intent.action) {
+      case 'edit':
+        router.push({ pathname: '/item/edit/[id]', params: { id: itemId } });
+        return true;
+      case 'adjustStock':
+        router.push({ pathname: '/item/adjust/[id]', params: { id: itemId } });
+        return true;
+      case 'delete':
+        confirmDelete();
+        return true;
+      default:
+        return false;
+    }
   });
 
   useFocusEffect(
@@ -51,6 +67,7 @@ export default function ItemDetailScreen() {
         onPress: async () => {
           try {
             await deleteItem(itemId);
+            deleteItemPhoto(item.imageUri);
             router.back();
           } catch {
             Alert.alert(
@@ -97,6 +114,10 @@ export default function ItemDetailScreen() {
         }}
       />
       <ScrollView contentContainerStyle={styles.container}>
+        <View style={styles.photoWrap}>
+          <ItemPhoto uri={item.imageUri} name={item.name} size={140} />
+        </View>
+
         <View style={styles.stockCard}>
           <Text style={styles.stockLabel}>In stock</Text>
           <Text style={[styles.stockValue, lowStock && styles.stockLow]}>
@@ -143,6 +164,7 @@ const styles = StyleSheet.create({
   missing: { color: '#888' },
   headerAction: { color: '#208AEF', fontSize: 16, fontWeight: '600' },
   container: { padding: 16, gap: 16 },
+  photoWrap: { alignItems: 'center' },
   stockCard: {
     backgroundColor: '#f4f8fe',
     borderRadius: 14,

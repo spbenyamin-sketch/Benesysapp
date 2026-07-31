@@ -12,12 +12,15 @@ const TITLES: Record<InvoiceType, string> = {
 const VALID: InvoiceType[] = ['sale', 'purchase', 'quotation', 'challan'];
 
 export default function NewInvoiceScreen() {
-  const { type } = useLocalSearchParams<{ type?: string }>();
+  // `partyId` is optional — it arrives when the bill was started from a party's
+  // ledger (by tap or by voice), so the customer is already filled in.
+  const { type, partyId } = useLocalSearchParams<{ type?: string; partyId?: string }>();
   const t = (VALID.includes(type as InvoiceType) ? type : 'sale') as InvoiceType;
+  const initialPartyId = Number(partyId) || undefined;
   return (
     <>
       <Stack.Screen options={{ title: TITLES[t] }} />
-      <InvoiceForm type={t} />
+      <InvoiceForm type={t} initialPartyId={initialPartyId} />
     </>
   );
 }

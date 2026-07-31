@@ -73,12 +73,67 @@ export default function SettingsScreen() {
   const [backingUp, setBackingUp] = useState(false);
   const { status, lang, speakBack, changeLang, changeSpeakBack, setHelpOpen } = useVoice();
 
+  // Voice: every button and field on this screen — "பேக்அப்", "லாக் ஆன்",
+  // "ஜிஎஸ்டின் 33ABC…", "பெயர் பென்சிஸ்", "சேமி", "சைன் அவுட்".
   useVoiceCommands((intent) => {
     if (intent.kind === 'setTaxMode') {
       pickTaxMode(intent.mode);
       return true;
     }
-    return false;
+    if (intent.kind === 'submit') {
+      void saveProfile();
+      return true;
+    }
+    if (intent.kind === 'setField') {
+      switch (intent.field) {
+        case 'name':
+          setName(intent.value);
+          return true;
+        case 'gstin':
+          setGstin(intent.value);
+          return true;
+        case 'address':
+          setAddress(intent.value);
+          return true;
+        case 'phone':
+          setPhone(intent.value);
+          return true;
+        case 'prefix':
+          setPrefix(intent.value);
+          return true;
+        case 'email':
+          setBackupEmail(intent.value);
+          return true;
+        default:
+          return false;
+      }
+    }
+    if (intent.kind !== 'action') return false;
+    switch (intent.action) {
+      case 'backup':
+        void backupNow();
+        return lang === 'ta-IN' ? 'பேக்அப் ஆகுது' : 'Backing up';
+      case 'restore':
+        void restore();
+        return lang === 'ta-IN' ? 'ரீஸ்டோர் கோப்பை தேர்ந்தெடுங்க' : 'Pick a backup file';
+      case 'signOut':
+        doSignOut();
+        return true;
+      case 'lockOn':
+        void toggleLock(true);
+        return lang === 'ta-IN' ? 'பூட்டு ஆன்' : 'Lock on';
+      case 'lockOff':
+        void toggleLock(false);
+        return lang === 'ta-IN' ? 'பூட்டு ஆஃப்' : 'Lock off';
+      case 'autoBackupOn':
+        void toggleAuto(true);
+        return lang === 'ta-IN' ? 'தானியங்கி பேக்அப் ஆன்' : 'Automatic backup on';
+      case 'autoBackupOff':
+        void toggleAuto(false);
+        return lang === 'ta-IN' ? 'தானியங்கி பேக்அப் ஆஃப்' : 'Automatic backup off';
+      default:
+        return false;
+    }
   });
 
   useFocusEffect(

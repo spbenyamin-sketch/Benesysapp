@@ -97,6 +97,20 @@ export function bestMatch<T extends Matchable>(
   return best && best.score >= threshold ? best : null;
 }
 
+/**
+ * Best entry from a plain list of choices ("Tamil Nadu", "kg", "Grocery") — the
+ * dropdown fields on the forms, so "தமிழ்நாடு"/"tamilnadu" still lands on the
+ * exact option the picker offers.
+ */
+export function matchOption(query: string, options: string[], threshold = 0.6): string | null {
+  const hit = bestMatch(
+    query,
+    options.map((name, id) => ({ id, name })),
+    threshold,
+  );
+  return hit ? hit.value.name : null;
+}
+
 /** Ranked shortlist — used to offer "did you mean…?" when nothing matches well. */
 export function rankMatches<T extends Matchable>(query: string, candidates: T[], limit = 5): T[] {
   const q = clean(query);

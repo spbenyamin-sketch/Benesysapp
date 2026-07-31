@@ -14,6 +14,7 @@ import Button from '@/components/Button';
 import SelectField from '@/components/SelectField';
 import TextField from '@/components/TextField';
 import { createParty, updateParty } from '@/modules/parties/service';
+import { matchOption } from '@/modules/voice/match';
 import { useVoiceCommands } from '@/modules/voice/VoiceProvider';
 import { INDIAN_STATES } from '@/utils/constants';
 import { paiseToRupeeInput, parseRupeesToPaise } from '@/utils/format';
@@ -69,11 +70,28 @@ export default function PartyForm({ party }: { party?: Party }) {
     }
   };
 
-  // Voice: "பெயர் ராஜேஷ்", "போன் 98765 43210", "ஊர் மதுரை", "சேமி".
+  // Voice: "பெயர் ராஜேஷ்", "போன் 98765 43210", "ஊர் மதுரை", "சப்ளையர் ஆக்கு",
+  // "சேமி". On THIS screen "பார்ட்டி பெயர் ராஜேஷ்" also means the name field —
+  // there is no party to pick here, we are creating one.
   useVoiceCommands((intent) => {
     if (intent.kind === 'submit') {
       void save();
       return true;
+    }
+    if (intent.kind === 'selectParty') {
+      setName(intent.query);
+      return true;
+    }
+    if (intent.kind === 'action') {
+      if (intent.action === 'markCustomer') {
+        setType('customer');
+        return true;
+      }
+      if (intent.action === 'markSupplier') {
+        setType('supplier');
+        return true;
+      }
+      return false;
     }
     if (intent.kind !== 'setField') return false;
     switch (intent.field) {
@@ -85,6 +103,19 @@ export default function PartyForm({ party }: { party?: Party }) {
         return true;
       case 'city':
         setCity(intent.value);
+        return true;
+      case 'state':
+        setState(matchOption(intent.value, INDIAN_STATES) ?? intent.value);
+        return true;
+      case 'address':
+      case 'notes':
+        setAddress(intent.value);
+        return true;
+      case 'gstin':
+        setGstin(intent.value);
+        return true;
+      case 'alias':
+        setVoiceAlias(intent.value);
         return true;
       case 'amount':
         setOpening(intent.value);

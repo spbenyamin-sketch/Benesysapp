@@ -42,9 +42,12 @@ export default function VoiceMic() {
 
   const scale = pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.35] });
   const opacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.45, 0] });
-  // Sit above the tab bar AND above Quick Bill's floating total bar, so the mic
-  // never covers the "Bill" button on the busiest screen in the app.
-  const bottom = 84 + insets.bottom;
+  // Sit clear of everything else that floats at the bottom: the tab bar (~56 +
+  // inset), Quick Bill's total bar (bottom 16, ~64 tall) and the "+" FAB on
+  // Items/Parties (bottom 24, 56 tall). Both of those top out ~80 above the tab
+  // bar, so 148 leaves the mic a comfortable gap above them instead of covering
+  // the "Bill" and "+" buttons.
+  const bottom = 148 + insets.bottom;
   const nextLang: VoiceLang = lang === 'ta-IN' ? 'en-IN' : 'ta-IN';
   const bubble = status.transcript || status.message;
 

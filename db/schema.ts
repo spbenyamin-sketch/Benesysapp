@@ -43,6 +43,10 @@ export const items = sqliteTable('items', {
   openingStock: integer('opening_stock').notNull().default(0), // thousandths
   currentStock: integer('current_stock').notNull().default(0), // thousandths
   voiceAlias: text('voice_alias'), // Tamil/spoken name(s), comma-separated — voice matching
+  // Photo of the product, shown on the Quick Bill tiles so the counter can be
+  // worked by picture alone. A file:// uri inside the app's document dir (see
+  // modules/items/images.ts) — copied there on pick, so it survives cache wipes.
+  imageUri: text('image_uri'),
   createdAt: createdAt(),
 });
 
