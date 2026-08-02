@@ -27,6 +27,13 @@ import {
   parseQtyToThousandths,
   parseRupeesToPaise,
 } from '@/utils/format';
+import {
+  formatQtyValue,
+  isFractionalUnit,
+  presetLabel,
+  qtyPresets,
+  stepQty,
+} from '@/utils/units';
 import type { InvoiceType } from '@/utils/invoiceNumber';
 import type { Item, Party } from '@/db/schema';
 
@@ -146,6 +153,27 @@ export default function InvoiceForm({
   const updateLine = (key: string, patch: Partial<LineDraft>) =>
     setLines((prev) => prev.map((l) => (l.key === key ? { ...l, ...patch } : l)));
 
+  /**
+   * One tap of +/− on a line. The step follows the item's unit: pieces move by
+   * 1, kg/ltr by a quarter, grams by 50 (see utils/units).
+   */
+  const bumpQty = (key: string, direction: 1 | -1) =>
+    setLines((prev) =>
+      prev.map((l) =>
+        l.key === key
+          ? {
+              ...l,
+              qtyStr: formatQtyValue(
+                stepQty(parseQtyToThousandths(l.qtyStr) / 1000, l.unit, direction),
+              ),
+            }
+          : l,
+      ),
+    );
+
+  const setLineQty = (key: string, qty: number) =>
+    updateLine(key, { qtyStr: formatQtyValue(qty) });
+
   const removeLine = (key: string) => setLines((prev) => prev.filter((l) => l.key !== key));
 
   // Live totals from the current drafts.
@@ -218,7 +246,9 @@ export default function InvoiceForm({
           }
           return t('noMatch', lang);
         }
-        const qty = Math.max(1, intent.qty);
+        // Fractions are real quantities here — "அரை கிலோ சர்க்கரை" is 0.5 kg,
+        // not 1. Only a zero/negative reading falls back to a single unit.
+        const qty = intent.qty > 0 ? intent.qty : 1;
         addLine(hit.value.id, qty, intent.rate);
         return addedLine(qty, hit.value.name, lang);
       }
@@ -307,25 +337,63 @@ export default function InvoiceForm({
                 <Text style={styles.remove}>✕</Text>
               </Pressable>
             </View>
-            <View style={styles.lineInputs}>
-              <View style={styles.lineCol}>
-                <Text style={styles.miniLabel}>Qty ({l.unit})</Text>
+            {/* Qty gets its own row: a big −/+ stepper that knows the unit, so
+                pieces move by 1 and kg/ltr by a quarter. The box stays typable
+                for anything in between (1.2 kg). */}
+            <View style={styles.qtyBlock}>
+              <Text style={styles.miniLabel}>
+                Qty ({l.unit})
+                {isFractionalUnit(l.unit) ? (
+                  <Text style={styles.miniHint}>  · decimals ok</Text>
+                ) : null}
+              </Text>
+              <View style={styles.qtyRow}>
+                <Pressable
+                  style={styles.qtyBtn}
+                  onPress={() => bumpQty(l.key, -1)}
+                  hitSlop={4}
+                >
+                  <Text style={styles.qtyBtnText}>−</Text>
+                </Pressable>
                 <TextInput
-                  style={styles.miniInput}
+                  style={styles.qtyInput}
                   value={l.qtyStr}
                   onChangeText={(v) => updateLine(l.key, { qtyStr: v })}
-                  keyboardType="numeric"
+                  keyboardType="decimal-pad"
+                  selectTextOnFocus
                   placeholder="0"
                   placeholderTextColor="#aaa"
                 />
+                <Pressable style={styles.qtyBtn} onPress={() => bumpQty(l.key, 1)} hitSlop={4}>
+                  <Text style={styles.qtyBtnText}>+</Text>
+                </Pressable>
               </View>
+              <View style={styles.presetRow}>
+                {qtyPresets(l.unit).map((p) => {
+                  const on = parseQtyToThousandths(l.qtyStr) === Math.round(p * 1000);
+                  return (
+                    <Pressable
+                      key={p}
+                      style={[styles.preset, on && styles.presetOn]}
+                      onPress={() => setLineQty(l.key, p)}
+                    >
+                      <Text style={[styles.presetText, on && styles.presetTextOn]}>
+                        {presetLabel(p)}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+
+            <View style={styles.lineInputs}>
               <View style={styles.lineCol}>
                 <Text style={styles.miniLabel}>Rate (₹)</Text>
                 <TextInput
                   style={styles.miniInput}
                   value={l.rateStr}
                   onChangeText={(v) => updateLine(l.key, { rateStr: v })}
-                  keyboardType="numeric"
+                  keyboardType="decimal-pad"
                   placeholder="0"
                   placeholderTextColor="#aaa"
                 />
@@ -429,6 +497,47 @@ const styles = StyleSheet.create({
   lineCol: { flex: 1, gap: 4 },
   lineAmount: { flex: 1, gap: 4, alignItems: 'flex-end' },
   miniLabel: { fontSize: 11, color: '#888' },
+  miniHint: { fontSize: 11, color: '#bbb' },
+  qtyBlock: { gap: 6 },
+  qtyRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  qtyBtn: {
+    width: 52,
+    height: 46,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#cfe3fb',
+    backgroundColor: '#eaf3fe',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  qtyBtnText: { fontSize: 26, lineHeight: 30, fontWeight: '700', color: '#208AEF' },
+  qtyInput: {
+    flex: 1,
+    height: 46,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    fontSize: 18,
+    fontWeight: '600',
+    textAlign: 'center',
+    color: '#111',
+    backgroundColor: '#fff',
+  },
+  presetRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  preset: {
+    minWidth: 44,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    backgroundColor: '#fff',
+    alignItems: 'center',
+  },
+  presetOn: { borderColor: '#208AEF', backgroundColor: '#eef6ff' },
+  presetText: { fontSize: 14, fontWeight: '600', color: '#666' },
+  presetTextOn: { color: '#208AEF' },
   miniInput: {
     borderWidth: 1,
     borderColor: '#ddd',

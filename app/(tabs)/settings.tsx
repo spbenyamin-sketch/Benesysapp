@@ -25,11 +25,20 @@ import {
 } from '@/modules/backup/auto';
 import {
   clearBackupFolder,
-  copyToChosenFolder,
   folderLabel,
   getBackupFolder,
   pickBackupFolder,
 } from '@/modules/backup/destination';
+import {
+  getEmailConfig,
+  providerForKey,
+  setEmailApiKey,
+  setEmailMode,
+  setEmailSender,
+  type EmailConfig,
+  type EmailMode,
+} from '@/modules/backup/email';
+import { BACKUP_UPLOADERS } from '@/modules/backup/useAutoBackup';
 import { exportBackupByEmail, restoreBackup } from '@/modules/backup/service';
 import { getAccount, signOut, type Account } from '@/modules/auth/service';
 import { getLockCapability, isLockEnabled, promptUnlock, setLockEnabled } from '@/modules/auth/lock';
@@ -71,6 +80,9 @@ export default function SettingsScreen() {
   const [auto, setAuto] = useState<AutoBackupConfig | null>(null);
   const [folder, setFolder] = useState<string | null>(null);
   const [backingUp, setBackingUp] = useState(false);
+  const [email, setEmail] = useState<EmailConfig | null>(null);
+  const [apiKey, setApiKey] = useState('');
+  const [sender, setSender] = useState('');
   const { status, lang, speakBack, changeLang, changeSpeakBack, setHelpOpen } = useVoice();
 
   // Voice: every button and field on this screen — "பேக்அப்", "லாக் ஆன்",
@@ -148,7 +160,8 @@ export default function SettingsScreen() {
         getLockCapability(),
         getAutoBackupConfig(),
         getBackupFolder(),
-      ]).then(([acc, locked, cap, cfg, dir]) => {
+        getEmailConfig(),
+      ]).then(([acc, locked, cap, cfg, dir, mail]) => {
         if (!active) return;
         setAccount(acc);
         setLockOn(locked);
@@ -156,6 +169,9 @@ export default function SettingsScreen() {
         setLockEnrolled(cap.enrolled);
         setAuto(cfg);
         setFolder(dir);
+        setEmail(mail);
+        setApiKey(mail.apiKey);
+        setSender(mail.sender);
       });
       listSettings().then((rows) => {
         if (!active) return;
@@ -236,10 +252,30 @@ export default function SettingsScreen() {
     setFolder(null);
   };
 
+  const pickEmailMode = async (mode: EmailMode) => {
+    setEmail((e) => (e ? { ...e, mode } : e));
+    await setEmailMode(mode);
+  };
+
+  // The key/sender boxes save on blur — a half-typed API key must never be
+  // stored, and there is no Save button in this section.
+  const saveApiKey = async () => {
+    setEmail((e) => (e ? { ...e, apiKey: apiKey.trim() } : e));
+    await setEmailApiKey(apiKey);
+  };
+
+  const saveSender = async () => {
+    setEmail((e) => (e ? { ...e, sender: sender.trim() } : e));
+    await setEmailSender(sender);
+  };
+
   const backupNow = async () => {
     setBackingUp(true);
     try {
-      const res = await runBackupNow(new Date().toISOString(), copyToChosenFolder);
+      // Save the typed address first, or "Back up now" would email nowhere on
+      // the very first run.
+      await setSetting(KEYS.backupEmail, backupEmail.trim());
+      const res = await runBackupNow(new Date().toISOString(), BACKUP_UPLOADERS);
       setAuto(await getAutoBackupConfig());
       Alert.alert('Backup done', res.message);
     } catch (e) {
@@ -490,22 +526,84 @@ export default function SettingsScreen() {
           </>
         ) : null}
 
+        {/* Emailing applies to every backup — scheduled or "Back up now" — so it
+            stays visible even when the schedule itself is off. */}
+        <Text style={styles.subTitle}>Send backups to email</Text>
+        <TextField
+          label="Backup email"
+          value={backupEmail}
+          onChangeText={setBackupEmail}
+          onBlur={() => void setSetting(KEYS.backupEmail, backupEmail.trim())}
+          placeholder="you@example.com"
+          keyboardType="email-address"
+          autoCapitalize="none"
+        />
+        <View style={styles.optionRow}>
+          {[
+            { mode: 'off' as EmailMode, label: 'No email' },
+            { mode: 'ask' as EmailMode, label: 'One tap' },
+            { mode: 'auto' as EmailMode, label: 'Hands-free' },
+          ].map((o) => (
+            <Pressable
+              key={o.mode}
+              style={[styles.option, email?.mode === o.mode && styles.optionOn]}
+              onPress={() => pickEmailMode(o.mode)}
+            >
+              <Text style={[styles.optionText, email?.mode === o.mode && styles.optionTextOn]}>
+                {o.label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+        <Text style={styles.sectionHint}>
+          {email?.mode === 'auto'
+            ? 'Every backup is mailed on its own, with nothing to tap — needs the free email-service key below.'
+            : email?.mode === 'ask'
+              ? 'Nothing to set up: when a backup is waiting, the app offers one tap to send it through your own mail app.'
+              : 'Backups are not emailed. Pick “One tap” for the no-setup way.'}
+        </Text>
+
+        {email?.mode === 'auto' ? (
+          <>
+            <TextField
+              label="Email service API key"
+              value={apiKey}
+              onChangeText={setApiKey}
+              onBlur={saveApiKey}
+              placeholder="re_… (Resend) or xkeysib-… (Brevo)"
+              autoCapitalize="none"
+              secureTextEntry
+            />
+            <Text style={styles.sectionHint}>
+              {providerForKey(apiKey)
+                ? `✓ ${providerForKey(apiKey)!.label} key — backups will be mailed on their own.`
+                : 'Make a free account at resend.com or brevo.com, create an API key and paste it here. Without a key the app falls back to the one-tap way.'}
+            </Text>
+            <TextField
+              label="Send from (optional)"
+              value={sender}
+              onChangeText={setSender}
+              onBlur={saveSender}
+              placeholder="verified sender address"
+              keyboardType="email-address"
+              autoCapitalize="none"
+            />
+            <Text style={styles.sectionHint}>
+              Leave blank to use the service default. Brevo only sends from an address it has
+              verified — put your own address here if it rejects the mail.
+            </Text>
+          </>
+        ) : null}
+
         <Button label="Back up now" onPress={backupNow} loading={backingUp} tone="ghost" style={styles.save} />
 
         <View style={styles.divider} />
 
         <Text style={styles.sectionTitle}>Manual backup &amp; restore</Text>
         <Text style={styles.sectionHint}>
-          Export emails a JSON copy of all your data. Restore replaces everything from a backup file.
+          Export opens your mail app with a JSON copy of all your data attached (to the backup email
+          above). Restore replaces everything from a backup file.
         </Text>
-        <TextField
-          label="Backup email (optional)"
-          value={backupEmail}
-          onChangeText={setBackupEmail}
-          placeholder="you@example.com"
-          keyboardType="email-address"
-          autoCapitalize="none"
-        />
         <Button
           label="Export backup (email)"
           onPress={exportBackup}
@@ -531,6 +629,7 @@ const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: '#fff' },
   container: { padding: 16, gap: 14, paddingBottom: 40 },
   sectionTitle: { fontSize: 17, fontWeight: '700', color: '#111' },
+  subTitle: { fontSize: 15, fontWeight: '700', color: '#333', marginTop: 6 },
   sectionHint: { fontSize: 12, color: '#888', marginTop: -8 },
   save: { marginTop: 4 },
   optionRow: { flexDirection: 'row', gap: 10, flexWrap: 'wrap' },

@@ -151,32 +151,44 @@ export interface BackupRunResult {
  */
 export type Uploader = (file: File, nowIso: string) => Promise<string | null>;
 
-/** Run a backup now, regardless of schedule. */
-export async function runBackupNow(nowIso: string, upload?: Uploader): Promise<BackupRunResult> {
+/**
+ * Run a backup now, regardless of schedule. Every uploader is tried — a folder
+ * copy that fails must not stop the email, and vice versa — and each one's
+ * outcome shows up in the result line.
+ */
+export async function runBackupNow(
+  nowIso: string,
+  upload?: Uploader | Uploader[],
+): Promise<BackupRunResult> {
   const file = await writeSnapshot(nowIso);
+  const uploaders = !upload ? [] : Array.isArray(upload) ? upload : [upload];
+  const parts: string[] = [];
   let uploaded = false;
-  let message = 'Saved on phone';
 
-  if (upload) {
+  for (const up of uploaders) {
     try {
-      const result = await upload(file, nowIso);
+      const result = await up(file, nowIso);
       if (result) {
-        message = result;
+        parts.push(result);
         uploaded = true;
       }
     } catch (e) {
       // The phone copy already succeeded — a failed off-device copy must not
       // make the whole backup look like it failed.
-      message = `Saved on phone · copy failed: ${(e as Error)?.message ?? String(e)}`;
+      parts.push(`failed: ${(e as Error)?.message ?? String(e)}`);
     }
   }
 
+  const message = ['Saved on phone', ...parts].join(' · ');
   await Promise.all([setSetting(LAST_AT_KEY, nowIso), setSetting(LAST_RESULT_KEY, message)]);
   return { ran: true, snapshot: file.uri, uploaded, message };
 }
 
 /** Run only if the chosen cadence says it's time. Safe to call often. */
-export async function runBackupIfDue(nowIso: string, upload?: Uploader): Promise<BackupRunResult> {
+export async function runBackupIfDue(
+  nowIso: string,
+  upload?: Uploader | Uploader[],
+): Promise<BackupRunResult> {
   const config = await getAutoBackupConfig();
   if (!isDue(config, Date.parse(nowIso))) {
     return { ran: false, uploaded: false, message: 'Not due yet' };

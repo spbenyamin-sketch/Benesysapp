@@ -21,15 +21,19 @@ import { addedLine, removedLine, setQtyLine, t, totalLine } from '@/modules/voic
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
 import { computeTotals, TAX_MODE_LABEL, type TaxMode } from '@/utils/gst';
 import { formatMoney } from '@/utils/format';
+import { formatQtyValue, stepQty } from '@/utils/units';
 import type { Item } from '@/db/schema';
 
 export default function QuickBillScreen() {
   const router = useRouter();
   const { lang } = useVoice();
-  // Two columns of picture tiles, sized to the screen so the photo is as big as
-  // it can be — this screen is meant to be workable without reading anything.
+  // Three columns of picture tiles on a phone (four/five on a tablet). Two
+  // columns made each tile as tall as half the screen — you could see barely
+  // four items at a time, which is the opposite of a quick counter.
   const { width } = useWindowDimensions();
-  const photoSize = Math.floor((width - GRID_PAD * 2 - TILE_GAP) / 2) - TILE_PAD * 2;
+  const columns = width >= 900 ? 5 : width >= 620 ? 4 : 3;
+  const photoSize =
+    Math.floor((width - GRID_PAD * 2 - TILE_GAP * (columns - 1)) / columns) - TILE_PAD * 2;
   const [items, setItems] = useState<Item[]>([]);
   const [query, setQuery] = useState('');
   const [cart, setCart] = useState<Record<number, number>>({}); // itemId → qty (units)
@@ -62,13 +66,26 @@ export default function QuickBillScreen() {
   // `by` may be negative (voice "remove 2 tea"); dropping to zero clears the line.
   const add = (id: number, by = 1) =>
     setCart((c) => {
-      const next = (c[id] ?? 0) + by;
+      const next = Math.round(((c[id] ?? 0) + by) * 1000) / 1000;
       const copy = { ...c };
       if (next <= 0) delete copy[id];
       else copy[id] = next;
       return copy;
     });
-  const dec = (id: number) => add(id, -1);
+
+  /**
+   * A tile tap / stepper tap moves by the item's own unit: +1 for pieces, +0.25
+   * for kg and ltr, +50 for grams (see utils/units). Weighed goods are billed in
+   * fractions at the counter, so a fixed +1 was wrong for half of the catalogue.
+   */
+  const bump = (item: Item, direction: 1 | -1) =>
+    setCart((c) => {
+      const next = stepQty(c[item.id] ?? 0, item.unit, direction);
+      const copy = { ...c };
+      if (next <= 0) delete copy[item.id];
+      else copy[item.id] = next;
+      return copy;
+    });
   const setQty = (id: number, qty: number) =>
     setCart((c) => {
       const copy = { ...c };
@@ -100,7 +117,7 @@ export default function QuickBillScreen() {
     [cart, itemById],
   );
 
-  const totalQty = cartLines.reduce((s, l) => s + l.qty, 0);
+  const lineCount = cartLines.length;
   const { totals } = useMemo(
     () =>
       computeTotals(
@@ -139,21 +156,23 @@ export default function QuickBillScreen() {
       case 'addLine': {
         const hit = bestMatch(intent.itemQuery, items);
         if (!hit) return t('noMatch', lang);
-        add(hit.value.id, Math.max(1, Math.round(intent.qty)));
-        return addedLine(Math.max(1, Math.round(intent.qty)), hit.value.name, lang);
+        // "அரை கிலோ சர்க்கரை" is half a kilo — fractions are kept as spoken.
+        const qty = intent.qty > 0 ? intent.qty : 1;
+        add(hit.value.id, qty);
+        return addedLine(qty, hit.value.name, lang);
       }
       case 'removeLine': {
         const hit = bestMatch(intent.itemQuery, items);
         if (!hit) return t('noMatch', lang);
-        if (intent.qty) add(hit.value.id, -Math.round(intent.qty));
+        if (intent.qty) add(hit.value.id, -intent.qty);
         else drop(hit.value.id);
         return removedLine(hit.value.name, lang);
       }
       case 'setQty': {
         const hit = bestMatch(intent.itemQuery, items);
         if (!hit) return t('noMatch', lang);
-        setQty(hit.value.id, Math.round(intent.qty));
-        return setQtyLine(Math.round(intent.qty), hit.value.name, lang);
+        setQty(hit.value.id, intent.qty);
+        return setQtyLine(intent.qty, hit.value.name, lang);
       }
       case 'search':
         setQuery(intent.query);
@@ -209,7 +228,8 @@ export default function QuickBillScreen() {
       <FlatList
         data={filtered}
         keyExtractor={(it) => String(it.id)}
-        numColumns={2}
+        numColumns={columns}
+        key={`cols-${columns}`}
         columnWrapperStyle={styles.rowWrap}
         contentContainerStyle={filtered.length === 0 ? styles.emptyWrap : styles.grid}
         keyboardShouldPersistTaps="handled"
@@ -223,13 +243,16 @@ export default function QuickBillScreen() {
         renderItem={({ item }) => {
           const qty = cart[item.id] ?? 0;
           return (
-            <Pressable style={[styles.tile, qty > 0 && styles.tileActive]} onPress={() => add(item.id)}>
+            <Pressable
+              style={[styles.tile, qty > 0 && styles.tileActive]}
+              onPress={() => bump(item, 1)}
+            >
               <View>
-                <ItemPhoto uri={item.imageUri} name={item.name} size={photoSize} radius={12} />
+                <ItemPhoto uri={item.imageUri} name={item.name} size={photoSize} radius={10} />
                 {qty > 0 ? (
                   <>
                     <View style={styles.qtyBadge}>
-                      <Text style={styles.qtyBadgeText}>{qty}</Text>
+                      <Text style={styles.qtyBadgeText}>{formatQtyValue(qty)}</Text>
                     </View>
                     {/* Take the whole line off the bill in one tap. */}
                     <Pressable style={styles.tileDrop} onPress={() => drop(item.id)} hitSlop={6}>
@@ -242,15 +265,20 @@ export default function QuickBillScreen() {
               <Text style={styles.tileName} numberOfLines={2}>
                 {item.name}
               </Text>
-              <Text style={styles.tilePrice}>{formatMoney(item.salePrice)}</Text>
+              <Text style={styles.tilePrice}>
+                {formatMoney(item.salePrice)}
+                <Text style={styles.tileUnit}>/{item.unit}</Text>
+              </Text>
 
               {qty > 0 ? (
                 <View style={styles.tileStepper}>
-                  <Pressable style={styles.tileStepBtn} onPress={() => dec(item.id)}>
+                  <Pressable style={styles.tileStepBtn} onPress={() => bump(item, -1)} hitSlop={4}>
                     <Text style={styles.tileStepText}>−</Text>
                   </Pressable>
-                  <Text style={styles.tileStepQty}>{qty}</Text>
-                  <Pressable style={styles.tileStepBtn} onPress={() => add(item.id)}>
+                  <Text style={styles.tileStepQty} numberOfLines={1}>
+                    {formatQtyValue(qty)}
+                  </Text>
+                  <Pressable style={styles.tileStepBtn} onPress={() => bump(item, 1)} hitSlop={4}>
                     <Text style={styles.tileStepText}>+</Text>
                   </Pressable>
                 </View>
@@ -264,14 +292,14 @@ export default function QuickBillScreen() {
         }}
       />
 
-      {totalQty > 0 ? (
+      {lineCount > 0 ? (
         <View style={styles.bar}>
           <Pressable style={styles.barClear} onPress={confirmClear}>
             <Text style={styles.barClearIcon}>🗑</Text>
             <Text style={styles.barClearText}>Clear</Text>
           </Pressable>
           <Pressable style={styles.barInfo} onPress={() => setCartOpen(true)}>
-            <Text style={styles.barCount}>{totalQty} item{totalQty > 1 ? 's' : ''} · view</Text>
+            <Text style={styles.barCount}>{lineCount} item{lineCount > 1 ? 's' : ''} · view</Text>
             <Text style={styles.barTotal}>{formatMoney(totals.grandTotal)}</Text>
           </Pressable>
           <Pressable style={styles.barBtn} onPress={bill} disabled={billing}>
@@ -305,15 +333,16 @@ export default function QuickBillScreen() {
                       {l.item.name}
                     </Text>
                     <Text style={styles.cartSub}>
-                      {formatMoney(l.item.salePrice)} × {l.qty} = {formatMoney(l.item.salePrice * l.qty)}
+                      {formatMoney(l.item.salePrice)} × {formatQtyValue(l.qty)} {l.item.unit} ={' '}
+                      {formatMoney(Math.round(l.item.salePrice * l.qty))}
                     </Text>
                   </View>
                   <View style={styles.stepper}>
-                    <Pressable style={styles.stepBtn} onPress={() => dec(l.item.id)}>
+                    <Pressable style={styles.stepBtn} onPress={() => bump(l.item, -1)}>
                       <Text style={styles.stepText}>−</Text>
                     </Pressable>
-                    <Text style={styles.stepQty}>{l.qty}</Text>
-                    <Pressable style={styles.stepBtn} onPress={() => add(l.item.id)}>
+                    <Text style={styles.stepQty}>{formatQtyValue(l.qty)}</Text>
+                    <Pressable style={styles.stepBtn} onPress={() => bump(l.item, 1)}>
                       <Text style={styles.stepText}>+</Text>
                     </Pressable>
                   </View>
@@ -345,9 +374,9 @@ export default function QuickBillScreen() {
   );
 }
 
-const TILE_GAP = 12;
-const GRID_PAD = 12;
-const TILE_PAD = 8;
+const TILE_GAP = 8;
+const GRID_PAD = 10;
+const TILE_PAD = 6;
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#fff' },
@@ -380,67 +409,74 @@ const styles = StyleSheet.create({
   rowWrap: { gap: TILE_GAP },
   tile: {
     flex: 1,
-    borderRadius: 16,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: '#e5e5e5',
     backgroundColor: '#fafafa',
     padding: TILE_PAD,
-    gap: 4,
+    gap: 2,
   },
   tileActive: { borderColor: '#208AEF', borderWidth: 2, backgroundColor: '#eef6ff' },
-  tileName: { fontSize: 16, fontWeight: '600', color: '#111', marginTop: 4 },
-  tilePrice: { fontSize: 18, color: '#208AEF', fontWeight: '800' },
-  // Big, obvious "this tile does something" affordance — no reading required.
+  tileName: { fontSize: 13, fontWeight: '600', color: '#111', marginTop: 3, lineHeight: 16 },
+  tilePrice: { fontSize: 14, color: '#208AEF', fontWeight: '800' },
+  tileUnit: { fontSize: 10, color: '#8aa9c9', fontWeight: '700' },
+  // Compact but still an obvious "this tile does something" affordance.
   tileAdd: {
     marginTop: 2,
-    borderRadius: 10,
+    borderRadius: 8,
     backgroundColor: '#eaf3fe',
-    paddingVertical: 8,
+    paddingVertical: 5,
     alignItems: 'center',
   },
-  tileAddText: { color: '#208AEF', fontWeight: '700', fontSize: 15 },
+  tileAddText: { color: '#208AEF', fontWeight: '700', fontSize: 12 },
   tileStepper: {
     marginTop: 2,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: '#fff',
-    borderRadius: 10,
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: '#cfe3fb',
   },
-  tileStepBtn: { width: 44, paddingVertical: 6, alignItems: 'center' },
-  tileStepText: { fontSize: 24, lineHeight: 28, color: '#208AEF', fontWeight: '700' },
-  tileStepQty: { fontSize: 18, fontWeight: '700', color: '#111', minWidth: 24, textAlign: 'center' },
+  tileStepBtn: { flex: 1, paddingVertical: 3, alignItems: 'center' },
+  tileStepText: { fontSize: 19, lineHeight: 23, color: '#208AEF', fontWeight: '700' },
+  tileStepQty: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#111',
+    minWidth: 26,
+    textAlign: 'center',
+  },
   qtyBadge: {
     position: 'absolute',
-    top: 6,
-    left: 6,
-    minWidth: 30,
-    height: 30,
-    borderRadius: 15,
+    top: 4,
+    left: 4,
+    minWidth: 24,
+    height: 24,
+    borderRadius: 12,
     backgroundColor: '#208AEF',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 8,
+    paddingHorizontal: 5,
     borderWidth: 2,
     borderColor: '#fff',
   },
-  qtyBadgeText: { color: '#fff', fontSize: 15, fontWeight: '800' },
+  qtyBadgeText: { color: '#fff', fontSize: 11, fontWeight: '800' },
   tileDrop: {
     position: 'absolute',
-    top: 6,
-    right: 6,
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    top: 4,
+    right: 4,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     backgroundColor: '#c0392b',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
     borderColor: '#fff',
   },
-  tileDropText: { color: '#fff', fontSize: 15, fontWeight: '800', lineHeight: 18 },
+  tileDropText: { color: '#fff', fontSize: 12, fontWeight: '800', lineHeight: 14 },
   emptyWrap: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
   empty: { color: '#999', textAlign: 'center', lineHeight: 22 },
   bar: {

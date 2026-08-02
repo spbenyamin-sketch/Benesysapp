@@ -29,6 +29,20 @@ export function t(key: PhraseKey, lang: VoiceLang): string {
   return P[key][lang];
 }
 
+/** The replies that mean "that didn't work" — in either language. */
+const FAILURES: string[] = (['notUnderstood', 'noMatch', 'noParty', 'notHere'] as PhraseKey[]).flatMap(
+  (k) => [P[k]['ta-IN'], P[k]['en-IN']],
+);
+
+/**
+ * True when a confirmation actually reports a failure. The provider uses this
+ * to decide whether to retry the utterance with the recogniser's next-best
+ * guess instead of giving up on the first one.
+ */
+export function isFailureMessage(message: string): boolean {
+  return FAILURES.includes(message);
+}
+
 /** "2 டீ சேர்த்தாச்சு" / "Added 2 tea". */
 export function addedLine(qty: number, name: string, lang: VoiceLang): string {
   return lang === 'ta-IN' ? `${qty} ${name} சேர்த்தாச்சு` : `Added ${qty} ${name}`;

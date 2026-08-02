@@ -18,7 +18,7 @@ import {
 } from 'react';
 import { getVoiceLang, getVoiceSpeak, setVoiceLang, setVoiceSpeak } from '@/modules/settings/service';
 import { parseTranscript } from './parser';
-import { openedScreen, t } from './phrases';
+import { isFailureMessage, openedScreen, t } from './phrases';
 import {
   abortListening,
   isVoiceAvailable,
@@ -103,6 +103,17 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const listeningRef = useRef(false);
   const langRef = useRef<VoiceLang>('ta-IN');
   const speakRef = useRef(true);
+  // The phone's own voice is loud enough to be recognised as a command
+  // ("சேர்த்தாச்சு" → an item search). Everything heard while we are talking,
+  // plus a short tail, is thrown away.
+  const speakingUntilRef = useRef(0);
+  // Android returns the same final result twice on some devices; and a restart
+  // can replay the last utterance. Identical text inside this window is ignored.
+  const lastFinalRef = useRef({ text: '', at: 0 });
+  // Restart bookkeeping — see restartSoon().
+  const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const restartsRef = useRef<number[]>([]);
+  const startRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     let active = true;
@@ -120,7 +131,13 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
   const say = useCallback((message: string) => {
     setStatus((s) => ({ ...s, message }));
-    if (speakRef.current) speak(message, langRef.current);
+    if (!speakRef.current) return;
+    // Deafen ourselves for as long as we are talking (+400ms of echo tail).
+    // Without this the mic hears the confirmation and tries to obey it.
+    speakingUntilRef.current = Date.now() + 8000; // generous ceiling; onDone shortens it
+    speak(message, langRef.current, () => {
+      speakingUntilRef.current = Date.now() + 400;
+    });
   }, []);
 
   const register = useCallback((reg: Registration) => {
@@ -180,11 +197,17 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     [router],
   );
 
-  const dispatch = useCallback(
-    (transcript: string) => {
+  /** Run one candidate transcript through the handler stack. */
+  const runTranscript = useCallback(
+    (transcript: string): { message: string; ok: boolean } => {
       const intents = parseTranscript(transcript);
       let lastMessage = '';
+      let ok = false;
       for (const intent of intents) {
+        if (intent.kind === 'unknown') {
+          lastMessage = t('notUnderstood', langRef.current);
+          continue;
+        }
         // Newest registration first: a screen may register several handlers
         // (e.g. the screen itself plus an embedded export button), and only
         // FOCUSED screens are in the stack at all.
@@ -196,23 +219,83 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
             result = (e as Error)?.message ?? 'Error';
           }
         }
-        if (typeof result === 'string') lastMessage = result;
-        else if (result !== true) {
+        if (typeof result === 'string') {
+          lastMessage = result;
+          if (!isFailureMessage(result)) ok = true;
+        } else if (result === true) {
+          ok = true;
+        } else {
           const globalMsg = handleGlobal(intent);
-          if (globalMsg) lastMessage = globalMsg;
+          if (globalMsg) {
+            lastMessage = globalMsg;
+            if (!isFailureMessage(globalMsg)) ok = true;
+          }
         }
       }
-      if (lastMessage) say(lastMessage);
+      return { message: lastMessage, ok };
     },
-    [handleGlobal, say],
+    [handleGlobal],
+  );
+
+  /**
+   * One utterance → commands. The recogniser's best guess is tried first; if it
+   * matched nothing (no such item, didn't understand), its other guesses for the
+   * same audio are tried in order. "ஒரு டீ" often comes back as "ஒரு தீ" first
+   * and correctly second — that used to be a dead command.
+   */
+  const dispatch = useCallback(
+    (transcript: string, alternatives: string[] = []) => {
+      let { message, ok } = runTranscript(transcript);
+      if (!ok) {
+        for (const alt of alternatives) {
+          if (!alt || alt === transcript) continue;
+          const retry = runTranscript(alt);
+          if (retry.ok) {
+            message = retry.message;
+            setStatus((s) => ({ ...s, transcript: alt }));
+            break;
+          }
+        }
+      }
+      if (message) say(message);
+    },
+    [runTranscript, say],
   );
 
   const stop = useCallback(() => {
     listeningRef.current = false;
+    if (restartTimerRef.current) {
+      clearTimeout(restartTimerRef.current);
+      restartTimerRef.current = null;
+    }
+    restartsRef.current = [];
     stopListening();
     disposeRef.current?.();
     disposeRef.current = null;
     setStatus((s) => ({ ...s, listening: false, transcript: '' }));
+  }, []);
+
+  /**
+   * Android's recogniser closes the session after every final result (and after
+   * a silence timeout) even with `continuous: true`. Without this the mic button
+   * still LOOKED on while nothing was being heard — the single biggest cause of
+   * "voice stopped working after one command". Restarts are rate-limited so a
+   * recogniser that keeps dying instantly can't spin.
+   */
+  const restartSoon = useCallback((delay = 350) => {
+    if (!listeningRef.current || restartTimerRef.current) return;
+    const now = Date.now();
+    restartsRef.current = [...restartsRef.current.filter((at) => now - at < 10_000), now];
+    if (restartsRef.current.length > 8) {
+      listeningRef.current = false;
+      restartsRef.current = [];
+      setStatus((s) => ({ ...s, listening: false }));
+      return;
+    }
+    restartTimerRef.current = setTimeout(() => {
+      restartTimerRef.current = null;
+      if (listeningRef.current) startRef.current();
+    }, delay);
   }, []);
 
   const start = useCallback(async () => {
@@ -230,35 +313,71 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    stopSpeaking(); // don't let our own confirmation feed back into the mic
     listeningRef.current = true;
     setStatus((s) => ({ ...s, listening: true, transcript: '', message: '', error: null }));
+
+    // Previous session's listeners must go before a new one is opened, or a
+    // restart would stack a second set of handlers on the same events.
+    disposeRef.current?.();
+    disposeRef.current = null;
 
     const hints = [...new Set(stack.current.flatMap((r) => r.hints ?? []))];
     disposeRef.current = startListening(
       { lang: langRef.current, continuous: true, contextualStrings: hints },
       {
-        onPartial: (text) => setStatus((s) => ({ ...s, transcript: text })),
-        onFinal: (text) => {
+        onPartial: (text) => {
+          if (Date.now() < speakingUntilRef.current) return; // that's us talking
           setStatus((s) => ({ ...s, transcript: text }));
-          dispatch(text);
+        },
+        onFinal: (text, alternatives) => {
+          if (Date.now() < speakingUntilRef.current) return;
+          const now = Date.now();
+          const last = lastFinalRef.current;
+          if (last.text === text && now - last.at < 2500) return; // duplicate result
+          lastFinalRef.current = { text, at: now };
+          setStatus((s) => ({ ...s, transcript: text }));
+          dispatch(text, alternatives);
         },
         onError: (code, message) => {
-          // "no-match"/"speech-timeout" just mean a quiet moment — keep the mic open.
-          if (code === 'no-speech' || code === 'no-match' || code === 'speech-timeout') return;
+          // A quiet moment, or a busy recogniser — recoverable, so keep the mic
+          // conceptually on and let onEnd bring the session back.
+          if (
+            code === 'no-speech' ||
+            code === 'no-match' ||
+            code === 'speech-timeout' ||
+            code === 'busy' ||
+            code === 'aborted'
+          ) {
+            return;
+          }
           listeningRef.current = false;
           setStatus((s) => ({ ...s, listening: false, error: message, message }));
         },
         onEnd: () => {
-          if (!listeningRef.current) setStatus((s) => ({ ...s, listening: false }));
+          // Still meant to be listening? The recogniser closed on its own —
+          // reopen it (see restartSoon).
+          if (listeningRef.current) restartSoon();
+          else setStatus((s) => ({ ...s, listening: false }));
         },
       },
     );
-  }, [dispatch]);
+  }, [dispatch, restartSoon]);
+
+  // restartSoon() reaches `start` through this ref (they refer to each other).
+  useEffect(() => {
+    startRef.current = () => void start();
+  }, [start]);
 
   const toggleListening = useCallback(() => {
-    if (listeningRef.current) stop();
-    else void start();
+    if (listeningRef.current) {
+      stop();
+      return;
+    }
+    // Only a deliberate tap cuts off talk-back; an automatic restart must not
+    // truncate the confirmation it is speaking.
+    stopSpeaking();
+    speakingUntilRef.current = 0;
+    void start();
   }, [start, stop]);
 
   const changeLang = useCallback(
@@ -289,6 +408,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   useEffect(
     () => () => {
       listeningRef.current = false;
+      if (restartTimerRef.current) clearTimeout(restartTimerRef.current);
       abortListening();
       disposeRef.current?.();
     },

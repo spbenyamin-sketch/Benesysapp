@@ -79,8 +79,14 @@ export interface ListenHandlers {
   onStart?: () => void;
   /** Live text while the user is still speaking. */
   onPartial?: (text: string) => void;
-  /** A completed utterance — this is what gets parsed into commands. */
-  onFinal?: (text: string) => void;
+  /**
+   * A completed utterance — this is what gets parsed into commands.
+   *
+   * `alternatives` holds the recogniser's other guesses for the SAME utterance,
+   * best first. Shop words ("டீ", "வெங்காயம்") are very often the 2nd or 3rd
+   * guess, so the caller tries each one until a command actually parses.
+   */
+  onFinal?: (text: string, alternatives: string[]) => void;
   onError?: (code: string, message: string) => void;
   onEnd?: () => void;
 }
@@ -109,9 +115,10 @@ export function startListening(opts: ListenOptions, handlers: ListenHandlers): (
   subs.push(Speech.addListener('start', () => handlers.onStart?.()));
   subs.push(
     Speech.addListener('result', (ev: { results?: { transcript: string }[]; isFinal?: boolean }) => {
-      const text = ev?.results?.[0]?.transcript ?? '';
+      const all = (ev?.results ?? []).map((r) => r?.transcript ?? '').filter(Boolean);
+      const text = all[0] ?? '';
       if (!text) return;
-      if (ev.isFinal) handlers.onFinal?.(text);
+      if (ev.isFinal) handlers.onFinal?.(text, all.slice(1));
       else handlers.onPartial?.(text);
     }),
   );
@@ -129,13 +136,23 @@ export function startListening(opts: ListenOptions, handlers: ListenHandlers): (
       continuous: opts.continuous ?? false,
       requiresOnDeviceRecognition: opts.offline ?? false,
       addsPunctuation: false,
+      // Ask for several guesses per utterance — the shop's word is frequently
+      // not the recogniser's first choice, and the caller re-tries the rest.
+      maxAlternatives: 5,
       // The recogniser is far more likely to return "வெங்காயம்" correctly when
-      // it knows the shop's actual catalogue up front.
-      contextualStrings: opts.contextualStrings?.slice(0, 100),
+      // it knows the shop's actual catalogue up front. Android 13+ takes ~200.
+      contextualStrings: opts.contextualStrings?.slice(0, 200),
       androidIntentOptions: {
-        EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS: 1200,
-        EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS: 1200,
+        // A counter is noisy and speech comes in bursts. A shorter end-of-speech
+        // silence returns each command sooner; the longer minimum keeps a pause
+        // mid-sentence ("ரெண்டு… டீ") from cutting the utterance in half.
+        EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS: 900,
+        EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS: 900,
+        EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS: 1500,
+        // Item names are not dictation — never let the recogniser bleep them.
+        EXTRA_MASK_OFFENSIVE_WORDS: false,
       },
+      iosTaskHint: 'search',
     } as ExpoSpeechRecognitionOptions);
   } catch (e) {
     handlers.onError?.('start-failed', (e as Error)?.message ?? String(e));
@@ -176,13 +193,28 @@ export function abortListening(): void {
 }
 
 // ── Talk back ────────────────────────────────────────────────────────────────
-/** Speak a confirmation ("ரெண்டு டீ சேர்க்கப்பட்டது") in the active language. */
-export function speak(text: string, lang: VoiceLang): void {
-  if (!Tts || !text) return;
+/**
+ * Speak a confirmation ("ரெண்டு டீ சேர்க்கப்பட்டது") in the active language.
+ * `onDone` fires when the phone has stopped talking — the caller uses it to
+ * ignore whatever the microphone picked up in the meantime (our own voice).
+ */
+export function speak(text: string, lang: VoiceLang, onDone?: () => void): void {
+  if (!Tts || !text) {
+    onDone?.();
+    return;
+  }
   try {
-    Tts.speak(text, { language: lang, rate: 1.0, pitch: 1.0 });
+    Tts.speak(text, {
+      language: lang,
+      rate: 1.0,
+      pitch: 1.0,
+      onDone,
+      onStopped: onDone,
+      onError: onDone,
+    });
   } catch {
     /* TTS is a nicety — never let it break a command */
+    onDone?.();
   }
 }
 

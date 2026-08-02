@@ -10,6 +10,7 @@ export default function TextField({
   multiline = false,
   required = false,
   secureTextEntry = false,
+  onBlur,
 }: {
   label: string;
   value: string;
@@ -20,6 +21,8 @@ export default function TextField({
   multiline?: boolean;
   required?: boolean;
   secureTextEntry?: boolean;
+  /** Fields that persist themselves (no Save button) commit here. */
+  onBlur?: () => void;
 }) {
   return (
     <View style={styles.wrap}>
@@ -37,6 +40,7 @@ export default function TextField({
         autoCapitalize={autoCapitalize}
         multiline={multiline}
         secureTextEntry={secureTextEntry}
+        onBlur={onBlur}
       />
     </View>
   );
