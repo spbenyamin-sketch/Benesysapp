@@ -10,6 +10,7 @@ export default function PaymentLayout() {
         headerTitleStyle: { color: '#111' },
       }}
     >
+      <Stack.Screen name="index" options={{ title: 'Payments' }} />
       <Stack.Screen name="new" options={{ title: 'Record Payment', presentation: 'modal' }} />
     </Stack>
   );

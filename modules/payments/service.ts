@@ -1,6 +1,6 @@
-import { eq } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import { db } from '@/db/client';
-import { invoices, payments, type NewPayment, type Payment } from '@/db/schema';
+import { invoices, parties, payments, type NewPayment, type Party, type Payment } from '@/db/schema';
 
 export type PaymentInput = Omit<NewPayment, 'id' | 'createdAt'>;
 
@@ -44,10 +44,68 @@ export async function deletePayment(id: number): Promise<void> {
 export async function recomputeInvoiceStatus(invoiceId: number): Promise<void> {
   const [inv] = await db.select().from(invoices).where(eq(invoices.id, invoiceId));
   if (!inv) return;
-  const linked = await listPaymentsByInvoice(invoiceId);
-  const paid = linked.reduce((s, p) => s + p.amount, 0);
+  const [linked, [party]] = await Promise.all([
+    listPaymentsByInvoice(invoiceId),
+    db.select().from(parties).where(eq(parties.id, inv.partyId)),
+  ]);
+  // A payment running the other way (a refund against a sale) gives money back,
+  // so it subtracts from what has been settled on this invoice.
+  const normal = defaultDirectionForInvoice(inv.type);
+  const paid = linked.reduce((s, p) => {
+    const dir = paymentDirection(p, party?.type ?? 'customer');
+    return dir === normal ? s + p.amount : s - p.amount;
+  }, 0);
   const status = paid <= 0 ? 'unpaid' : paid >= inv.grandTotal ? 'paid' : 'partial';
   await db.update(invoices).set({ paymentStatus: status }).where(eq(invoices.id, invoiceId));
+}
+
+// ── Payment history ───────────────────────────────────────────────────────────
+export interface PaymentWithParty extends Payment {
+  partyName: string;
+  partyType: Party['type'];
+  invoiceNo: string | null;
+}
+
+export type Direction = 'in' | 'out';
+
+/**
+ * Which way the money moved. `payments.direction` is authoritative; rows written
+ * before that column existed have NULL and fall back to the party type
+ * (customer = money in, supplier = money out) — the rule the app used then.
+ */
+export function paymentDirection(
+  payment: { direction?: Direction | null },
+  partyType: Party['type'],
+): Direction {
+  return payment.direction ?? (partyType === 'supplier' ? 'out' : 'in');
+}
+
+/** The direction a payment against this invoice normally runs. */
+export function defaultDirectionForInvoice(type: string): Direction {
+  return type === 'purchase' ? 'out' : 'in';
+}
+
+export async function listPaymentsWithParty(limit?: number): Promise<PaymentWithParty[]> {
+  const q = db
+    .select({
+      id: payments.id,
+      partyId: payments.partyId,
+      invoiceId: payments.invoiceId,
+      amount: payments.amount,
+      mode: payments.mode,
+      direction: payments.direction,
+      date: payments.date,
+      notes: payments.notes,
+      createdAt: payments.createdAt,
+      partyName: parties.name,
+      partyType: parties.type,
+      invoiceNo: invoices.invoiceNo,
+    })
+    .from(payments)
+    .innerJoin(parties, eq(payments.partyId, parties.id))
+    .leftJoin(invoices, eq(payments.invoiceId, invoices.id))
+    .orderBy(desc(payments.date), desc(payments.id));
+  return limit ? q.limit(limit) : q;
 }
 
 /** Record a payment and, if it's tied to an invoice, refresh that invoice's status. */

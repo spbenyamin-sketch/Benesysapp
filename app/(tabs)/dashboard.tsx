@@ -99,6 +99,25 @@ export default function DashboardScreen() {
             />
           </View>
 
+          <View style={styles.actions}>
+            <ActionButton
+              label="↓ Payment In"
+              tone="#00897b"
+              small
+              onPress={() =>
+                router.push({ pathname: '/payment/new', params: { direction: 'in' } })
+              }
+            />
+            <ActionButton
+              label="↑ Payment Out"
+              tone="#c0392b"
+              small
+              onPress={() =>
+                router.push({ pathname: '/payment/new', params: { direction: 'out' } })
+              }
+            />
+          </View>
+
           <View style={styles.kpis}>
             <Kpi label="Today's sales" value={formatMoney(todaySales)} tone="#111" />
             <Kpi label="To collect" value={formatMoney(receivable)} tone="#1a9d5a" />

@@ -59,6 +59,7 @@ export async function createQuickBill(
     invoiceId: invoice.id,
     amount: invoice.grandTotal,
     mode,
+    direction: 'in',
     date,
   });
 

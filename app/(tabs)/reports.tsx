@@ -11,6 +11,12 @@ const REPORTS: { href: Href; emoji: string; title: string; sub: string }[] = [
   },
   { href: '/report/stock', emoji: '📦', title: 'Stock Summary', sub: 'On-hand quantity and value' },
   { href: '/report/gst', emoji: '🧮', title: 'GST Summary', sub: 'Output vs input tax' },
+  {
+    href: '/payment',
+    emoji: '💵',
+    title: 'Payment History',
+    sub: 'Every payment in and out',
+  },
 ];
 
 export default function ReportsScreen() {

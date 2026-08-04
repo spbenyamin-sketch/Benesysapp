@@ -96,6 +96,10 @@ export const payments = sqliteTable('payments', {
   invoiceId: integer('invoice_id').references(() => invoices.id), // null = on-account payment
   amount: integer('amount').notNull(), // paise
   mode: text('mode', { enum: ['cash', 'upi', 'card', 'bank'] }).notNull().default('cash'),
+  // 'in' = money received, 'out' = money paid. NULL on rows written before this
+  // column existed — those fall back to the party type (customer=in, supplier=out).
+  // An explicit value is what makes a refund to a customer possible.
+  direction: text('direction', { enum: ['in', 'out'] }),
   date: text('date').notNull(), // ISO 'YYYY-MM-DD'
   notes: text('notes'),
   createdAt: createdAt(),

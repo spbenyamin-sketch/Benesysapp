@@ -8,6 +8,7 @@ import {
   type InvoiceDetail,
 } from '@/modules/invoices/service';
 import { printInvoice, shareInvoicePdf } from '@/modules/invoices/pdf';
+import { defaultDirectionForInvoice } from '@/modules/payments/service';
 import { t, totalLine } from '@/modules/voice/phrases';
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
 import { formatDate, formatMoney, formatQty, formatTaxRate } from '@/utils/format';
@@ -88,7 +89,11 @@ export default function InvoiceDetailScreen() {
         if (intent.target !== 'newPayment') return false;
         router.push({
           pathname: '/payment/new',
-          params: { partyId: detail.invoice.partyId, invoiceId: detail.invoice.id },
+          params: {
+            partyId: detail.invoice.partyId,
+            invoiceId: detail.invoice.id,
+            direction: defaultDirectionForInvoice(detail.invoice.type),
+          },
         });
         return lang === 'ta-IN' ? 'பணம் பதிவு' : 'Record payment';
       case 'action':
@@ -202,7 +207,11 @@ export default function InvoiceDetailScreen() {
             onPress={() =>
               router.push({
                 pathname: '/payment/new',
-                params: { partyId: invoice.partyId, invoiceId: invoice.id },
+                params: {
+                  partyId: invoice.partyId,
+                  invoiceId: invoice.id,
+                  direction: defaultDirectionForInvoice(invoice.type),
+                },
               })
             }
             style={styles.action}

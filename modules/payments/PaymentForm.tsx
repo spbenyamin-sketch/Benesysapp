@@ -15,12 +15,17 @@ import PickerField, { type PickerOption } from '@/components/PickerField';
 import TextField from '@/components/TextField';
 import { listInvoicesByParty } from '@/modules/invoices/service';
 import { listParties } from '@/modules/parties/service';
-import { recordPayment } from '@/modules/payments/service';
+import { recordPayment, type Direction } from '@/modules/payments/service';
 import { bestMatch, spokenNames } from '@/modules/voice/match';
 import { t } from '@/modules/voice/phrases';
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
 import { formatDate, formatMoney, parseRupeesToPaise } from '@/utils/format';
 import type { Invoice, Party, Payment } from '@/db/schema';
+
+const DIRECTIONS: { key: Direction; label: string }[] = [
+  { key: 'in', label: '↓ Payment In' },
+  { key: 'out', label: '↑ Payment Out' },
+];
 
 const MODES: { key: Payment['mode']; label: string }[] = [
   { key: 'cash', label: 'Cash' },
@@ -36,13 +41,21 @@ function todayISO(): string {
 export default function PaymentForm({
   presetPartyId,
   presetInvoiceId,
+  direction,
 }: {
   presetPartyId?: number;
   presetInvoiceId?: number;
+  /**
+   * Fixes which way the money runs and narrows the party picker to that side.
+   * Left out when the screen was opened from a party or an invoice — there the
+   * direction follows the party and stays switchable.
+   */
+  direction?: Direction;
 }) {
   const router = useRouter();
   const { lang } = useVoice();
-  const [parties, setParties] = useState<Party[]>([]);
+  const [allParties, setAllParties] = useState<Party[]>([]);
+  const [dir, setDir] = useState<Direction>(direction ?? 'in');
   const [invoicesForParty, setInvoicesForParty] = useState<Invoice[]>([]);
   const [partyId, setPartyId] = useState<number | null>(presetPartyId ?? null);
   const [invoiceId, setInvoiceId] = useState<number | null>(presetInvoiceId ?? null);
@@ -53,8 +66,30 @@ export default function PaymentForm({
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    listParties().then(setParties);
+    listParties().then(setAllParties);
   }, []);
+
+  // Opened as "Payment In"/"Payment Out": the picker only offers the side that
+  // normally moves money that way, so it can't be booked against the wrong one.
+  // Opened from a party or invoice: every party stays selectable, because the
+  // preset one must not vanish from the list.
+  const narrowToSide = !!direction && presetPartyId == null;
+  const parties = useMemo(
+    () =>
+      !narrowToSide
+        ? allParties
+        : allParties.filter((p) => (dir === 'out' ? p.type === 'supplier' : p.type === 'customer')),
+    [allParties, narrowToSide, dir],
+  );
+
+  // Without a fixed direction the party decides it: a customer normally pays in,
+  // a supplier is normally paid out. The toggle below can still override it —
+  // that's how a refund gets recorded.
+  useEffect(() => {
+    if (direction || partyId == null) return;
+    const p = allParties.find((x) => x.id === partyId);
+    if (p) setDir(p.type === 'supplier' ? 'out' : 'in');
+  }, [allParties, partyId, direction]);
 
   // Load the chosen party's unpaid sale/purchase invoices for optional linking.
   useEffect(() => {
@@ -164,6 +199,7 @@ export default function PaymentForm({
         invoiceId: invoiceId ?? null,
         amount: paise,
         mode,
+        direction: dir,
         date,
         notes: notes.trim() || null,
       });
@@ -177,8 +213,32 @@ export default function PaymentForm({
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+        <View>
+          <Text style={styles.label}>Direction</Text>
+          <View style={styles.modeRow}>
+            {DIRECTIONS.map((d) => {
+              const active = dir === d.key;
+              return (
+                <Pressable
+                  key={d.key}
+                  style={[
+                    styles.dirChip,
+                    active && (d.key === 'in' ? styles.dirChipIn : styles.dirChipOut),
+                  ]}
+                  onPress={() => setDir(d.key)}
+                >
+                  <Text style={[styles.modeText, active && styles.modeTextActive]}>{d.label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <Text style={styles.hint}>
+            {dir === 'in' ? 'Money received from this party.' : 'Money paid to this party.'}
+          </Text>
+        </View>
+
         <PickerField
-          label="Party"
+          label={dir === 'out' ? 'Paid to' : 'Received from'}
           value={partyId}
           onSelect={(id) => {
             setPartyId(id);
@@ -187,7 +247,13 @@ export default function PaymentForm({
           options={partyOptions}
           placeholder="Select party"
           required
-          emptyText="No parties yet — add one from the Parties tab."
+          emptyText={
+            !narrowToSide
+              ? 'No parties yet — add one from the Parties tab.'
+              : dir === 'in'
+                ? 'No customers yet — add one from the Parties tab.'
+                : 'No suppliers yet — add one from the Parties tab.'
+          }
         />
 
         <TextField
@@ -266,5 +332,16 @@ const styles = StyleSheet.create({
   modeText: { fontWeight: '600', color: '#666', fontSize: 14 },
   modeTextActive: { color: '#fff' },
   clearLink: { color: '#208AEF', fontSize: 13, marginTop: 6 },
+  dirChip: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    alignItems: 'center',
+  },
+  dirChipIn: { backgroundColor: '#1a9d5a', borderColor: '#1a9d5a' },
+  dirChipOut: { backgroundColor: '#c0392b', borderColor: '#c0392b' },
+  hint: { fontSize: 12, color: '#888', marginTop: 6 },
   save: { marginTop: 8 },
 });

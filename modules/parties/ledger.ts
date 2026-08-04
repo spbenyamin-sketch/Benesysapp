@@ -1,7 +1,7 @@
 import { listInvoices, listInvoicesByParty } from '@/modules/invoices/service';
 import { listParties } from '@/modules/parties/service';
 import { getParty } from '@/modules/parties/service';
-import { listPayments, listPaymentsByParty } from '@/modules/payments/service';
+import { listPayments, listPaymentsByParty, paymentDirection } from '@/modules/payments/service';
 import type { Invoice, Party, Payment } from '@/db/schema';
 
 // ── Party ledger (balances are COMPUTED from transactions, never stored) ──────
@@ -38,12 +38,12 @@ function invoiceDelta(inv: Invoice): number {
   return 0; // quotation / challan → non-financial
 }
 
-// A recorded payment reduces whatever is outstanding, in whichever direction it
-// runs: money received from a customer shrinks a receivable; money paid to a
-// supplier shrinks a payable. (Phase 5 may refine direction once payments carry
-// an explicit in/out flag.)
+// A recorded payment moves the balance by the direction it actually ran: money
+// received (in) shrinks a receivable, money paid (out) shrinks a payable. The
+// direction is stored on the row now, so a refund to a customer — money out to
+// someone who normally pays in — lands on the correct side.
 function paymentDelta(payment: Payment, party: Party): number {
-  return party.type === 'supplier' ? payment.amount : -payment.amount;
+  return paymentDirection(payment, party.type) === 'out' ? payment.amount : -payment.amount;
 }
 
 export async function getPartyLedger(partyId: number): Promise<PartyLedger | null> {
@@ -76,11 +76,12 @@ export async function getPartyLedger(partyId: number): Promise<PartyLedger | nul
     });
   }
   for (const p of payments) {
+    const dir = paymentDirection(p, party.type);
     txns.push({
       key: `pay-${p.id}`,
       date: p.date,
       kind: 'payment',
-      label: `Payment · ${p.mode.toUpperCase()}`,
+      label: `${dir === 'in' ? 'Payment in' : 'Payment out'} · ${p.mode.toUpperCase()}`,
       delta: paymentDelta(p, party),
     });
   }
@@ -120,7 +121,8 @@ export async function listPartiesWithBalance(): Promise<PartyWithBalance[]> {
   for (const pay of payments) {
     const current = balanceById.get(pay.partyId);
     if (current === undefined) continue;
-    const delta = typeById.get(pay.partyId) === 'supplier' ? pay.amount : -pay.amount;
+    const type = typeById.get(pay.partyId) ?? 'customer';
+    const delta = paymentDirection(pay, type) === 'out' ? pay.amount : -pay.amount;
     balanceById.set(pay.partyId, current + delta);
   }
 
