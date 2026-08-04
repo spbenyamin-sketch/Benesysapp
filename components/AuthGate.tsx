@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   AppState,
   KeyboardAvoidingView,
   Platform,
@@ -28,6 +29,7 @@ import {
   type Account,
 } from '@/modules/auth/service';
 import { isLockEnabled, promptUnlock } from '@/modules/auth/lock';
+import DriveRestorePicker from '@/modules/backup/DriveRestorePicker';
 
 type Phase = 'loading' | 'signup' | 'login' | 'locked' | 'ready';
 
@@ -158,6 +160,13 @@ function AccountScreen({
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [drivePicker, setDrivePicker] = useState(false);
+  // A restore is good news, so it must not appear in the red error slot. The
+  // login itself is never in a backup — it lives in SecureStore — so an account
+  // still has to be made after restoring.
+  const [notice, setNotice] = useState<string | null>(null);
+  // Set while the just-created account waits for the restore sheet to close.
+  const [pendingAccount, setPendingAccount] = useState<Account | null>(null);
 
   const submit = async () => {
     setError(null);
@@ -170,12 +179,38 @@ function AccountScreen({
       const acc = signingUp
         ? await signUp({ email, username, password })
         : await signIn(username, password);
+      if (signingUp) {
+        // A brand-new account on a phone means either a first install or a
+        // reinstall, and only the user knows which. Ask once, here, before they
+        // start typing bills into an empty app — the WhatsApp moment.
+        offerRestore(acc);
+        return;
+      }
       onDone(acc);
     } catch (e) {
       setError((e as Error)?.message ?? String(e));
     } finally {
       setBusy(false);
     }
+  };
+
+  const offerRestore = (acc: Account) => {
+    setBusy(false);
+    Alert.alert(
+      'Restore your data?',
+      'If you used this app before and backed up to Google Drive, sign in with that same Google account and everything comes back.',
+      [
+        { text: 'Start fresh', style: 'cancel', onPress: () => onDone(acc) },
+        {
+          text: 'Restore from Drive',
+          onPress: () => {
+            setPendingAccount(acc);
+            setDrivePicker(true);
+          },
+        },
+      ],
+      { cancelable: false },
+    );
   };
 
   return (
@@ -185,7 +220,7 @@ function AccountScreen({
         <Text style={styles.title}>{signingUp ? 'Create your account' : 'Welcome back'}</Text>
         <Text style={styles.subtle}>
           {signingUp
-            ? 'Stays on this phone — there is no server. Your email is where backups are sent.'
+            ? 'Your login stays on this phone — there is no server. Your data can be backed up to your own Google Drive.'
             : 'Sign in to open your shop data.'}
         </Text>
 
@@ -232,6 +267,7 @@ function AccountScreen({
           />
         ) : null}
 
+        {notice ? <Text style={styles.notice}>{notice}</Text> : null}
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
         <Button
@@ -242,10 +278,21 @@ function AccountScreen({
         />
 
         {signingUp ? (
-          <Text style={styles.warn}>
-            There is no “forgot password” — nothing leaves this phone, so nobody can reset it for
-            you. Write it down somewhere safe.
-          </Text>
+          <>
+            <Text style={styles.warn}>
+              There is no “forgot password” — nothing leaves this phone, so nobody can reset it for
+              you. Write it down somewhere safe.
+            </Text>
+
+            {/* The reinstall path: the phone's data is gone but Drive still has
+                it. Restoring here brings the shop back before the first bill. */}
+            <Button
+              label="☁  Restore from Google Drive"
+              tone="ghost"
+              onPress={() => setDrivePicker(true)}
+              style={styles.wide}
+            />
+          </>
         ) : null}
 
         <Pressable onPress={onSwitch} hitSlop={8}>
@@ -254,6 +301,22 @@ function AccountScreen({
           </Text>
         </Pressable>
       </ScrollView>
+
+      <DriveRestorePicker
+        visible={drivePicker}
+        onClose={() => {
+          setDrivePicker(false);
+          // Signed up already? Then the account was only waiting on this sheet.
+          if (pendingAccount) onDone(pendingAccount);
+        }}
+        onRestored={() =>
+          setNotice(
+            pendingAccount
+              ? 'Your data is back.'
+              : 'Your data is back. Create an account here to open it.',
+          )
+        }
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -273,6 +336,15 @@ const styles = StyleSheet.create({
   title: { fontSize: 22, fontWeight: '700', color: '#111', textAlign: 'center' },
   subtle: { fontSize: 13, color: '#888', textAlign: 'center', lineHeight: 19 },
   error: { color: '#c0392b', fontSize: 13, textAlign: 'center' },
+  notice: {
+    color: '#1a7a48',
+    backgroundColor: '#e8f6ee',
+    borderRadius: 10,
+    padding: 10,
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 18,
+  },
   warn: { fontSize: 12, color: '#8a5a00', backgroundColor: '#fff4e5', borderRadius: 10, padding: 10, lineHeight: 18 },
   wide: { alignSelf: 'stretch', marginTop: 6 },
   switch: { color: '#208AEF', fontSize: 14, textAlign: 'center', fontWeight: '600', marginTop: 4 },

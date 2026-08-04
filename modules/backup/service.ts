@@ -1,5 +1,5 @@
 import { File, Paths } from 'expo-file-system';
-import * as MailComposer from 'expo-mail-composer';
+import * as Sharing from 'expo-sharing';
 import { db } from '@/db/client';
 import {
   bankAccounts,
@@ -11,7 +11,6 @@ import {
   payments,
   settings,
 } from '@/db/schema';
-import { getSetting } from '@/modules/settings/service';
 
 // Full-database JSON backup. All 8 tables are dumped verbatim (ids and
 // timestamps preserved) so a restore reproduces the DB exactly, including the
@@ -53,27 +52,29 @@ export async function buildBackup(nowIso: string): Promise<BackupFile> {
   };
 }
 
+/** The whole database as JSON text — what gets written to a file or uploaded. */
+export async function backupJson(nowIso: string): Promise<string> {
+  return JSON.stringify(await buildBackup(nowIso), null, 2);
+}
+
 /**
- * Serialize the DB to a JSON file in cache storage and open the mail composer
- * with it attached (prefilled to the saved backup email, if any). Returns the
- * file uri that was attached.
+ * Write a copy to cache and hand it to the Android share sheet, so the user can
+ * put it wherever they like — Drive, WhatsApp, a memory card, their own mail.
+ * Returns the file uri that was shared.
  */
-export async function exportBackupByEmail(nowIso: string): Promise<string> {
-  const backup = await buildBackup(nowIso);
-  const json = JSON.stringify(backup, null, 2);
+export async function shareBackupFile(nowIso: string): Promise<string> {
+  const json = await backupJson(nowIso);
   const stamp = nowIso.replace(/[:.]/g, '-');
   const file = new File(Paths.cache, `billing-backup-${stamp}.json`);
   if (file.exists) file.delete();
   file.create();
   file.write(json);
 
-  const email = await getSetting('backup_email');
-  if (await MailComposer.isAvailableAsync()) {
-    await MailComposer.composeAsync({
-      subject: `Billing app backup — ${nowIso.slice(0, 10)}`,
-      body: 'Your billing app data backup is attached. Keep this JSON file safe; you can restore from it in Settings → Restore.',
-      recipients: email ? [email] : undefined,
-      attachments: [file.uri],
+  if (await Sharing.isAvailableAsync()) {
+    await Sharing.shareAsync(file.uri, {
+      mimeType: 'application/json',
+      dialogTitle: 'Save or send your backup',
+      UTI: 'public.json',
     });
   }
   return file.uri;
@@ -93,7 +94,11 @@ export interface RestoreCounts {
  */
 export async function restoreBackup(uri: string): Promise<RestoreCounts> {
   const file = new File(uri);
-  const text = await file.text();
+  return restoreBackupFromJson(await file.text());
+}
+
+/** Same restore, from JSON text already in hand (a Drive download, say). */
+export function restoreBackupFromJson(text: string): RestoreCounts {
   const data = JSON.parse(text) as BackupFile;
 
   if (data?.app !== 'billing-app' || !data.tables) {

@@ -23,23 +23,18 @@ import {
   type AutoBackupConfig,
   type PerDay,
 } from '@/modules/backup/auto';
+import DriveRestorePicker from '@/modules/backup/DriveRestorePicker';
 import {
-  clearBackupFolder,
-  folderLabel,
-  getBackupFolder,
-  pickBackupFolder,
-} from '@/modules/backup/destination';
-import {
-  getEmailConfig,
-  providerForKey,
-  setEmailApiKey,
-  setEmailMode,
-  setEmailSender,
-  type EmailConfig,
-  type EmailMode,
-} from '@/modules/backup/email';
+  backupToDriveNow,
+  connectDrive,
+  disconnectDrive,
+  getClientId,
+  getDriveStatus,
+  setClientId,
+  type DriveStatus,
+} from '@/modules/backup/drive';
 import { BACKUP_UPLOADERS } from '@/modules/backup/useAutoBackup';
-import { exportBackupByEmail, restoreBackup } from '@/modules/backup/service';
+import { backupJson, restoreBackup, shareBackupFile } from '@/modules/backup/service';
 import { getAccount, signOut, type Account } from '@/modules/auth/service';
 import { getLockCapability, isLockEnabled, promptUnlock, setLockEnabled } from '@/modules/auth/lock';
 import {
@@ -59,7 +54,6 @@ const KEYS = {
   address: 'business_address',
   phone: 'business_phone',
   prefix: 'sale_prefix',
-  backupEmail: 'backup_email',
 } as const;
 
 export default function SettingsScreen() {
@@ -68,7 +62,6 @@ export default function SettingsScreen() {
   const [address, setAddress] = useState('');
   const [phone, setPhone] = useState('');
   const [prefix, setPrefix] = useState('');
-  const [backupEmail, setBackupEmail] = useState('');
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [restoring, setRestoring] = useState(false);
@@ -78,11 +71,12 @@ export default function SettingsScreen() {
   const [lockLabel, setLockLabel] = useState('Screen lock');
   const [lockEnrolled, setLockEnrolled] = useState(false);
   const [auto, setAuto] = useState<AutoBackupConfig | null>(null);
-  const [folder, setFolder] = useState<string | null>(null);
   const [backingUp, setBackingUp] = useState(false);
-  const [email, setEmail] = useState<EmailConfig | null>(null);
-  const [apiKey, setApiKey] = useState('');
-  const [sender, setSender] = useState('');
+  const [drive, setDrive] = useState<DriveStatus | null>(null);
+  const [clientId, setClientIdInput] = useState('');
+  const [showClientId, setShowClientId] = useState(false);
+  const [driveBusy, setDriveBusy] = useState(false);
+  const [drivePicker, setDrivePicker] = useState(false);
   const { status, lang, speakBack, changeLang, changeSpeakBack, setHelpOpen } = useVoice();
 
   // Voice: every button and field on this screen — "பேக்அப்", "லாக் ஆன்",
@@ -112,9 +106,6 @@ export default function SettingsScreen() {
           return true;
         case 'prefix':
           setPrefix(intent.value);
-          return true;
-        case 'email':
-          setBackupEmail(intent.value);
           return true;
         default:
           return false;
@@ -159,19 +150,17 @@ export default function SettingsScreen() {
         isLockEnabled(),
         getLockCapability(),
         getAutoBackupConfig(),
-        getBackupFolder(),
-        getEmailConfig(),
-      ]).then(([acc, locked, cap, cfg, dir, mail]) => {
+        getDriveStatus(),
+        getClientId(),
+      ]).then(([acc, locked, cap, cfg, driveStatus, id]) => {
         if (!active) return;
         setAccount(acc);
         setLockOn(locked);
         setLockLabel(cap.label);
         setLockEnrolled(cap.enrolled);
         setAuto(cfg);
-        setFolder(dir);
-        setEmail(mail);
-        setApiKey(mail.apiKey);
-        setSender(mail.sender);
+        setDrive(driveStatus);
+        setClientIdInput(id);
       });
       listSettings().then((rows) => {
         if (!active) return;
@@ -181,7 +170,6 @@ export default function SettingsScreen() {
         setAddress(map.get(KEYS.address) ?? '');
         setPhone(map.get(KEYS.phone) ?? '');
         setPrefix(map.get(KEYS.prefix) ?? '');
-        setBackupEmail(map.get(KEYS.backupEmail) ?? '');
       });
       return () => {
         active = false;
@@ -198,7 +186,6 @@ export default function SettingsScreen() {
         setSetting(KEYS.address, address.trim()),
         setSetting(KEYS.phone, phone.trim()),
         setSetting(KEYS.prefix, prefix.trim()),
-        setSetting(KEYS.backupEmail, backupEmail.trim()),
       ]);
       Alert.alert('Saved', 'Business profile updated. It will appear on invoice PDFs.');
     } catch (e) {
@@ -238,43 +225,9 @@ export default function SettingsScreen() {
     await setBackupsPerDay(perDay);
   };
 
-  const chooseFolder = async () => {
-    try {
-      setFolder(await pickBackupFolder());
-    } catch (e) {
-      const msg = (e as Error)?.message ?? String(e);
-      if (!/cancel/i.test(msg)) Alert.alert('Could not set folder', msg);
-    }
-  };
-
-  const forgetFolder = async () => {
-    await clearBackupFolder();
-    setFolder(null);
-  };
-
-  const pickEmailMode = async (mode: EmailMode) => {
-    setEmail((e) => (e ? { ...e, mode } : e));
-    await setEmailMode(mode);
-  };
-
-  // The key/sender boxes save on blur — a half-typed API key must never be
-  // stored, and there is no Save button in this section.
-  const saveApiKey = async () => {
-    setEmail((e) => (e ? { ...e, apiKey: apiKey.trim() } : e));
-    await setEmailApiKey(apiKey);
-  };
-
-  const saveSender = async () => {
-    setEmail((e) => (e ? { ...e, sender: sender.trim() } : e));
-    await setEmailSender(sender);
-  };
-
   const backupNow = async () => {
     setBackingUp(true);
     try {
-      // Save the typed address first, or "Back up now" would email nowhere on
-      // the very first run.
-      await setSetting(KEYS.backupEmail, backupEmail.trim());
       const res = await runBackupNow(new Date().toISOString(), BACKUP_UPLOADERS);
       setAuto(await getAutoBackupConfig());
       Alert.alert('Backup done', res.message);
@@ -282,6 +235,62 @@ export default function SettingsScreen() {
       Alert.alert('Backup failed', (e as Error)?.message ?? String(e));
     } finally {
       setBackingUp(false);
+    }
+  };
+
+  // ── Google Drive ───────────────────────────────────────────────────────────
+
+  const saveClientId = async () => {
+    await setClientId(clientId);
+    setDrive(await getDriveStatus());
+  };
+
+  const connect = async () => {
+    setDriveBusy(true);
+    try {
+      const email = await connectDrive();
+      setDrive(await getDriveStatus());
+      if (email) {
+        Alert.alert(
+          'Google Drive connected',
+          `Backups will go to ${email}. Sign in with this same account after a reinstall to get your data back.`,
+        );
+      }
+    } catch (e) {
+      Alert.alert('Could not connect', (e as Error)?.message ?? String(e));
+    } finally {
+      setDriveBusy(false);
+    }
+  };
+
+  const disconnect = () => {
+    Alert.alert(
+      'Disconnect Google Drive?',
+      'Backups already in Drive stay there. New backups will only be kept on this phone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Disconnect',
+          style: 'destructive',
+          onPress: async () => {
+            await disconnectDrive();
+            setDrive(await getDriveStatus());
+          },
+        },
+      ],
+    );
+  };
+
+  const driveBackupNow = async () => {
+    setDriveBusy(true);
+    try {
+      const now = new Date().toISOString();
+      const name = await backupToDriveNow(now, await backupJson(now));
+      Alert.alert('Uploaded', `${name} is in your Google Drive.`);
+    } catch (e) {
+      Alert.alert('Upload failed', (e as Error)?.message ?? String(e));
+    } finally {
+      setDriveBusy(false);
     }
   };
 
@@ -302,7 +311,7 @@ export default function SettingsScreen() {
   const exportBackup = async () => {
     setExporting(true);
     try {
-      await exportBackupByEmail(new Date().toISOString());
+      await shareBackupFile(new Date().toISOString());
     } catch (e) {
       Alert.alert('Backup failed', (e as Error)?.message ?? String(e));
     } finally {
@@ -498,21 +507,9 @@ export default function SettingsScreen() {
             <Text style={styles.sectionHint}>{PER_DAY_LABEL[auto.perDay]}</Text>
 
             <Text style={styles.sectionHint}>
-              Backups are always saved on the phone (last 10 kept). Pick a folder that Google Drive
-              syncs and each backup lands in your Drive automatically — no login needed.
+              Each run saves a snapshot on the phone (last 10 kept) and uploads it to Google Drive
+              when an account is connected below.
             </Text>
-            <View style={styles.optionRow}>
-              <Pressable style={[styles.option, !!folder && styles.optionOn]} onPress={chooseFolder}>
-                <Text style={[styles.optionText, !!folder && styles.optionTextOn]}>
-                  {folder ? `📁  ${folderLabel(folder)}` : '📁  Choose a sync folder (optional)'}
-                </Text>
-              </Pressable>
-            </View>
-            {folder ? (
-              <Pressable onPress={forgetFolder} hitSlop={8}>
-                <Text style={styles.linkDanger}>Remove folder — keep backups on phone only</Text>
-              </Pressable>
-            ) : null}
 
             <Text style={styles.sectionHint}>
               {auto.lastAt
@@ -526,86 +523,93 @@ export default function SettingsScreen() {
           </>
         ) : null}
 
-        {/* Emailing applies to every backup — scheduled or "Back up now" — so it
-            stays visible even when the schedule itself is off. */}
-        <Text style={styles.subTitle}>Send backups to email</Text>
-        <TextField
-          label="Backup email"
-          value={backupEmail}
-          onChangeText={setBackupEmail}
-          onBlur={() => void setSetting(KEYS.backupEmail, backupEmail.trim())}
-          placeholder="you@example.com"
-          keyboardType="email-address"
-          autoCapitalize="none"
-        />
-        <View style={styles.optionRow}>
-          {[
-            { mode: 'off' as EmailMode, label: 'No email' },
-            { mode: 'ask' as EmailMode, label: 'One tap' },
-            { mode: 'auto' as EmailMode, label: 'Hands-free' },
-          ].map((o) => (
-            <Pressable
-              key={o.mode}
-              style={[styles.option, email?.mode === o.mode && styles.optionOn]}
-              onPress={() => pickEmailMode(o.mode)}
-            >
-              <Text style={[styles.optionText, email?.mode === o.mode && styles.optionTextOn]}>
-                {o.label}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-        <Text style={styles.sectionHint}>
-          {email?.mode === 'auto'
-            ? 'Every backup is mailed on its own, with nothing to tap — needs the free email-service key below.'
-            : email?.mode === 'ask'
-              ? 'Nothing to set up: when a backup is waiting, the app offers one tap to send it through your own mail app.'
-              : 'Backups are not emailed. Pick “One tap” for the no-setup way.'}
-        </Text>
-
-        {email?.mode === 'auto' ? (
-          <>
-            <TextField
-              label="Email service API key"
-              value={apiKey}
-              onChangeText={setApiKey}
-              onBlur={saveApiKey}
-              placeholder="re_… (Resend) or xkeysib-… (Brevo)"
-              autoCapitalize="none"
-              secureTextEntry
-            />
-            <Text style={styles.sectionHint}>
-              {providerForKey(apiKey)
-                ? `✓ ${providerForKey(apiKey)!.label} key — backups will be mailed on their own.`
-                : 'Make a free account at resend.com or brevo.com, create an API key and paste it here. Without a key the app falls back to the one-tap way.'}
-            </Text>
-            <TextField
-              label="Send from (optional)"
-              value={sender}
-              onChangeText={setSender}
-              onBlur={saveSender}
-              placeholder="verified sender address"
-              keyboardType="email-address"
-              autoCapitalize="none"
-            />
-            <Text style={styles.sectionHint}>
-              Leave blank to use the service default. Brevo only sends from an address it has
-              verified — put your own address here if it rejects the mail.
-            </Text>
-          </>
-        ) : null}
-
         <Button label="Back up now" onPress={backupNow} loading={backingUp} tone="ghost" style={styles.save} />
 
         <View style={styles.divider} />
 
-        <Text style={styles.sectionTitle}>Manual backup &amp; restore</Text>
+        <Text style={styles.sectionTitle}>Google Drive backup</Text>
         <Text style={styles.sectionHint}>
-          Export opens your mail app with a JSON copy of all your data attached (to the backup email
-          above). Restore replaces everything from a backup file.
+          Like WhatsApp: sign in once and every backup goes to your own Google Drive. After a
+          reinstall, sign in with the same account and your data comes straight back.
+        </Text>
+
+        {drive?.connected ? (
+          <>
+            <View style={styles.optionRow}>
+              <Pressable style={[styles.option, styles.optionOn]} onPress={disconnect}>
+                <Text style={[styles.optionText, styles.optionTextOn]}>
+                  ✓  {drive.email ?? 'Google account connected'}
+                </Text>
+              </Pressable>
+            </View>
+            <Text style={styles.sectionHint}>
+              Backups live in a “Benesys Billing Backups” folder in that account. The app can only
+              see the files it made there — nothing else in your Drive.
+            </Text>
+            <Button
+              label="Back up to Drive now"
+              onPress={driveBackupNow}
+              loading={driveBusy}
+              tone="ghost"
+              style={styles.save}
+            />
+            <Button
+              label="Restore from Drive"
+              onPress={() => setDrivePicker(true)}
+              tone="danger"
+              style={styles.save}
+            />
+            <Pressable onPress={disconnect} hitSlop={8}>
+              <Text style={styles.linkDanger}>Disconnect this Google account</Text>
+            </Pressable>
+          </>
+        ) : (
+          <>
+            <Button
+              label="Sign in with Google"
+              onPress={connect}
+              loading={driveBusy}
+              style={styles.save}
+            />
+            <Text style={styles.sectionHint}>
+              {drive?.configured
+                ? 'Nothing leaves the phone until you sign in.'
+                : 'Needs a one-time Google client ID — see DRIVE-SETUP.md, then paste it below.'}
+            </Text>
+          </>
+        )}
+
+        <Pressable onPress={() => setShowClientId((v) => !v)} hitSlop={8}>
+          <Text style={styles.link}>
+            {showClientId ? 'Hide Google client ID' : 'Google client ID (advanced)'}
+          </Text>
+        </Pressable>
+        {showClientId ? (
+          <>
+            <TextField
+              label="Google OAuth client ID"
+              value={clientId}
+              onChangeText={setClientIdInput}
+              onBlur={saveClientId}
+              placeholder="…apps.googleusercontent.com"
+              autoCapitalize="none"
+            />
+            <Text style={styles.sectionHint}>
+              From your own Google Cloud project (Android client, package com.benesys.billingapp).
+              Steps are in DRIVE-SETUP.md. Not a secret — Android clients have none.
+            </Text>
+          </>
+        ) : null}
+
+        <View style={styles.divider} />
+
+        <Text style={styles.sectionTitle}>Local backup &amp; restore</Text>
+        <Text style={styles.sectionHint}>
+          Save a JSON copy of everything wherever you like — a memory card, Drive, WhatsApp to
+          yourself. Restore replaces everything from such a file.
         </Text>
         <Button
-          label="Export backup (email)"
+          label="Save backup file"
           onPress={exportBackup}
           loading={exporting}
           tone="ghost"
@@ -621,6 +625,12 @@ export default function SettingsScreen() {
 
         <Text style={styles.version}>Billing App v1.0.0</Text>
       </ScrollView>
+
+      <DriveRestorePicker
+        visible={drivePicker}
+        onClose={() => setDrivePicker(false)}
+        onRestored={() => void getAutoBackupConfig().then(setAuto)}
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -653,6 +663,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  link: { color: '#208AEF', fontSize: 13, fontWeight: '600' },
   linkDanger: { color: '#c0392b', fontSize: 13, fontWeight: '600' },
   optionOn: { borderColor: '#208AEF', backgroundColor: '#eef6ff' },
   optionText: { fontSize: 14, color: '#555', fontWeight: '600', textAlign: 'center' },

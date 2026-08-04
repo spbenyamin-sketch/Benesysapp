@@ -127,6 +127,11 @@ export async function writeSnapshot(nowIso: string): Promise<File> {
   return file;
 }
 
+/**
+ * Whether an upload has any chance of working. Nothing calls this on the way in
+ * — a Drive upload that fails offline is caught and reported per destination —
+ * but it's what any future "wait for a network" retry would be built on.
+ */
 export async function hasInternet(): Promise<boolean> {
   try {
     const state = await Network.getNetworkStateAsync();
@@ -145,16 +150,16 @@ export interface BackupRunResult {
 
 /**
  * Copies the snapshot somewhere off the phone. Injected by the caller so this
- * module stays independent of the destination (a synced folder today, a cloud
- * API later). Returns a short human message on success, `null` when no
- * destination is configured, or throws to report a real failure.
+ * module stays independent of the destination (Google Drive today). Returns a
+ * short human message on success, `null` when no destination is configured, or
+ * throws to report a real failure.
  */
 export type Uploader = (file: File, nowIso: string) => Promise<string | null>;
 
 /**
- * Run a backup now, regardless of schedule. Every uploader is tried — a folder
- * copy that fails must not stop the email, and vice versa — and each one's
- * outcome shows up in the result line.
+ * Run a backup now, regardless of schedule. Every uploader is tried and each
+ * one's outcome shows up in the result line, so one failing destination never
+ * hides another that worked.
  */
 export async function runBackupNow(
   nowIso: string,

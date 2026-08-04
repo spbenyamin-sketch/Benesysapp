@@ -6,7 +6,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "billingapp",
+    "scheme": ["billingapp", "com.benesys.billingapp"],
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/expo.icon",
@@ -70,6 +70,7 @@
       "reactCompiler": true
     },
     "extra": {
+      "googleClientId": "",
       "router": {},
       "eas": {
         "projectId": "f66add12-35e2-4662-b11a-f6e84701f5f1"
