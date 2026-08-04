@@ -9,7 +9,6 @@
     "scheme": ["billingapp", "com.benesys.billingapp"],
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon",
       "infoPlist": {
         "NSSpeechRecognitionUsageDescription": "Allow Billing App to recognise Tamil and English speech for voice billing.",
         "NSMicrophoneUsageDescription": "Allow Billing App to use the microphone so you can add bills by speaking."
@@ -18,7 +17,7 @@
     "android": {
       "package": "com.benesys.billingapp",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#D5076A",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
@@ -37,9 +36,9 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
+          "backgroundColor": "#FFFFFF",
           "image": "./assets/images/splash-icon.png",
-          "imageWidth": 76
+          "imageWidth": 160
         }
       ],
       "expo-sqlite",
