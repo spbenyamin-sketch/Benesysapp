@@ -19,6 +19,7 @@ import {
   PER_DAY_LABEL,
   runBackupNow,
   setAutoBackupEnabled,
+  setBackupOnExit,
   setBackupsPerDay,
   type AutoBackupConfig,
   type PerDay,
@@ -223,6 +224,11 @@ export default function SettingsScreen() {
   const pickPerDay = async (perDay: PerDay) => {
     setAuto((a) => (a ? { ...a, perDay } : a));
     await setBackupsPerDay(perDay);
+  };
+
+  const toggleOnExit = async (next: boolean) => {
+    setAuto((a) => (a ? { ...a, onExit: next } : a));
+    await setBackupOnExit(next);
   };
 
   const backupNow = async () => {
@@ -522,6 +528,21 @@ export default function SettingsScreen() {
             </Text>
           </>
         ) : null}
+
+        <View style={styles.optionRow}>
+          <Pressable
+            style={[styles.option, auto?.onExit && styles.optionOn]}
+            onPress={() => toggleOnExit(!auto?.onExit)}
+          >
+            <Text style={[styles.optionText, auto?.onExit && styles.optionTextOn]}>
+              {auto?.onExit ? '✓  Ask to back up when closing' : 'Do not ask when closing'}
+            </Text>
+          </Pressable>
+        </View>
+        <Text style={styles.sectionHint}>
+          Pressing back to close the app asks whether to back up first, so a day’s billing is never
+          left only on the phone overnight.
+        </Text>
 
         <Button label="Back up now" onPress={backupNow} loading={backingUp} tone="ghost" style={styles.save} />
 

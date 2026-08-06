@@ -4,6 +4,7 @@ import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useDbMigrations } from '@/db/migrate';
 import AuthGate from '@/components/AuthGate';
+import BackupOnExit from '@/components/BackupOnExit';
 import VoiceMic from '@/components/VoiceMic';
 import { VoiceProvider } from '@/modules/voice/VoiceProvider';
 import { useAutoBackup } from '@/modules/backup/useAutoBackup';
@@ -42,6 +43,7 @@ export default function RootLayout() {
             <Stack.Screen name="(tabs)" />
           </Stack>
           <VoiceMic />
+          <BackupOnExit />
           <StatusBar style="auto" />
         </VoiceProvider>
       </AuthGate>

@@ -20,6 +20,7 @@ export const AUTO_KEY = 'backup_auto';
 export const PER_DAY_KEY = 'backup_per_day';
 export const LAST_AT_KEY = 'backup_last_at';
 export const LAST_RESULT_KEY = 'backup_last_result';
+export const ON_EXIT_KEY = 'backup_on_exit';
 
 /** Offered cadences. Anything finer than hourly is pointless for a shop's data. */
 export const PER_DAY_CHOICES = [1, 2, 4, 6, 12, 24] as const;
@@ -44,14 +45,16 @@ export interface AutoBackupConfig {
   perDay: PerDay;
   lastAt: string | null; // ISO
   lastResult: string | null;
+  onExit: boolean;
 }
 
 export async function getAutoBackupConfig(): Promise<AutoBackupConfig> {
-  const [auto, perDay, lastAt, lastResult] = await Promise.all([
+  const [auto, perDay, lastAt, lastResult, onExit] = await Promise.all([
     getSetting(AUTO_KEY),
     getSetting(PER_DAY_KEY),
     getSetting(LAST_AT_KEY),
     getSetting(LAST_RESULT_KEY),
+    getSetting(ON_EXIT_KEY),
   ]);
   const n = Number(perDay);
   return {
@@ -59,11 +62,19 @@ export async function getAutoBackupConfig(): Promise<AutoBackupConfig> {
     perDay: (PER_DAY_CHOICES as readonly number[]).includes(n) ? (n as PerDay) : DEFAULT_PER_DAY,
     lastAt: lastAt ?? null,
     lastResult: lastResult ?? null,
+    // Defaults ON, unlike the scheduled backup: closing the app is the one
+    // moment the user is definitely present to answer, and a day's billing lost
+    // to a phone that never got reopened is the failure this exists to prevent.
+    onExit: onExit !== '0',
   };
 }
 
 export async function setAutoBackupEnabled(on: boolean): Promise<void> {
   await setSetting(AUTO_KEY, on ? '1' : '0');
+}
+
+export async function setBackupOnExit(on: boolean): Promise<void> {
+  await setSetting(ON_EXIT_KEY, on ? '1' : '0');
 }
 
 export async function setBackupsPerDay(perDay: PerDay): Promise<void> {
