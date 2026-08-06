@@ -29,7 +29,8 @@ const DISCOVERY: AuthSession.DiscoveryDocument = {
   revocationEndpoint: 'https://oauth2.googleapis.com/revoke',
 };
 
-const SCOPES = ['openid', 'email', 'https://www.googleapis.com/auth/drive.file'];
+const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
+const SCOPES = ['openid', 'email', DRIVE_SCOPE];
 
 /**
  * Google's Android OAuth clients accept exactly one redirect shape: the app's
@@ -226,6 +227,27 @@ export async function connectDrive(): Promise<string> {
         googleErrorLine(err.code, err.description ?? err.message),
         '',
         requestDetails(clientId),
+      ].join('\n'),
+    );
+  }
+
+  // Google puts each permission behind its own tick box, so signing in and
+  // granting Drive are separate decisions: leave the box unticked and the token
+  // comes back valid but Drive-less. Keeping it would leave the account looking
+  // connected while every upload died on a 403, so the grant is checked before
+  // anything is stored. (An older Google response with no `scope` field at all
+  // is taken on trust rather than blocking a sign-in that may be fine.)
+  const granted = token.scope?.split(' ') ?? [];
+  if (token.scope && !granted.includes(DRIVE_SCOPE)) {
+    throw new Error(
+      [
+        'Signed in, but Drive permission was not given, so backups cannot be uploaded.',
+        '',
+        'Try again, and on the permission screen tick the box that reads "See, edit, ' +
+          'create and delete only the specific Google Drive files you use with this app" ' +
+          'before pressing Continue.',
+        '',
+        `Granted instead: ${token.scope}`,
       ].join('\n'),
     );
   }
