@@ -198,10 +198,14 @@ const styles = StyleSheet.create({
     borderBottomColor: '#eee',
   },
   optionRowActive: { backgroundColor: '#eef6ff' },
-  optionText: { fontSize: 17, color: '#222' },
+  // flexShrink lets a long option wrap onto a second line (the row has a
+  // minHeight, not a fixed one). Without it Android hands the Text its full
+  // measured width and simply clips whatever runs past the row — names like
+  // "Apparel & Textiles" lost their tail instead of wrapping.
+  optionText: { fontSize: 17, color: '#222', flexShrink: 1 },
   optionActive: { color: '#208AEF', fontWeight: '700' },
-  customText: { fontSize: 17, color: '#208AEF', fontWeight: '700' },
-  check: { color: '#208AEF', fontSize: 17, fontWeight: '700' },
+  customText: { fontSize: 17, color: '#208AEF', fontWeight: '700', flexShrink: 1 },
+  check: { color: '#208AEF', fontSize: 17, fontWeight: '700', marginLeft: 10 },
   emptyText: { color: '#999', textAlign: 'center', paddingVertical: 24 },
   closeBtn: {
     minHeight: 46,
