@@ -113,11 +113,55 @@ async function fetchEmail(accessToken: string): Promise<string | null> {
   }
 }
 
+// ── Error reporting ──────────────────────────────────────────────────────────
+// A misconfigured OAuth client is the one failure a user cannot debug from
+// inside the app, so every sign-in failure reports exactly what was sent and
+// what Google said back. Wrong values here cost a trip to the Cloud console,
+// not a rebuild — the client ID can be re-pasted in Settings.
+
+/** Plain-language gloss for the OAuth error codes this flow actually hits. */
+const ERROR_HINTS: Record<string, string> = {
+  invalid_request:
+    'If it says "Custom URI scheme is not enabled": open the Android OAuth client in the ' +
+    'Google Cloud console, Advanced Settings, switch on "Enable Custom URI Scheme", save, ' +
+    'and wait a few minutes. New Android clients ship with it off. Otherwise the client is ' +
+    'the "Web" type — only an "Android" type accepts a package-name redirect.',
+  redirect_uri_mismatch:
+    'The client is not the "Android" type, or its package name is not com.benesys.billingapp.',
+  invalid_client: 'Google does not recognise this client ID. Check it for typos or stray spaces.',
+  access_denied:
+    'Either you pressed Cancel, or the consent screen is still in Testing and this ' +
+    'address is not in its test users list.',
+  invalid_grant:
+    "The app's signing key does not match the SHA-1 fingerprint on the Android OAuth client.",
+  admin_policy_enforced:
+    'A Google Workspace admin blocks this app for the account. Use a personal Gmail account.',
+};
+
+function googleErrorLine(code?: string, description?: string): string {
+  const lines = [`Google said: ${code ?? 'unknown error'}`];
+  if (description) lines.push(description);
+  const hint = code ? ERROR_HINTS[code] : undefined;
+  if (hint) lines.push('', hint);
+  return lines.join('\n');
+}
+
+function requestDetails(clientId: string): string {
+  return [
+    `Client ID: ${clientId}`,
+    `Redirect: ${REDIRECT_URI}`,
+    'Package: com.benesys.billingapp',
+    'Scope: drive.file',
+  ].join('\n');
+}
+
 /**
- * Opens Google's own sign-in page. Returns the connected account's address, or
- * null if the user backed out.
+ * Opens Google's own sign-in page and returns the connected account's address.
+ * Anything short of a completed sign-in — including the user backing out —
+ * throws with the request details, since Google's own refusals arrive here
+ * looking exactly like a dismissal.
  */
-export async function connectDrive(): Promise<string | null> {
+export async function connectDrive(): Promise<string> {
   const clientId = await getClientId();
   if (!clientId) {
     throw new Error(
@@ -137,21 +181,54 @@ export async function connectDrive(): Promise<string | null> {
 
   const result = await request.promptAsync(DISCOVERY);
   if (result.type !== 'success') {
+    // Google's "Access blocked" page never redirects back, so a rejected request
+    // reaches us as a plain dismissal — indistinguishable from the user pressing
+    // back. Either way the values Google was asked to accept are what someone
+    // debugging needs, so both paths report them.
     if (result.type === 'error') {
-      throw new Error(result.error?.message ?? 'Google sign-in failed.');
+      throw new Error(
+        [
+          googleErrorLine(result.error?.code, result.error?.description ?? result.error?.message),
+          '',
+          requestDetails(clientId),
+        ].join('\n'),
+      );
     }
-    return null; // dismissed or cancelled
+    throw new Error(
+      [
+        'Sign-in was closed before it finished.',
+        '',
+        'If you pressed back on purpose, ignore this. If Google showed "Access blocked",',
+        'these are the values it refused:',
+        '',
+        requestDetails(clientId),
+      ].join('\n'),
+    );
   }
 
-  const token = await AuthSession.exchangeCodeAsync(
-    {
-      clientId,
-      code: result.params.code,
-      redirectUri: REDIRECT_URI,
-      extraParams: { code_verifier: request.codeVerifier ?? '' },
-    },
-    DISCOVERY,
-  );
+  let token: AuthSession.TokenResponse;
+  try {
+    token = await AuthSession.exchangeCodeAsync(
+      {
+        clientId,
+        code: result.params.code,
+        redirectUri: REDIRECT_URI,
+        extraParams: { code_verifier: request.codeVerifier ?? '' },
+      },
+      DISCOVERY,
+    );
+  } catch (e) {
+    const err = e as { code?: string; description?: string; message?: string };
+    throw new Error(
+      [
+        'Google accepted the sign-in but refused to issue a token.',
+        '',
+        googleErrorLine(err.code, err.description ?? err.message),
+        '',
+        requestDetails(clientId),
+      ].join('\n'),
+    );
+  }
 
   await saveTokens(token);
   const email = await fetchEmail(token.accessToken);

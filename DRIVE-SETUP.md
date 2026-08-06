@@ -87,6 +87,12 @@ Then, on the consent screen page, press **PUBLISH APP** (publishing status →
 - SHA-1 certificate fingerprint: the one from Step 1
 - **Create**
 
+Then **open the client you just made** and, under **Advanced Settings**, switch on
+**Enable Custom URI Scheme** → **Save**. Google ships new Android clients with it
+off, and without it sign-in dies on *Error 400: invalid_request — Custom URI
+scheme is not enabled for your Android client*. The change takes a few minutes to
+take effect.
+
 Copy the client ID it shows — it looks like:
 
 ```
@@ -138,6 +144,7 @@ SecureStore, so restoring a backup never wipes it.
 
 | What you see | What it means |
 | --- | --- |
+| `Error 400: invalid_request` — *Custom URI scheme is not enabled* | Step 5's **Enable Custom URI Scheme** switch is still off on the Android client. |
 | `Error 400: redirect_uri_mismatch` | The OAuth client isn't the **Android** type, or the package name isn't `com.benesys.billingapp`. |
 | `Error 403: access_denied` | The app is in *Testing* and your address isn't in the test users list — or the consent screen was never published. |
 | Sign-in page opens then nothing happens | You're running in **Expo Go**. Install the EAS development build. |
