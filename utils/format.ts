@@ -44,12 +44,18 @@ export function paiseToRupeeInput(paise: number): string {
   return paise % 100 === 0 ? String(paise / 100) : (paise / 100).toFixed(2);
 }
 
-/** ISO ('YYYY-MM-DD' or full timestamp) → "5 Jul 2026". */
+/**
+ * ISO ('YYYY-MM-DD' or full timestamp) → "5 Jul 2026".
+ * Anything that isn't a date is handed back untouched — note the NaN checks:
+ * `NaN < 0 || NaN > 11` is false, so a range test alone would let "not-a-date"
+ * through and print "NaN undefined not".
+ */
 export function formatDate(iso: string): string {
   const [y, m, d] = iso.slice(0, 10).split('-');
   const mi = Number(m) - 1;
-  if (!y || !d || mi < 0 || mi > 11) return iso;
-  return `${Number(d)} ${MONTHS[mi]} ${y}`;
+  const day = Number(d);
+  if (!y || !d || !Number.isInteger(mi) || mi < 0 || mi > 11 || !Number.isFinite(day)) return iso;
+  return `${day} ${MONTHS[mi]} ${y}`;
 }
 
 /**

@@ -2,6 +2,13 @@
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "strict": true,
+    // Jest's globals (describe/it/expect) are only visible when the test runner's
+    // types are named here; listing any type at all turns off the automatic sweep
+    // of node_modules/@types, so "node" has to come along for drizzle.config.ts.
+    "types": [
+      "node",
+      "jest"
+    ],
     "paths": {
       "@/*": [
         "./*"
