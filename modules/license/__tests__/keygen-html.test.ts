@@ -1,77 +1,125 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { createHash } from 'crypto';
-import { generateKey, verifyKey } from '@/modules/license/key';
+import * as ed from '@noble/ed25519';
+import { sha512 } from '@noble/hashes/sha2.js';
+import {
+  canonicalMessage,
+  LICENSE_APP,
+  LICENSE_VERSION,
+  verifyLicense,
+  type LicenseFile,
+} from '@/modules/license/licenseFile';
 
-// tools/keygen.html is the vendor's generator and carries its own copy of the
-// secret and the key layout — it has to, because it runs standalone in a browser
-// with nothing imported. That duplication is the one thing that can silently
-// break licensing: change the algorithm on one side and every key minted after
-// that is rejected on the other, with no error until a client is locked out.
+ed.hashes.sha512 = sha512;
+
+// tools/keygen.html signs licences and carries its own copy of the rules — it has
+// to, because it runs standalone in a browser with nothing imported. That
+// duplication is the one thing that can silently break licensing: change the
+// canonical message on one side and every licence issued afterwards is refused,
+// with no sign of trouble until a client is locked out of their shop.
 //
-// So this test lifts the crypto half of that file out of the HTML and runs it
-// against the app's own implementation. It is not testing the page — only that
-// the two halves still agree.
+// So this lifts the crypto half out of the HTML and runs it against the app's own
+// code. It is not testing the page — only that the two halves still agree.
 
-const HTML_PATH = join(__dirname, '..', '..', '..', 'tools', 'keygen.html');
-const START = '// ── Must match modules/license/secret.ts exactly';
+const TOOLS = join(__dirname, '..', '..', '..', 'tools');
+const START = '// ── Must match modules/license/licenseFile.ts exactly';
 const END = '// ── Page wiring';
 
-interface KeygenExports {
-  generateKey: (systemId: string, expiry: string) => Promise<string>;
-  verifyKey: (
-    systemId: string,
-    key: string,
-  ) => Promise<{ valid: boolean; expiry?: string; reason?: string }>;
-  SECRET: string;
+interface KeygenApi {
+  canonicalMessage: (license: Omit<LicenseFile, 'sig'>) => string;
+  signLicense: (
+    secretKeyHex: string,
+    fields: Omit<LicenseFile, 'app' | 'v' | 'sig'>,
+  ) => Promise<LicenseFile>;
+  checkLicense: (
+    text: string,
+    publicKeyHex: string,
+  ) => Promise<{ valid: boolean; license?: LicenseFile; reason?: string }>;
 }
 
 /** Evaluate the generator's logic with none of its DOM wiring. */
-function loadKeygen(): KeygenExports {
-  const html = readFileSync(HTML_PATH, 'utf8');
+function loadKeygen(): KeygenApi {
+  // The page loads the library as a plain script; do the same, so this covers
+  // the vendored copy in tools/ rather than the one in node_modules.
+  const win: Record<string, unknown> = {};
+  // eslint-disable-next-line no-new-func
+  new Function('window', readFileSync(join(TOOLS, 'noble-ed25519.js'), 'utf8'))(win);
+
+  const html = readFileSync(join(TOOLS, 'keygen.html'), 'utf8');
   const from = html.indexOf(START);
   const to = html.indexOf(END);
   if (from < 0 || to < 0 || to <= from) {
     throw new Error('keygen.html no longer has the expected script markers');
   }
-  const source = html.slice(from, to);
+
   // eslint-disable-next-line no-new-func
-  return new Function(`${source}\nreturn { generateKey, verifyKey, SECRET };`)() as KeygenExports;
+  return new Function(
+    'window',
+    `${html.slice(from, to)}\nreturn { canonicalMessage, signLicense, checkLicense };`,
+  )(win) as KeygenApi;
 }
 
-const sha256 = async (input: string) => createHash('sha256').update(input, 'utf8').digest('hex');
-
-const DEVICE = '9F3C-11AB-7E20-04D5';
 const keygen = loadKeygen();
+const DEVICE = '9F3C-11AB-7E20-04D5';
+
+const toHex = (bytes: Uint8Array) =>
+  Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+const utf8 = (text: string) => new TextEncoder().encode(text);
+
+const secretKey = ed.utils.randomSecretKey();
+const publicKeyHex = toHex(ed.getPublicKey(secretKey));
+const secretHex = toHex(secretKey);
+
+const FIELDS = {
+  systemId: DEVICE,
+  expiry: '2027-08-10',
+  issued: '2026-08-10',
+  client: 'Sri Murugan Stores',
+};
 
 describe('tools/keygen.html', () => {
-  it('carries the same secret as the app', async () => {
-    const { LICENSE_SECRET } = await import('@/modules/license/secret');
-    expect(keygen.SECRET).toBe(LICENSE_SECRET);
+  it('builds the same signed message as the app', () => {
+    const license = { app: LICENSE_APP, v: LICENSE_VERSION, ...FIELDS };
+    expect(keygen.canonicalMessage(license)).toBe(canonicalMessage(license));
   });
 
-  it('mints keys the app accepts', async () => {
-    for (const expiry of ['2026-09-01', '2027-08-10', '2031-03-15']) {
-      const key = await keygen.generateKey(DEVICE, expiry);
-      expect(await verifyKey(DEVICE, key, sha256)).toEqual({ valid: true, expiry });
-    }
+  it('issues licences the app accepts', async () => {
+    const license = await keygen.signLicense(secretHex, FIELDS);
+    const result = verifyLicense(JSON.stringify(license), DEVICE, publicKeyHex);
+    expect(result.valid).toBe(true);
+    expect(result.license?.expiry).toBe('2027-08-10');
+    expect(result.license?.client).toBe('Sri Murugan Stores');
   });
 
-  it('mints the exact same key the app would', async () => {
-    const expiry = '2027-08-10';
-    expect(await keygen.generateKey(DEVICE, expiry)).toBe(
-      await generateKey(DEVICE, expiry, sha256),
-    );
+  it('stamps the app name and format version itself', async () => {
+    const license = await keygen.signLicense(secretHex, FIELDS);
+    expect(license.app).toBe(LICENSE_APP);
+    expect(license.v).toBe(LICENSE_VERSION);
+    expect(license.sig).toMatch(/^[0-9a-f]{128}$/);
   });
 
-  it('accepts a key the app generated, so the vendor can check one back', async () => {
-    const key = await generateKey(DEVICE, '2028-01-31', sha256);
-    expect(await keygen.verifyKey(DEVICE, key)).toEqual({ valid: true, expiry: '2028-01-31' });
+  it('normalises the System ID the same way, so a lowercase one still works', async () => {
+    const license = await keygen.signLicense(secretHex, { ...FIELDS, systemId: DEVICE.toLowerCase() });
+    expect(verifyLicense(license, DEVICE, publicKeyHex).valid).toBe(true);
   });
 
-  it('turns away a key from a different device, same as the app', async () => {
-    const key = await keygen.generateKey('1A2B-3C4D-5E6F-0718', '2027-08-10');
-    expect((await keygen.verifyKey(DEVICE, key)).valid).toBe(false);
-    expect((await verifyKey(DEVICE, key, sha256)).valid).toBe(false);
+  it('checks back a licence the app-side code signed', async () => {
+    const base = { app: LICENSE_APP, v: LICENSE_VERSION, ...FIELDS };
+    const license = { ...base, sig: toHex(ed.sign(utf8(canonicalMessage(base)), secretKey)) };
+    const result = await keygen.checkLicense(JSON.stringify(license), publicKeyHex);
+    expect(result.valid).toBe(true);
+  });
+
+  it('rejects an edited licence, same as the app', async () => {
+    const license = await keygen.signLicense(secretHex, FIELDS);
+    const tampered = JSON.stringify({ ...license, expiry: '2099-01-01' });
+    expect((await keygen.checkLicense(tampered, publicKeyHex)).valid).toBe(false);
+    expect(verifyLicense(tampered, DEVICE, publicKeyHex).valid).toBe(false);
+  });
+
+  it('refuses to sign with a key that is not 32 bytes', async () => {
+    await expect(keygen.signLicense('abcd', FIELDS)).rejects.toThrow(/64 hex/);
   });
 });

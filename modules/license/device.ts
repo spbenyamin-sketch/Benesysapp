@@ -14,7 +14,7 @@ import * as Application from 'expo-application';
 import * as Crypto from 'expo-crypto';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
-import { formatKey } from './key';
+import { groupFour } from './dates';
 
 const K_FALLBACK = 'license.deviceSeed';
 const ID_HEX_LEN = 16;
@@ -64,7 +64,7 @@ export async function getSystemId(): Promise<string> {
   if (cached) return cached;
   const anchor = await hardwareAnchor();
   const digest = await sha256(`${anchor}|${Application.applicationId ?? 'billing-app'}`);
-  cached = formatKey(digest.slice(0, ID_HEX_LEN).toUpperCase());
+  cached = groupFour(digest.slice(0, ID_HEX_LEN).toUpperCase());
   return cached;
 }
 

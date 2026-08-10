@@ -1,22 +1,20 @@
 // The licence, as seen from Settings once the app is already running.
 //
 // LicenseGate only appears when the app is locked out; this is the other half —
-// how long is left, and a place to type a renewal key BEFORE the expiry lands
+// how long is left, and a place to import a renewal BEFORE the expiry lands
 // rather than on the morning the shop cannot bill.
 
+import { File } from 'expo-file-system';
+import { getDocumentAsync } from 'expo-document-picker';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Share, Text, View } from 'react-native';
+import { Alert, Share, StyleSheet, Text, View } from 'react-native';
 import Button from '@/components/Button';
-import TextField from '@/components/TextField';
-import { formatKey, normalizeKey } from '@/modules/license/key';
-import { activate, checkLicense, WARN_DAYS, type LicenseStatus } from '@/modules/license/service';
+import { activateFromFile, checkLicense, WARN_DAYS, type LicenseStatus } from '@/modules/license/service';
 import { formatDate } from '@/utils/format';
 
 export default function LicenseCard() {
   const [status, setStatus] = useState<LicenseStatus | null>(null);
-  const [entering, setEntering] = useState(false);
-  const [key, setKey] = useState('');
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(() => {
@@ -41,18 +39,25 @@ export default function LicenseCard() {
     });
   };
 
-  const submit = async () => {
+  const importFile = async () => {
+    const picked = await getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
+    if (picked.canceled || !picked.assets?.[0]) return;
+
     setBusy(true);
-    const result = await activate(key);
-    setBusy(false);
-    if (!result.ok) {
-      Alert.alert('Key not accepted', result.reason ?? 'That key is not valid for this device.');
-      return;
+    try {
+      const text = await new File(picked.assets[0].uri).text();
+      const result = await activateFromFile(text);
+      if (!result.ok) {
+        Alert.alert('Licence not accepted', result.reason ?? 'That file is not valid for this phone.');
+        return;
+      }
+      load();
+      Alert.alert('Licence updated', `Valid until ${formatDate(result.license!.expiry)}.`);
+    } catch (e) {
+      Alert.alert('Could not read that file', (e as Error)?.message ?? String(e));
+    } finally {
+      setBusy(false);
     }
-    setKey('');
-    setEntering(false);
-    load();
-    Alert.alert('Licence updated', `Valid until ${formatDate(result.expiry!)}.`);
   };
 
   if (!status) return null;
@@ -83,43 +88,30 @@ export default function LicenseCard() {
         </Text>
       </View>
 
+      {status.client ? (
+        <View style={styles.row}>
+          <Text style={styles.label}>Issued to</Text>
+          <Text style={styles.value}>{status.client}</Text>
+        </View>
+      ) : null}
+
       {warn ? (
         <Text style={styles.warnBanner}>
-          Contact your vendor for a renewal key before this runs out — the app stops opening on the
+          Ask your vendor for a renewal file before this runs out — the app stops opening on the
           expiry date.
         </Text>
       ) : null}
 
-      {entering ? (
-        <>
-          <TextField
-            label="New licence key"
-            value={key}
-            onChangeText={(text) => setKey(formatKey(text.toUpperCase().replace(/[^0-9A-F]/g, '')))}
-            placeholder="XXXX-XXXX-XXXX-XXXX-XXXX"
-            autoCapitalize="characters"
-          />
-          <Button
-            label="Apply key"
-            onPress={submit}
-            loading={busy}
-            disabled={normalizeKey(key) === null}
-          />
-          <Pressable onPress={() => setEntering(false)} hitSlop={8}>
-            <Text style={styles.link}>Cancel</Text>
-          </Pressable>
-        </>
-      ) : (
-        <View style={styles.buttons}>
-          <Button label="Send System ID" tone="ghost" onPress={send} style={styles.flex} />
-          <Button
-            label="Enter key"
-            tone="ghost"
-            onPress={() => setEntering(true)}
-            style={styles.flex}
-          />
-        </View>
-      )}
+      <View style={styles.buttons}>
+        <Button label="Send System ID" tone="ghost" onPress={send} style={styles.flex} />
+        <Button
+          label="Import licence"
+          tone="ghost"
+          onPress={importFile}
+          loading={busy}
+          style={styles.flex}
+        />
+      </View>
     </View>
   );
 }
@@ -140,5 +132,4 @@ const styles = StyleSheet.create({
   },
   buttons: { flexDirection: 'row', gap: 10 },
   flex: { flex: 1 },
-  link: { color: '#208AEF', fontSize: 13, textAlign: 'center' },
 });

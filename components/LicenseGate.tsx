@@ -5,12 +5,13 @@
 // nothing to reach. It sits OUTSIDE AuthGate — an expired licence should stop
 // the app before it asks for a password, not after.
 
+import { File } from 'expo-file-system';
+import { getDocumentAsync } from 'expo-document-picker';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   ScrollView,
   Share,
   StyleSheet,
@@ -18,10 +19,8 @@ import {
   View,
 } from 'react-native';
 import Button from '@/components/Button';
-import TextField from '@/components/TextField';
 import { getSystemId } from '@/modules/license/device';
-import { formatKey, normalizeKey } from '@/modules/license/key';
-import { activate, checkLicense, isUsable, type LicenseStatus } from '@/modules/license/service';
+import { activateFromFile, checkLicense, isUsable, type LicenseStatus } from '@/modules/license/service';
 
 const VENDOR = 'BeneSys';
 
@@ -34,7 +33,7 @@ export default function LicenseGate({ children }: { children: ReactNode }) {
     } catch {
       // A Keystore read that fails leaves us with no way to prove the licence.
       // Falling back to the activation screen keeps the app usable — the client
-      // re-enters the key they already have — instead of spinning forever.
+      // re-imports the file they already have — instead of spinning forever.
       setStatus({ state: 'unlicensed', systemId: await getSystemId().catch(() => '—') });
     }
   }, []);
@@ -60,18 +59,18 @@ const HEADINGS: Record<string, { icon: string; title: string; blurb: string }> =
   unlicensed: {
     icon: '🔑',
     title: 'Activate Billing App',
-    blurb: `Send the System ID below to ${VENDOR} and enter the key you get back. This only has to be done once on this phone.`,
+    blurb: `Send the System ID below to ${VENDOR}. You'll get a licence file back — save it, then tap Import.`,
   },
   expired: {
     icon: '⏳',
     title: 'Licence expired',
-    blurb: `Your licence has run out. Send the System ID to ${VENDOR} for a renewal key — your shop data is untouched and comes straight back.`,
+    blurb: `Your licence has run out. Send the System ID to ${VENDOR} for a renewal file — your shop data is untouched and comes straight back.`,
   },
   rolledBack: {
     icon: '⚠️',
     title: "Phone's date was changed",
     blurb:
-      'The date on this phone is earlier than the last time the app ran. Set the date back to today and reopen the app, or enter a fresh key.',
+      'The date on this phone is earlier than the last time the app ran. Set the date back to today and reopen the app.',
   },
 };
 
@@ -82,12 +81,10 @@ function ActivationScreen({
   status: LicenseStatus;
   onActivated: () => void;
 }) {
-  const [key, setKey] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const heading = HEADINGS[status.state] ?? HEADINGS.unlicensed;
-  const ready = normalizeKey(key) !== null;
 
   const send = () => {
     void Share.share({
@@ -97,16 +94,28 @@ function ActivationScreen({
     });
   };
 
-  const submit = async () => {
+  const importFile = async () => {
     setError(null);
+    // The licence arrives over WhatsApp, and Android hands those files out with
+    // whatever MIME type it feels like — '*/*' is the only filter that reliably
+    // shows a .lic at all.
+    const picked = await getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
+    if (picked.canceled || !picked.assets?.[0]) return;
+
     setBusy(true);
-    const result = await activate(key);
-    setBusy(false);
-    if (!result.ok) {
-      setError(result.reason ?? 'That key was not accepted.');
-      return;
+    try {
+      const text = await new File(picked.assets[0].uri).text();
+      const result = await activateFromFile(text);
+      if (!result.ok) {
+        setError(result.reason ?? 'That licence was not accepted.');
+        return;
+      }
+      onActivated();
+    } catch (e) {
+      setError((e as Error)?.message ?? String(e));
+    } finally {
+      setBusy(false);
     }
-    onActivated();
   };
 
   return (
@@ -125,27 +134,19 @@ function ActivationScreen({
 
         <Button label="Send System ID" tone="ghost" onPress={send} style={styles.wide} />
 
-        <TextField
-          label="Activation key"
-          value={key}
-          onChangeText={(text) => setKey(formatKey(text.toUpperCase().replace(/[^0-9A-F]/g, '')))}
-          placeholder="XXXX-XXXX-XXXX-XXXX-XXXX"
-          autoCapitalize="characters"
-        />
-
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
         <Button
-          label="Activate"
-          onPress={submit}
+          label="Import licence file"
+          onPress={importFile}
           loading={busy}
-          disabled={!ready}
           style={styles.wide}
         />
 
-        <Pressable onPress={send} hitSlop={8}>
-          <Text style={styles.help}>No key yet? Tap “Send System ID” and contact {VENDOR}.</Text>
-        </Pressable>
+        <Text style={styles.help}>
+          Save the file {VENDOR} sends you (it ends in .lic), then tap Import and pick it from
+          Downloads.
+        </Text>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -183,5 +184,5 @@ const styles = StyleSheet.create({
   },
   error: { color: '#c0392b', fontSize: 13, textAlign: 'center' },
   wide: { alignSelf: 'stretch' },
-  help: { color: '#888', fontSize: 12, textAlign: 'center', marginTop: 4 },
+  help: { color: '#888', fontSize: 12, textAlign: 'center', lineHeight: 18 },
 });

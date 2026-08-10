@@ -12,6 +12,9 @@ module.exports = {
     '^@/(.*)$': '<rootDir>/$1',
   },
   testPathIgnorePatterns: ['/node_modules/', '/dist/', '/.expo/'],
+  // @noble/* ship as ES modules only, so they have to go through Babel like the
+  // rest of the source rather than being skipped as node_modules normally are.
+  transformIgnorePatterns: ['node_modules/(?!@noble/)'],
   transform: {
     '^.+\\.[jt]sx?$': [
       'babel-jest',

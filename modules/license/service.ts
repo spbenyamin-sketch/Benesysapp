@@ -5,30 +5,27 @@
 // and reloads every table, so a licence kept in the DB would be replaced by
 // whatever was in someone else's backup file.
 
-import * as Crypto from 'expo-crypto';
 import * as SecureStore from 'expo-secure-store';
+import { daysBetween, todayISO } from './dates';
 import { getSystemId } from './device';
-import { daysBetween, todayISO, verifyKey, type Sha256Hex } from './key';
+import { verifyLicense, type LicenseFile } from './licenseFile';
 
-const K_KEY = 'license.key';
-const K_EXPIRY = 'license.expiry';
+const K_LICENSE = 'license.file';
 const K_LAST_RUN = 'license.lastRun';
 
 /** Warn the shop this many days out, so a renewal can be arranged in time. */
 export const WARN_DAYS = 7;
-
-const sha256: Sha256Hex = (input) =>
-  Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, input);
 
 export type LicenseState = 'unlicensed' | 'active' | 'expiring' | 'expired' | 'rolledBack';
 
 export interface LicenseStatus {
   state: LicenseState;
   systemId: string;
-  /** ISO 'YYYY-MM-DD'. Absent while unlicensed. */
   expiry?: string;
   /** Negative once the date has passed. */
   daysLeft?: number;
+  /** Shop name the licence was issued to, when there is one. */
+  client?: string;
 }
 
 export function isUsable(status: LicenseStatus): boolean {
@@ -38,85 +35,87 @@ export function isUsable(status: LicenseStatus): boolean {
 /**
  * Read the licence and decide where the app stands today.
  *
- * The stored key is re-verified on every launch rather than trusted: that is
- * what makes copying the app's storage to a second phone useless, since the
- * key only validates against the System ID it was minted for.
+ * The stored file is re-verified on every launch rather than trusted: that is
+ * what makes copying the app's storage onto a second phone useless, since the
+ * signature covers the System ID it was issued for.
  */
 export async function checkLicense(): Promise<LicenseStatus> {
   const systemId = await getSystemId();
-  const [key, expiry, lastRun] = await Promise.all([
-    SecureStore.getItemAsync(K_KEY),
-    SecureStore.getItemAsync(K_EXPIRY),
+  const [stored, lastRun] = await Promise.all([
+    SecureStore.getItemAsync(K_LICENSE),
     SecureStore.getItemAsync(K_LAST_RUN),
   ]);
 
-  if (!key || !expiry) return { state: 'unlicensed', systemId };
+  if (!stored) return { state: 'unlicensed', systemId };
 
-  const check = await verifyKey(systemId, key, sha256);
-  if (!check.valid || check.expiry !== expiry) {
-    // Either the phone changed or the stored pair was edited. Treat it as never
-    // having been activated — the client can re-enter a key for this device.
+  const check = verifyLicense(stored, systemId);
+  if (!check.valid || !check.license) {
+    // Either the phone changed or the stored file was edited. Treat it as never
+    // having been activated — the client can import a licence for this device.
     return { state: 'unlicensed', systemId };
   }
 
+  const { expiry, client } = check.license;
   const today = todayISO();
 
-  // Winding the clock back is the cheapest way to extend an offline licence,
-  // so a date earlier than the last run is refused outright. The VFP build
-  // does the same with LastRunDate.
+  // Winding the clock back is the cheapest way to stretch an offline licence,
+  // so a date earlier than the last run is refused outright. The VFP build does
+  // the same with LastRunDate.
   if (lastRun && today < lastRun) {
-    return { state: 'rolledBack', systemId, expiry, daysLeft: daysBetween(today, expiry) };
+    return { state: 'rolledBack', systemId, expiry, client, daysLeft: daysBetween(today, expiry) };
   }
 
   await SecureStore.setItemAsync(K_LAST_RUN, today);
 
   const daysLeft = daysBetween(today, expiry);
-  if (daysLeft < 0) return { state: 'expired', systemId, expiry, daysLeft };
+  if (daysLeft < 0) return { state: 'expired', systemId, expiry, client, daysLeft };
   return {
     state: daysLeft <= WARN_DAYS ? 'expiring' : 'active',
     systemId,
     expiry,
+    client,
     daysLeft,
   };
 }
 
 export interface ActivationResult {
   ok: boolean;
-  expiry?: string;
+  license?: LicenseFile;
   reason?: string;
 }
 
 /**
- * Accept a key typed on the activation screen. A key whose date has already
- * passed is rejected here rather than stored — otherwise activation "succeeds"
- * and the app locks itself on the very next screen.
+ * Take the contents of a .lic file the client just picked.
+ *
+ * A licence whose date has already passed is rejected here rather than stored —
+ * otherwise the import "succeeds" and the app locks itself on the next screen.
  */
-export async function activate(input: string): Promise<ActivationResult> {
+export async function activateFromFile(text: string): Promise<ActivationResult> {
   const systemId = await getSystemId();
-  const check = await verifyKey(systemId, input, sha256);
-  if (!check.valid || !check.expiry) {
-    return { ok: false, reason: check.reason ?? 'That key is not valid for this device.' };
+  const check = verifyLicense(text, systemId);
+  if (!check.valid || !check.license) {
+    return { ok: false, reason: check.reason ?? 'That licence is not valid for this phone.' };
   }
 
   const today = todayISO();
-  if (daysBetween(today, check.expiry) < 0) {
-    return { ok: false, reason: `That key expired on ${check.expiry}.` };
+  if (daysBetween(today, check.license.expiry) < 0) {
+    return { ok: false, reason: `That licence expired on ${check.license.expiry}.` };
   }
 
   await Promise.all([
-    SecureStore.setItemAsync(K_KEY, input.toUpperCase().replace(/[^0-9A-F]/g, '')),
-    SecureStore.setItemAsync(K_EXPIRY, check.expiry),
+    // Store what was verified, not the raw text — a re-serialised object cannot
+    // smuggle in extra fields alongside a signature that never covered them.
+    SecureStore.setItemAsync(K_LICENSE, JSON.stringify(check.license)),
     SecureStore.setItemAsync(K_LAST_RUN, today),
   ]);
 
-  return { ok: true, expiry: check.expiry };
+  return { ok: true, license: check.license };
 }
 
 /** Forget the licence — used by the vendor when moving a client to a new phone. */
 export async function clearLicense(): Promise<void> {
   await Promise.all([
-    SecureStore.deleteItemAsync(K_KEY),
-    SecureStore.deleteItemAsync(K_EXPIRY),
+    SecureStore.deleteItemAsync(K_LICENSE),
     SecureStore.deleteItemAsync(K_LAST_RUN),
   ]);
 }
