@@ -68,6 +68,8 @@ const NAV_ROUTES: Record<NavTarget, { href: any; label: string; labelTa: string 
   newParty: { href: '/party/new', label: 'New party', labelTa: 'புது வாடிக்கையாளர்' },
   newItem: { href: '/item/new', label: 'New item', labelTa: 'புது பொருள்' },
   newPayment: { href: '/payment/new', label: 'New payment', labelTa: 'பணம் பெறுதல்' },
+  expenses: { href: '/expense', label: 'Expenses', labelTa: 'செலவுகள்' },
+  newExpense: { href: '/expense/new', label: 'New expense', labelTa: 'புது செலவு' },
   reportSales: { href: '/report/sales', label: 'Sales report', labelTa: 'விற்பனை அறிக்கை' },
   reportOutstanding: { href: '/report/outstanding', label: 'Outstanding', labelTa: 'நிலுவை' },
   reportStock: { href: '/report/stock', label: 'Stock report', labelTa: 'ஸ்டாக் அறிக்கை' },

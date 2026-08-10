@@ -80,6 +80,8 @@ export const HELP: HelpGroup[] = [
       { ta: 'வாடிக்கையாளர்', en: 'parties', does: 'Parties tab', doesTa: 'வாடிக்கையாளர்' },
       { ta: 'புது விற்பனை', en: 'new sale', does: 'New sale invoice', doesTa: 'புது விற்பனை பில்' },
       { ta: 'நிலுவை', en: 'outstanding', does: 'Outstanding report', doesTa: 'நிலுவை அறிக்கை' },
+      { ta: 'செலவு', en: 'expenses', does: 'Expense list', doesTa: 'செலவு பட்டியல்' },
+      { ta: 'புது செலவு', en: 'new expense', does: 'Records an expense', doesTa: 'செலவு பதிவு' },
       { ta: 'பின்னால', en: 'back', does: 'Goes back', doesTa: 'பின்னால' },
     ],
   },

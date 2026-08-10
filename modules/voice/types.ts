@@ -25,6 +25,8 @@ export type NavTarget =
   | 'newParty'
   | 'newItem'
   | 'newPayment'
+  | 'expenses'
+  | 'newExpense'
   | 'reportSales'
   | 'reportOutstanding'
   | 'reportStock'

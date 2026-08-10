@@ -63,6 +63,30 @@ export const ITEM_UNITS = [
   'unit',
 ];
 
+// Everyday shop overheads. These are the running costs a small business books
+// against the month — they are NOT purchases of stock (those go through a
+// purchase invoice so they move inventory and a supplier ledger).
+export const EXPENSE_CATEGORIES = [
+  'Rent',
+  'Salary & Wages',
+  'Electricity',
+  'Water',
+  'Phone & Internet',
+  'Transport & Freight',
+  'Fuel',
+  'Packing Material',
+  'Repairs & Maintenance',
+  'Printing & Stationery',
+  'Advertising',
+  'Bank Charges',
+  'Professional Fees',
+  'Licence & Taxes',
+  'Insurance',
+  'Tea & Refreshments',
+  'Cleaning',
+  'Miscellaneous',
+];
+
 // Common item categories (custom values allowed on top of these).
 export const ITEM_CATEGORIES = [
   'General',

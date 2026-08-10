@@ -17,6 +17,12 @@ const REPORTS: { href: Href; emoji: string; title: string; sub: string }[] = [
     title: 'Payment History',
     sub: 'Every payment in and out',
   },
+  {
+    href: '/expense',
+    emoji: '💸',
+    title: 'Expenses',
+    sub: 'Rent, power, wages and other overheads',
+  },
 ];
 
 export default function ReportsScreen() {

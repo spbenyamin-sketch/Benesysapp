@@ -185,6 +185,10 @@ export const NAV_WORDS: { target: NavTarget; words: string[] }[] = [
   { target: 'newQuotation', words: ['மதிப்பீடு', 'கோட்டேஷன்', 'quotation', 'quote', 'estimate'] },
   { target: 'newChallan', words: ['சலான்', 'டெலிவரி', 'challan', 'delivery', 'deliverynote'] },
   { target: 'newPayment', words: ['பணம்பெறு', 'பேமெண்ட்', 'ரசீது', 'payment', 'receipt', 'collect', 'paid'] },
+  // The parser keeps the LONGEST matched word, so "புதுசெலவு" opens the form
+  // while a bare "செலவு" opens the list.
+  { target: 'newExpense', words: ['புதுசெலவு', 'செலவுசேர்', 'newexpense', 'addexpense', 'expenseadd'] },
+  { target: 'expenses', words: ['செலவு', 'செலவுகள்', 'கர்ச்சு', 'எக்ஸ்பென்ஸ்', 'selavu', 'expense', 'expenses', 'spending', 'overhead'] },
   { target: 'newParty', words: ['புதுவாடிக்கையாளர்', 'புதுகஸ்டமர்', 'newparty', 'newcustomer', 'addcustomer', 'newsupplier'] },
   { target: 'newItem', words: ['புதுபொருள்', 'புதுஐட்டம்', 'newitem', 'additem', 'newproduct'] },
   { target: 'reportSales', words: ['விற்பனைஅறிக்கை', 'salesreport'] },

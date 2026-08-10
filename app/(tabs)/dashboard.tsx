@@ -118,6 +118,21 @@ export default function DashboardScreen() {
             />
           </View>
 
+          <View style={styles.actions}>
+            <ActionButton
+              label="− Expense"
+              tone="#8e44ad"
+              small
+              onPress={() => router.push('/expense/new')}
+            />
+            <ActionButton
+              label="Expense List"
+              tone="#636e72"
+              small
+              onPress={() => router.push('/expense')}
+            />
+          </View>
+
           <View style={styles.kpis}>
             <Kpi label="Today's sales" value={formatMoney(todaySales)} tone="#111" />
             <Kpi label="To collect" value={formatMoney(receivable)} tone="#1a9d5a" />
