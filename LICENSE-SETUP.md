@@ -39,6 +39,20 @@ lost or leaked — it invalidates every licence ever issued.
 Renewal is the same four steps. The client can do it early from
 **Settings → Licence → Import licence** — no need to wait for the lockout.
 
+### Or from the terminal
+
+Same result without opening a browser:
+
+```
+node tools/issue-license.mjs 9F3C-11AB-7E20-04D5 1y "Sri Murugan Stores"
+node tools/issue-license.mjs 9F3C-11AB-7E20-04D5 2027-08-10
+node tools/issue-license.mjs --check tools/issued/9F3C11AB7E2004D5-2027-08-10.lic
+```
+
+Expiry is an ISO date or a duration from today (`30d`, `6m`, `1y`, `3y`). The
+file lands in `tools/issued/` (gitignored) unless `--out` says otherwise, so that
+folder doubles as your record of who has what.
+
 ## What the client sees
 
 | Situation | What happens |
@@ -93,7 +107,8 @@ earlier than that, the app locks. This is what stops "just set the clock back".
 | File | Role |
 |---|---|
 | `tools/vendor-private-key.txt` | **Your signing key. Gitignored. Back it up.** |
-| `tools/keygen.html` | **Vendor only.** Issues and checks licence files. |
+| `tools/keygen.html` | **Vendor only.** Issues and checks licence files, in a browser. |
+| `tools/issue-license.mjs` | **Vendor only.** The same, from the terminal. |
 | `tools/noble-ed25519.js` | The signing library, vendored as a plain script (`tools/vendor-noble.mjs` regenerates it) so the page works from `file://` |
 | `tools/new-vendor-key.mjs` | Mints a new keypair |
 | `modules/license/publicKey.ts` | Public key, ships in the APK |
