@@ -38,6 +38,7 @@ import { BACKUP_UPLOADERS } from '@/modules/backup/useAutoBackup';
 import { backupJson, restoreBackup, shareBackupFile } from '@/modules/backup/service';
 import { getAccount, signOut, type Account } from '@/modules/auth/service';
 import { getLockCapability, isLockEnabled, promptUnlock, setLockEnabled } from '@/modules/auth/lock';
+import LicenseCard from '@/modules/license/LicenseCard';
 import {
   getDefaultTaxMode,
   listSettings,
@@ -453,6 +454,14 @@ export default function SettingsScreen() {
           onPress={() => setHelpOpen(true)}
           style={styles.save}
         />
+
+        <View style={styles.divider} />
+
+        <Text style={styles.sectionTitle}>Licence</Text>
+        <Text style={styles.sectionHint}>
+          This copy is tied to this phone. Send the System ID to your vendor to renew.
+        </Text>
+        <LicenseCard />
 
         <View style={styles.divider} />
 

@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Billing App — Activation Key Generator</title>
+<!--
+  VENDOR TOOL — DO NOT GIVE THIS FILE TO A CLIENT.
+
+  The replacement for KEYGEN.PRG. Runs offline in any browser (double-click it);
+  nothing is uploaded and no internet is needed. It must stay in step with
+  modules/license/key.ts and modules/license/secret.ts — same secret, same
+  layout — or every key it mints will be rejected by the app.
+
+  NOTE: browsers only expose crypto.subtle on https:// or file:// and
+  localhost. Opening this straight from disk is fine.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    max-width: 620px; margin: 0 auto; padding: 24px 18px 60px; line-height: 1.5;
+  }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  p.sub { margin: 0 0 24px; opacity: .7; font-size: 14px; }
+  fieldset { border: 1px solid #8883; border-radius: 12px; padding: 16px; margin: 0 0 18px; }
+  legend { font-weight: 700; font-size: 13px; padding: 0 6px; }
+  label { display: block; font-size: 13px; font-weight: 600; margin: 12px 0 4px; }
+  input {
+    width: 100%; box-sizing: border-box; font-size: 16px; padding: 10px 12px;
+    border: 1px solid #8886; border-radius: 8px; background: transparent;
+    color: inherit; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  button {
+    font: inherit; font-weight: 600; padding: 10px 16px; border-radius: 8px;
+    border: 1px solid #208AEF; background: #208AEF; color: #fff; cursor: pointer;
+  }
+  button.ghost { background: transparent; color: #208AEF; }
+  .out {
+    margin-top: 16px; padding: 14px; border-radius: 10px; background: #208AEF14;
+    border: 1px solid #208AEF44; text-align: center; word-break: break-all;
+  }
+  .out .key {
+    font-family: ui-monospace, Consolas, monospace; font-size: 22px;
+    font-weight: 700; letter-spacing: 1.5px;
+  }
+  .err { color: #c0392b; font-size: 14px; margin-top: 12px; }
+  .ok { color: #1a7a48; }
+  footer { font-size: 12px; opacity: .65; margin-top: 30px; }
+</style>
+</head>
+<body>
+
+<h1>Billing App — Activation Key Generator</h1>
+<p class="sub">Client sends the System ID from the app's activation screen. Pick an expiry date, generate, send the key back.</p>
+
+<fieldset>
+  <legend>Generate</legend>
+
+  <label for="sysid">System ID (from the client's phone)</label>
+  <input id="sysid" placeholder="9F3C-11AB-7E20-04D5" autocomplete="off" spellcheck="false">
+
+  <label for="expiry">Expiry date</label>
+  <input id="expiry" type="date">
+
+  <div class="row">
+    <button class="ghost" data-add="1">+1 month</button>
+    <button class="ghost" data-add="3">+3 months</button>
+    <button class="ghost" data-add="6">+6 months</button>
+    <button class="ghost" data-add="12">+1 year</button>
+    <button class="ghost" data-add="36">+3 years</button>
+  </div>
+
+  <div class="row"><button id="gen">Generate key</button></div>
+
+  <div class="out" id="out" hidden>
+    <div class="key" id="key"></div>
+    <div class="row" style="justify-content:center">
+      <button class="ghost" id="copy">Copy</button>
+    </div>
+  </div>
+  <div class="err" id="err"></div>
+</fieldset>
+
+<fieldset>
+  <legend>Check an existing key</legend>
+  <label for="vid">System ID</label>
+  <input id="vid" placeholder="9F3C-11AB-7E20-04D5" autocomplete="off" spellcheck="false">
+  <label for="vkey">Key</label>
+  <input id="vkey" placeholder="XXXX-XXXX-XXXX-XXXX-XXXX" autocomplete="off" spellcheck="false">
+  <div class="row"><button class="ghost" id="verify">Check</button></div>
+  <div class="err" id="verr"></div>
+</fieldset>
+
+<footer>
+  Keys are tied to one System ID. A phone that is factory-reset gets a new
+  System ID and needs a new key. Keep this file private — it is the only thing
+  standing between a client and an unlimited licence.
+</footer>
+
+<script>
+// ── Must match modules/license/secret.ts exactly ─────────────────────────────
+const SECRET = [
+  String.fromCharCode(66, 101, 78, 101),
+  'Sy5',
+  String.fromCharCode(115, 64),
+  '2026',
+  String.fromCharCode(33, 107, 77),
+  '#Secure',
+].join('');
+
+// ── Must match modules/license/key.ts exactly ────────────────────────────────
+const EPOCH_UTC = Date.UTC(2020, 0, 1);
+const DAY_MS = 86400000;
+const MAX_DAY = 0xffff;
+const KEY_HEX_LEN = 20;
+const DAY_HEX_LEN = 4;
+
+async function sha256(text) {
+  const bytes = new TextEncoder().encode(text);
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function dayNumber(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec((iso || '').trim());
+  if (!m) return NaN;
+  const y = +m[1], mo = +m[2], d = +m[3];
+  const ms = Date.UTC(y, mo - 1, d);
+  const back = new Date(ms);
+  if (back.getUTCFullYear() !== y || back.getUTCMonth() + 1 !== mo || back.getUTCDate() !== d) return NaN;
+  return Math.round((ms - EPOCH_UTC) / DAY_MS);
+}
+
+const dateFromDayNumber = day => new Date(EPOCH_UTC + day * DAY_MS).toISOString().slice(0, 10);
+const normalizeKey = s => {
+  const c = (s || '').toUpperCase().replace(/[^0-9A-F]/g, '');
+  return c.length === KEY_HEX_LEN ? c : null;
+};
+const formatKey = raw => (raw.match(/.{1,4}/g) || []).join('-');
+
+const maskFor = async id => parseInt((await sha256(`${id}|${SECRET}|mask`)).slice(0, 4), 16);
+const signatureFor = async (id, expiry) =>
+  (await sha256(`${id}|${expiry}|${SECRET}`)).slice(0, KEY_HEX_LEN - DAY_HEX_LEN).toUpperCase();
+
+async function generateKey(systemId, expiry) {
+  const id = (systemId || '').trim().toUpperCase();
+  if (!id) throw new Error('System ID is required.');
+  const day = dayNumber(expiry);
+  if (!Number.isFinite(day)) throw new Error('Pick a real expiry date.');
+  if (day < 0 || day > MAX_DAY) throw new Error('Expiry is outside the supported range.');
+  const masked = (day ^ (await maskFor(id))) & 0xffff;
+  const head = masked.toString(16).toUpperCase().padStart(DAY_HEX_LEN, '0');
+  return formatKey(head + await signatureFor(id, dateFromDayNumber(day)));
+}
+
+async function verifyKey(systemId, key) {
+  const raw = normalizeKey(key);
+  if (!raw) return { valid: false, reason: 'That key is not 20 characters long.' };
+  const id = (systemId || '').trim().toUpperCase();
+  const day = (parseInt(raw.slice(0, DAY_HEX_LEN), 16) ^ (await maskFor(id))) & 0xffff;
+  const expiry = dateFromDayNumber(day);
+  if (await signatureFor(id, expiry) !== raw.slice(DAY_HEX_LEN)) {
+    return { valid: false, reason: 'This key does not belong to that System ID.' };
+  }
+  return { valid: true, expiry };
+}
+
+// ── Page wiring ──────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+
+for (const b of document.querySelectorAll('[data-add]')) {
+  b.addEventListener('click', () => {
+    const d = new Date();
+    d.setMonth(d.getMonth() + Number(b.dataset.add));
+    $('expiry').value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  });
+}
+
+$('gen').addEventListener('click', async () => {
+  $('err').textContent = '';
+  $('out').hidden = true;
+  try {
+    $('key').textContent = await generateKey($('sysid').value, $('expiry').value);
+    $('out').hidden = false;
+  } catch (e) {
+    $('err').textContent = e.message;
+  }
+});
+
+$('copy').addEventListener('click', async () => {
+  await navigator.clipboard.writeText($('key').textContent);
+  $('copy').textContent = 'Copied';
+  setTimeout(() => ($('copy').textContent = 'Copy'), 1200);
+});
+
+$('verify').addEventListener('click', async () => {
+  const r = await verifyKey($('vid').value, $('vkey').value);
+  const el = $('verr');
+  el.className = r.valid ? 'err ok' : 'err';
+  el.textContent = r.valid
+    ? `Valid — expires ${r.expiry}` + (dayNumber(r.expiry) < dayNumber(new Date().toISOString().slice(0, 10)) ? ' (already past)' : '')
+    : r.reason;
+});
+</script>
+</body>
+</html>

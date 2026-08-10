@@ -5,6 +5,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useDbMigrations } from '@/db/migrate';
 import AuthGate from '@/components/AuthGate';
 import BackupOnExit from '@/components/BackupOnExit';
+import LicenseGate from '@/components/LicenseGate';
 import VoiceMic from '@/components/VoiceMic';
 import { VoiceProvider } from '@/modules/voice/VoiceProvider';
 import { useAutoBackup } from '@/modules/backup/useAutoBackup';
@@ -30,23 +31,27 @@ export default function RootLayout() {
     );
   }
 
-  // AuthGate is outermost (after the DB is ready): while it shows the login or
-  // lock screen the navigator isn't mounted at all, so no shop data is reachable.
-  // Inside it, VoiceProvider wraps everything so any screen can register voice
-  // commands, and the mic renders AFTER the Stack so it floats above every screen.
+  // LicenseGate is outermost: an unlicensed or expired install stops before it
+  // even asks for a password. AuthGate comes next (after the DB is ready) —
+  // while it shows the login or lock screen the navigator isn't mounted at all,
+  // so no shop data is reachable. Inside it, VoiceProvider wraps everything so
+  // any screen can register voice commands, and the mic renders AFTER the Stack
+  // so it floats above every screen.
   return (
     <SafeAreaProvider>
-      <AuthGate>
-        <VoiceProvider>
-          <AutoBackupRunner />
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="(tabs)" />
-          </Stack>
-          <VoiceMic />
-          <BackupOnExit />
-          <StatusBar style="auto" />
-        </VoiceProvider>
-      </AuthGate>
+      <LicenseGate>
+        <AuthGate>
+          <VoiceProvider>
+            <AutoBackupRunner />
+            <Stack screenOptions={{ headerShown: false }}>
+              <Stack.Screen name="(tabs)" />
+            </Stack>
+            <VoiceMic />
+            <BackupOnExit />
+            <StatusBar style="auto" />
+          </VoiceProvider>
+        </AuthGate>
+      </LicenseGate>
     </SafeAreaProvider>
   );
 }

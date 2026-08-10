@@ -6,7 +6,10 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": ["billingapp", "com.benesys.billingapp"],
+    "scheme": [
+      "billingapp",
+      "com.benesys.billingapp"
+    ],
     "userInterfaceStyle": "automatic",
     "ios": {
       "infoPlist": {
@@ -16,7 +19,7 @@
     },
     "android": {
       "package": "com.benesys.billingapp",
-      "versionCode": 1,
+      "versionCode": 2,
       "adaptiveIcon": {
         "backgroundColor": "#D5076A",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
