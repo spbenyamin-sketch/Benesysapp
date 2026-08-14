@@ -162,4 +162,9 @@ console.log(`  file       ${target}`);
 console.log(`  System ID  ${systemId}`);
 console.log(`  expires    ${expiry}`);
 if (license.client) console.log(`  issued to  ${license.client}`);
-console.log('\nSend that file to the client — they tap "Import licence file" in the app.');
+
+// Sending the licence as a WhatsApp message beats sending a file: the client
+// copies and pastes it instead of saving a download and finding it in the
+// picker. Printed on one line so a terminal copy stays one line.
+console.log('\nPaste this into WhatsApp — the client pastes it back into the app and taps Activate:\n');
+console.log(JSON.stringify(license));

@@ -96,6 +96,24 @@ describe('parseLicense', () => {
     expect(parseLicense('[]')).toBeNull();
     expect(parseLicense('{"app":"billing-app"}')).toBeNull();
     expect(parseLicense('')).toBeNull();
+    expect(parseLicense('{ half a licence')).toBeNull();
+  });
+
+  // A licence pasted out of WhatsApp rather than saved as a file — the shop
+  // copies the whole message, greeting and all, and that has to still work.
+  it('reads a licence pasted with a message wrapped around it', () => {
+    const license = vendor.issue();
+    const pasted = `Hi Murugan Stores, here is your licence 👇\n\n${JSON.stringify(
+      license,
+      null,
+      2,
+    )}\n\nValid till Aug 2027. Thanks!`;
+    expect(parseLicense(pasted)).toEqual(license);
+  });
+
+  it('reads a licence surrounded by blank lines and stray spaces', () => {
+    const license = vendor.issue();
+    expect(parseLicense(`  \n\n  ${JSON.stringify(license)}   \n `)).toEqual(license);
   });
 });
 

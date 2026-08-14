@@ -91,8 +91,8 @@
   <div class="out" id="out" hidden>
     <textarea id="lic" readonly></textarea>
     <div class="row">
-      <button id="download">Download .lic</button>
-      <button class="ghost" id="copy">Copy text</button>
+      <button id="copy">Copy for WhatsApp</button>
+      <button class="ghost" id="download">Download .lic</button>
     </div>
     <div class="hint" id="fname"></div>
   </div>
@@ -251,10 +251,13 @@ $('download').addEventListener('click', () => {
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 });
 
+// Pasting into WhatsApp beats sending a file — the client copies the message
+// straight into the app instead of saving a download and finding it in the
+// picker. One line, so the message stays one bubble.
 $('copy').addEventListener('click', async () => {
-  await navigator.clipboard.writeText(currentFile);
+  await navigator.clipboard.writeText(JSON.stringify(JSON.parse(currentFile)));
   $('copy').textContent = 'Copied';
-  setTimeout(() => ($('copy').textContent = 'Copy text'), 1200);
+  setTimeout(() => ($('copy').textContent = 'Copy for WhatsApp'), 1200);
 });
 
 $('verify').addEventListener('click', async () => {

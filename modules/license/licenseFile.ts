@@ -94,11 +94,26 @@ function utf8(text: string): Uint8Array {
   return out.slice(0, n);
 }
 
+/**
+ * Pull the licence out of whatever the client actually pasted.
+ *
+ * Sending the licence as a WhatsApp message is easier for a shop than saving a
+ * file and hunting for it in the picker, and a message arrives with a greeting
+ * wrapped around it as often as not. Anything outside the outermost braces is
+ * dropped rather than failing the parse.
+ */
+function isolateJson(text: string): string {
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start < 0 || end < start) return text.trim();
+  return text.slice(start, end + 1);
+}
+
 /** Parse the text of a .lic file. Shape only — the signature is checked later. */
 export function parseLicense(text: string): LicenseFile | null {
   let data: unknown;
   try {
-    data = JSON.parse(text);
+    data = JSON.parse(isolateJson(text));
   } catch {
     return null;
   }

@@ -8,7 +8,7 @@ import { File } from 'expo-file-system';
 import { getDocumentAsync } from 'expo-document-picker';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Alert, Share, StyleSheet, Text, View } from 'react-native';
+import { Alert, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import Button from '@/components/Button';
 import { activateFromFile, checkLicense, WARN_DAYS, type LicenseStatus } from '@/modules/license/service';
 import { formatDate } from '@/utils/format';
@@ -16,6 +16,7 @@ import { formatDate } from '@/utils/format';
 export default function LicenseCard() {
   const [status, setStatus] = useState<LicenseStatus | null>(null);
   const [busy, setBusy] = useState(false);
+  const [pasted, setPasted] = useState<string | null>(null);
 
   const load = useCallback(() => {
     let active = true;
@@ -39,25 +40,36 @@ export default function LicenseCard() {
     });
   };
 
+  const apply = async (text: string) => {
+    setBusy(true);
+    try {
+      const result = await activateFromFile(text);
+      if (!result.ok) {
+        Alert.alert('Licence not accepted', result.reason ?? 'That licence is not valid for this phone.');
+        return;
+      }
+      setPasted(null);
+      load();
+      Alert.alert('Licence updated', `Valid until ${formatDate(result.license!.expiry)}.`);
+    } catch (e) {
+      Alert.alert('Could not read that licence', (e as Error)?.message ?? String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const importFile = async () => {
     const picked = await getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
     if (picked.canceled || !picked.assets?.[0]) return;
 
-    setBusy(true);
+    let text: string;
     try {
-      const text = await new File(picked.assets[0].uri).text();
-      const result = await activateFromFile(text);
-      if (!result.ok) {
-        Alert.alert('Licence not accepted', result.reason ?? 'That file is not valid for this phone.');
-        return;
-      }
-      load();
-      Alert.alert('Licence updated', `Valid until ${formatDate(result.license!.expiry)}.`);
+      text = await new File(picked.assets[0].uri).text();
     } catch (e) {
       Alert.alert('Could not read that file', (e as Error)?.message ?? String(e));
-    } finally {
-      setBusy(false);
+      return;
     }
+    await apply(text);
   };
 
   if (!status) return null;
@@ -102,16 +114,55 @@ export default function LicenseCard() {
         </Text>
       ) : null}
 
-      <View style={styles.buttons}>
-        <Button label="Send System ID" tone="ghost" onPress={send} style={styles.flex} />
-        <Button
-          label="Import licence"
-          tone="ghost"
-          onPress={importFile}
-          loading={busy}
-          style={styles.flex}
-        />
-      </View>
+      {pasted !== null ? (
+        <View style={styles.pasteBox}>
+          <TextInput
+            style={styles.paste}
+            value={pasted}
+            onChangeText={setPasted}
+            placeholder={'Paste the renewal your vendor sent — {"app":"billing-app", …}'}
+            placeholderTextColor="#aaa"
+            multiline
+            autoFocus
+            autoCapitalize="none"
+            autoCorrect={false}
+            spellCheck={false}
+          />
+          <View style={styles.buttons}>
+            <Button
+              label="Cancel"
+              tone="ghost"
+              onPress={() => setPasted(null)}
+              style={styles.flex}
+            />
+            <Button
+              label="Activate"
+              onPress={() => void apply(pasted)}
+              disabled={!pasted.trim()}
+              loading={busy}
+              style={styles.flex}
+            />
+          </View>
+        </View>
+      ) : (
+        <>
+          <View style={styles.buttons}>
+            <Button label="Send System ID" tone="ghost" onPress={send} style={styles.flex} />
+            <Button
+              label="Paste licence"
+              tone="ghost"
+              onPress={() => setPasted('')}
+              style={styles.flex}
+            />
+          </View>
+          <Button
+            label="Import licence file"
+            tone="ghost"
+            onPress={importFile}
+            loading={busy}
+          />
+        </>
+      )}
     </View>
   );
 }
@@ -132,4 +183,17 @@ const styles = StyleSheet.create({
   },
   buttons: { flexDirection: 'row', gap: 10 },
   flex: { flex: 1 },
+  pasteBox: { gap: 10 },
+  paste: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    minHeight: 96,
+    textAlignVertical: 'top',
+    fontSize: 13,
+    color: '#111',
+    backgroundColor: '#fff',
+  },
 });

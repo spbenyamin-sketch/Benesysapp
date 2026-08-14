@@ -16,6 +16,7 @@ import {
   Share,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import Button from '@/components/Button';
@@ -59,12 +60,12 @@ const HEADINGS: Record<string, { icon: string; title: string; blurb: string }> =
   unlicensed: {
     icon: '🔑',
     title: 'Activate Billing App',
-    blurb: `Send the System ID below to ${VENDOR}. You'll get a licence file back — save it, then tap Import.`,
+    blurb: `Send the System ID below to ${VENDOR}. You'll get a licence back — paste it in the box below and tap Activate.`,
   },
   expired: {
     icon: '⏳',
     title: 'Licence expired',
-    blurb: `Your licence has run out. Send the System ID to ${VENDOR} for a renewal file — your shop data is untouched and comes straight back.`,
+    blurb: `Your licence has run out. Send the System ID to ${VENDOR} for a renewal, then paste it below — your shop data is untouched and comes straight back.`,
   },
   rolledBack: {
     icon: '⚠️',
@@ -83,6 +84,7 @@ function ActivationScreen({
 }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [pasted, setPasted] = useState('');
 
   const heading = HEADINGS[status.state] ?? HEADINGS.unlicensed;
 
@@ -94,17 +96,9 @@ function ActivationScreen({
     });
   };
 
-  const importFile = async () => {
-    setError(null);
-    // The licence arrives over WhatsApp, and Android hands those files out with
-    // whatever MIME type it feels like — '*/*' is the only filter that reliably
-    // shows a .lic at all.
-    const picked = await getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
-    if (picked.canceled || !picked.assets?.[0]) return;
-
+  const apply = async (text: string) => {
     setBusy(true);
     try {
-      const text = await new File(picked.assets[0].uri).text();
       const result = await activateFromFile(text);
       if (!result.ok) {
         setError(result.reason ?? 'That licence was not accepted.');
@@ -116,6 +110,29 @@ function ActivationScreen({
     } finally {
       setBusy(false);
     }
+  };
+
+  const activatePasted = () => {
+    setError(null);
+    void apply(pasted);
+  };
+
+  const importFile = async () => {
+    setError(null);
+    // The licence arrives over WhatsApp, and Android hands those files out with
+    // whatever MIME type it feels like — '*/*' is the only filter that reliably
+    // shows a .lic at all.
+    const picked = await getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
+    if (picked.canceled || !picked.assets?.[0]) return;
+
+    let text: string;
+    try {
+      text = await new File(picked.assets[0].uri).text();
+    } catch (e) {
+      setError((e as Error)?.message ?? String(e));
+      return;
+    }
+    await apply(text);
   };
 
   return (
@@ -136,16 +153,42 @@ function ActivationScreen({
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
+        <View style={styles.pasteBox}>
+          <Text style={styles.pasteLabel}>Paste the licence {VENDOR} sent you</Text>
+          <TextInput
+            style={styles.paste}
+            value={pasted}
+            onChangeText={setPasted}
+            placeholder={'{"app":"billing-app", …}'}
+            placeholderTextColor="#aaa"
+            multiline
+            autoCapitalize="none"
+            autoCorrect={false}
+            spellCheck={false}
+          />
+          <Text style={styles.pasteHelp}>
+            Hold on the message in WhatsApp → Copy, then hold in the box above → Paste.
+          </Text>
+        </View>
+
         <Button
-          label="Import licence file"
-          onPress={importFile}
+          label="Activate"
+          onPress={activatePasted}
+          disabled={!pasted.trim()}
           loading={busy}
           style={styles.wide}
         />
 
+        <Button
+          label="Import licence file instead"
+          tone="ghost"
+          onPress={importFile}
+          style={styles.wide}
+        />
+
         <Text style={styles.help}>
-          Save the file {VENDOR} sends you (it ends in .lic), then tap Import and pick it from
-          Downloads.
+          If {VENDOR} sent a file rather than a message, save it to Downloads first, then tap
+          Import.
         </Text>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -183,6 +226,21 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   error: { color: '#c0392b', fontSize: 13, textAlign: 'center' },
+  pasteBox: { gap: 6 },
+  pasteLabel: { fontSize: 13, fontWeight: '600', color: '#444' },
+  paste: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    minHeight: 96,
+    textAlignVertical: 'top',
+    fontSize: 13,
+    color: '#111',
+    backgroundColor: '#fff',
+  },
+  pasteHelp: { color: '#888', fontSize: 12, lineHeight: 17 },
   wide: { alignSelf: 'stretch' },
   help: { color: '#888', fontSize: 12, textAlign: 'center', lineHeight: 18 },
 });
