@@ -263,7 +263,7 @@ const styles = StyleSheet.create({
     borderBottomColor: '#eee',
     gap: 12,
   },
-  lineLeft: { flexShrink: 1, gap: 3 },
+  lineLeft: { flex: 1, gap: 3 },
   lineName: { fontSize: 15, fontWeight: '600', color: '#111' },
   lineMeta: { fontSize: 13, color: '#888' },
   lineAmount: { fontSize: 15, fontWeight: '600', color: '#111' },

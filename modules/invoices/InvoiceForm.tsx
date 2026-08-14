@@ -490,7 +490,7 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 16, fontWeight: '700', color: '#111', marginTop: 4 },
   lineCard: { borderWidth: 1, borderColor: '#eee', borderRadius: 12, padding: 12, gap: 10, backgroundColor: '#fafafa' },
   lineHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  lineName: { fontSize: 15, fontWeight: '600', color: '#111', flexShrink: 1 },
+  lineName: { fontSize: 15, fontWeight: '600', color: '#111', flex: 1 },
   lineTax: { fontSize: 12, color: '#888', fontWeight: '400' },
   remove: { fontSize: 16, color: '#c0392b', paddingHorizontal: 4 },
   lineInputs: { flexDirection: 'row', gap: 10, alignItems: 'flex-end' },

@@ -199,7 +199,7 @@ const styles = StyleSheet.create({
     borderBottomColor: '#eee',
     gap: 12,
   },
-  rowLeft: { flexShrink: 1, gap: 3 },
+  rowLeft: { flex: 1, gap: 3 },
   name: { fontSize: 16, fontWeight: '600', color: '#111' },
   sub: { fontSize: 13, color: '#888' },
   amount: { fontSize: 15, fontWeight: '700', color: '#c0392b' },

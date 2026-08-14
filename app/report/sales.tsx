@@ -105,7 +105,7 @@ const styles = StyleSheet.create({
     borderTopColor: '#eee',
     gap: 12,
   },
-  rowLeft: { flexShrink: 1, gap: 3 },
+  rowLeft: { flex: 1, gap: 3 },
   rowNo: { fontSize: 15, fontWeight: '600', color: '#111' },
   rowSub: { fontSize: 13, color: '#888' },
   rowAmount: { fontSize: 15, fontWeight: '700', color: '#111' },

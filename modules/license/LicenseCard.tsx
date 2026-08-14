@@ -171,7 +171,7 @@ const styles = StyleSheet.create({
   wrap: { gap: 10 },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
   label: { fontSize: 13, color: '#888' },
-  value: { fontSize: 14, fontWeight: '700', color: '#111', flexShrink: 1, textAlign: 'right' },
+  value: { fontSize: 14, fontWeight: '700', color: '#111', flex: 1, textAlign: 'right' },
   warnText: { color: '#c0392b' },
   warnBanner: {
     fontSize: 12,

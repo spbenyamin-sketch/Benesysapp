@@ -104,7 +104,7 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: '#eee',
   },
-  name: { fontSize: 15, color: '#111', flexShrink: 1 },
+  name: { fontSize: 15, color: '#111', flex: 1 },
   amount: { fontSize: 15, fontWeight: '600' },
   empty: { color: '#999', paddingVertical: 8 },
 });

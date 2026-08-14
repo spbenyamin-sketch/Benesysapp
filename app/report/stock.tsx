@@ -102,7 +102,7 @@ const styles = StyleSheet.create({
     borderTopColor: '#eee',
     gap: 12,
   },
-  rowLeft: { flexShrink: 1, gap: 3 },
+  rowLeft: { flex: 1, gap: 3 },
   name: { fontSize: 15, fontWeight: '600', color: '#111' },
   sub: { fontSize: 13, color: '#888' },
   stock: { fontSize: 15, fontWeight: '600', color: '#111' },

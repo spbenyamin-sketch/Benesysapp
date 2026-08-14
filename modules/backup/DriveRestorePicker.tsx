@@ -196,7 +196,7 @@ const styles = StyleSheet.create({
     borderBottomColor: '#eee',
     gap: 12,
   },
-  rowLeft: { flexShrink: 1, gap: 3 },
+  rowLeft: { flex: 1, gap: 3 },
   rowTitle: { fontSize: 15, fontWeight: '600', color: '#111' },
   rowSub: { fontSize: 12, color: '#888' },
   chevron: { fontSize: 22, color: '#ccc' },

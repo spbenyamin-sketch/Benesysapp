@@ -519,7 +519,7 @@ const styles = StyleSheet.create({
     borderTopColor: '#eee',
     gap: 12,
   },
-  cartLeft: { flex: 1, flexShrink: 1, gap: 3 },
+  cartLeft: { flex: 1, gap: 3 },
   cartDrop: {
     width: 32,
     height: 32,
@@ -550,7 +550,7 @@ const styles = StyleSheet.create({
     borderTopColor: '#ddd',
     paddingTop: 12,
   },
-  sheetSubtotal: { fontSize: 13, color: '#888', flexShrink: 1 },
+  sheetSubtotal: { fontSize: 13, color: '#888', flex: 1 },
   sheetGrand: { fontSize: 20, fontWeight: '700', color: '#111' },
   chargeBtn: {
     backgroundColor: '#208AEF',

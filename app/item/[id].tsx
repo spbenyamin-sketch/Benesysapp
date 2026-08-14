@@ -179,7 +179,7 @@ const styles = StyleSheet.create({
   details: { gap: 10 },
   detailRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 16 },
   detailLabel: { color: '#888', fontSize: 14 },
-  detailValue: { color: '#111', fontSize: 14, fontWeight: '500', flexShrink: 1, textAlign: 'right' },
+  detailValue: { color: '#111', fontSize: 14, fontWeight: '500', flex: 1, textAlign: 'right' },
   deleteBtn: { marginTop: 8, alignItems: 'center', padding: 12 },
   deleteText: { color: '#c0392b', fontWeight: '600', fontSize: 15 },
 });

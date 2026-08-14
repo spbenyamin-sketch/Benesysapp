@@ -151,7 +151,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     backgroundColor: '#fff',
   },
-  value: { fontSize: 16, color: '#111', flexShrink: 1 },
+  value: { fontSize: 16, color: '#111', flex: 1 },
   placeholder: { color: '#aaa' },
   chevron: { fontSize: 14, color: '#888', marginLeft: 8 },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' },
@@ -198,13 +198,16 @@ const styles = StyleSheet.create({
     borderBottomColor: '#eee',
   },
   optionRowActive: { backgroundColor: '#eef6ff' },
-  // flexShrink lets a long option wrap onto a second line (the row has a
-  // minHeight, not a fixed one). Without it Android hands the Text its full
-  // measured width and simply clips whatever runs past the row — names like
-  // "Apparel & Textiles" lost their tail instead of wrapping.
-  optionText: { fontSize: 17, color: '#222', flexShrink: 1 },
+  // flex: 1, never flexShrink. A shrinkable Text inside a row is measured a
+  // second time by Yoga, and on Android that second pass can arrive with a
+  // width of zero — the text then wraps one letter per line and the row, whose
+  // height was already settled, shows only the first: "Kilogram" became "K".
+  // flexBasis 0 plus grow takes the width from the row instead of from the text
+  // measurement, so the option gets the space that is actually left over and a
+  // long name like "Apparel & Textiles" wraps onto the second line.
+  optionText: { fontSize: 17, color: '#222', flex: 1 },
   optionActive: { color: '#208AEF', fontWeight: '700' },
-  customText: { fontSize: 17, color: '#208AEF', fontWeight: '700', flexShrink: 1 },
+  customText: { fontSize: 17, color: '#208AEF', fontWeight: '700', flex: 1 },
   check: { color: '#208AEF', fontSize: 17, fontWeight: '700', marginLeft: 10 },
   emptyText: { color: '#999', textAlign: 'center', paddingVertical: 24 },
   closeBtn: {

@@ -206,7 +206,7 @@ const styles = StyleSheet.create({
   group: { gap: 6 },
   groupTitle: { fontSize: 14, fontWeight: '700', color: '#208AEF' },
   exRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' },
-  exSay: { fontSize: 14, color: '#111', flexShrink: 1, fontWeight: '500' },
-  exDoes: { fontSize: 12, color: '#888', flexShrink: 1, textAlign: 'right', maxWidth: '45%' },
+  exSay: { fontSize: 14, color: '#111', flex: 1, fontWeight: '500' },
+  exDoes: { fontSize: 12, color: '#888', flex: 1, textAlign: 'right', maxWidth: '45%' },
   footNote: { fontSize: 12, color: '#888', lineHeight: 18, marginTop: 4 },
 });

@@ -218,7 +218,7 @@ const styles = StyleSheet.create({
   details: { gap: 8 },
   detailRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 16 },
   detailLabel: { color: '#888', fontSize: 14 },
-  detailValue: { color: '#111', fontSize: 14, fontWeight: '500', flexShrink: 1, textAlign: 'right' },
+  detailValue: { color: '#111', fontSize: 14, fontWeight: '500', flex: 1, textAlign: 'right' },
   sectionTitle: { fontSize: 16, fontWeight: '700', color: '#111' },
   entryRow: {
     flexDirection: 'row',
@@ -228,7 +228,7 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: '#eee',
   },
-  entryLeft: { flexShrink: 1, gap: 2 },
+  entryLeft: { flex: 1, gap: 2 },
   entryLabel: { fontSize: 15, color: '#111', fontWeight: '500' },
   entryDate: { fontSize: 12, color: '#999' },
   entryRight: { alignItems: 'flex-end', gap: 2 },
