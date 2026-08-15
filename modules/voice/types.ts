@@ -30,7 +30,10 @@ export type NavTarget =
   | 'reportSales'
   | 'reportOutstanding'
   | 'reportStock'
-  | 'reportGst';
+  | 'reportGst'
+  | 'reportProfit'
+  | 'newSaleReturn'
+  | 'invoices';
 
 /** Named fields a form screen can be asked to fill by voice. */
 export type VoiceField =

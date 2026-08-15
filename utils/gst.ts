@@ -100,3 +100,65 @@ export function computeTotals(
   const grandTotal = Math.max(0, subtotal + taxTotal - discount);
   return { lines: computed, totals: { subtotal, taxTotal, discount, grandTotal } };
 }
+
+// ── CGST / SGST / IGST presentation split ─────────────────────────────────────
+// Nothing above this line changes: the stored tax figure is a single number, and
+// this is only about how a GST invoice has to PRINT it. One supply, one tax —
+// either halved into the central + state share (both parties in one state), or
+// carried whole as IGST (the goods crossed a state line).
+
+/** Which pair of taxes a supply attracts. */
+export type SupplyType = 'intra' | 'inter';
+
+/**
+ * A tax amount as it appears on the face of an invoice. Exactly one of the two
+ * shapes is non-zero: intra → cgst + sgst, inter → igst. In every case
+ * `cgst + sgst + igst === tax`, so the printed rows always re-add to the total.
+ */
+export interface TaxSplit {
+  supply: SupplyType;
+  tax: number; // paise, the whole tax that was split
+  cgst: number; // paise
+  sgst: number; // paise
+  igst: number; // paise
+}
+
+/** Trimmed, lower-cased state name; '' when there is nothing usable. */
+const normaliseState = (state?: string | null): string => (state ?? '').trim().toLowerCase();
+
+/**
+ * Intra- or inter-state, decided from the seller's and the buyer's state.
+ *
+ * A blank/unknown state on either side reads as INTRA-state. That is the safe
+ * default for the shop this app is for: almost every bill is a local one, and
+ * CGST+SGST is what a walk-in customer with no address on the bill expects. It
+ * also means a shop that never fills in its state keeps printing what it printed
+ * before this feature existed.
+ */
+export function supplyType(sellerState?: string | null, buyerState?: string | null): SupplyType {
+  const seller = normaliseState(sellerState);
+  const buyer = normaliseState(buyerState);
+  if (!seller || !buyer) return 'intra';
+  return seller === buyer ? 'intra' : 'inter';
+}
+
+/**
+ * Split a tax amount for display. Intra-state halves it into CGST and SGST, with
+ * the odd paise given to SGST so the two halves add back to the exact tax (the
+ * same convention as the rate-wise breakup in modules/reports/service.ts).
+ * Inter-state carries the whole amount as IGST.
+ */
+export function splitTax(tax: number, supply: SupplyType): TaxSplit {
+  if (supply === 'inter') return { supply, tax, cgst: 0, sgst: 0, igst: tax };
+  const cgst = Math.round(tax / 2);
+  return { supply, tax, cgst, sgst: tax - cgst, igst: 0 };
+}
+
+/** Convenience: decide the supply type from the two states, then split. */
+export function splitTaxForStates(
+  tax: number,
+  sellerState?: string | null,
+  buyerState?: string | null,
+): TaxSplit {
+  return splitTax(tax, supplyType(sellerState, buyerState));
+}

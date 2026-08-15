@@ -41,20 +41,30 @@ export async function deletePayment(id: number): Promise<void> {
 // paymentStatus is a convenience flag; the party ledger balance is still the
 // source of truth (computed in modules/parties/ledger.ts). We derive the flag
 // from total paid vs grandTotal.
-export async function recomputeInvoiceStatus(invoiceId: number): Promise<void> {
+/**
+ * Money settled against one invoice, in the direction that invoice expects — a
+ * payment running the other way (a refund against a sale) gives money back, so
+ * it subtracts. Used to set the status, and to warn before an edit drops a
+ * bill's total below what the customer has already handed over.
+ */
+export async function netPaidForInvoice(invoiceId: number): Promise<number> {
   const [inv] = await db.select().from(invoices).where(eq(invoices.id, invoiceId));
-  if (!inv) return;
+  if (!inv) return 0;
   const [linked, [party]] = await Promise.all([
     listPaymentsByInvoice(invoiceId),
     db.select().from(parties).where(eq(parties.id, inv.partyId)),
   ]);
-  // A payment running the other way (a refund against a sale) gives money back,
-  // so it subtracts from what has been settled on this invoice.
   const normal = defaultDirectionForInvoice(inv.type);
-  const paid = linked.reduce((s, p) => {
+  return linked.reduce((s, p) => {
     const dir = paymentDirection(p, party?.type ?? 'customer');
     return dir === normal ? s + p.amount : s - p.amount;
   }, 0);
+}
+
+export async function recomputeInvoiceStatus(invoiceId: number): Promise<void> {
+  const [inv] = await db.select().from(invoices).where(eq(invoices.id, invoiceId));
+  if (!inv) return;
+  const paid = await netPaidForInvoice(invoiceId);
   const status = paid <= 0 ? 'unpaid' : paid >= inv.grandTotal ? 'paid' : 'partial';
   await db.update(invoices).set({ paymentStatus: status }).where(eq(invoices.id, invoiceId));
 }
@@ -80,9 +90,13 @@ export function paymentDirection(
   return payment.direction ?? (partyType === 'supplier' ? 'out' : 'in');
 }
 
-/** The direction a payment against this invoice normally runs. */
+/**
+ * The direction a payment against this invoice normally runs. Money goes out to
+ * a supplier we bought from — and out to a customer we took goods back from,
+ * because settling a credit note means refunding them.
+ */
 export function defaultDirectionForInvoice(type: string): Direction {
-  return type === 'purchase' ? 'out' : 'in';
+  return type === 'purchase' || type === 'saleReturn' ? 'out' : 'in';
 }
 
 export async function listPaymentsWithParty(limit?: number): Promise<PaymentWithParty[]> {
@@ -94,6 +108,7 @@ export async function listPaymentsWithParty(limit?: number): Promise<PaymentWith
       amount: payments.amount,
       mode: payments.mode,
       direction: payments.direction,
+      accountId: payments.accountId,
       date: payments.date,
       notes: payments.notes,
       createdAt: payments.createdAt,

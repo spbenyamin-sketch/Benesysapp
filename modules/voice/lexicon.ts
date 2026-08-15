@@ -14,7 +14,7 @@
 
 export const NUM_WORDS: Record<string, number> = {
   // Tamil units
-  'ஒன்று': 1, 'ஒண்ணு': 1, 'ஒரு': 1, 'ஓர்': 1, 'ஒன்': 1,
+  'ஒன்று': 1, 'ஒண்ணு': 1, 'ஒன்னு': 1, 'ஒரு': 1, 'ஓர்': 1, 'ஒன்': 1,
   'இரண்டு': 2, 'ரெண்டு': 2, 'இரு': 2, 'ரெண்ட': 2,
   'மூன்று': 3, 'மூணு': 3, 'மூன': 3,
   'நான்கு': 4, 'நாலு': 4, 'நாங்கு': 4,
@@ -104,12 +104,28 @@ export const NUM_FRACTIONS: Record<string, number> = {
 
 /** Whole+fraction words spoken as one token: ஒன்றரை = 1.5. */
 export const NUM_COMPOUND: Record<string, number> = {
-  'ஒன்றரை': 1.5, 'ஒண்ணரை': 1.5, 'ஒரையரை': 1.5,
+  'ஒன்றரை': 1.5, 'ஒண்ணரை': 1.5, 'ஒன்னரை': 1.5, 'ஒரையரை': 1.5,
   'இரண்டரை': 2.5, 'ரெண்டரை': 2.5,
   'மூன்றரை': 3.5, 'மூணரை': 3.5,
   'நான்கரை': 4.5, 'நாலரை': 4.5,
   'ஐந்தரை': 5.5, 'அஞ்சரை': 5.5,
-  onnara: 1.5, rendara: 1.5, moonara: 3.5,
+  'ஆறரை': 6.5, 'ஏழரை': 7.5, 'எட்டரை': 8.5, 'ஒன்பதரை': 9.5, 'பத்தரை': 10.5,
+  onnara: 1.5, onnarai: 1.5, rendara: 2.5, rendarai: 2.5, irandarai: 2.5,
+  moonara: 3.5, moonarai: 3.5, naalara: 4.5, naalarai: 4.5,
+  anjara: 5.5, anjarai: 5.5, ararai: 6.5, ezharai: 7.5, ettarai: 8.5,
+  patharai: 10.5,
+};
+
+/** Spoken decimal point: "ஒன்று புள்ளி ஐந்து" / "one point five" → 1.5. */
+export const POINT_WORDS = ['புள்ளி', 'பாய்ண்ட்', 'point', 'dot', 'decimal'];
+
+/**
+ * Fraction glyphs, and the "1 1/2" spelling Google's recogniser uses for a
+ * spoken "one and a half" — both mapped to decimals before parsing. Left alone,
+ * "1 1/2 கிலோ" tokenises to 1, 1 and 2, which the number reader adds up to 4.
+ */
+export const FRACTION_GLYPHS: Record<string, string> = {
+  '½': '0.5', '¼': '0.25', '¾': '0.75', '⅓': '0.333', '⅔': '0.667',
 };
 
 /** Tamil digit glyphs, mapped to ASCII before parsing. */
@@ -149,8 +165,10 @@ export const KW = {
            'thedu', 'search', 'find', 'look'],
   open: ['திற', 'திறங்க', 'ஓபன்', 'காட்டு', 'பாரு',
          'thira', 'kaattu', 'open', 'show', 'view', 'goto'],
+  // "return" is NOT here: it now means a sale return, which is a document, not
+  // a way of leaving the screen.
   back: ['பின்', 'பின்னால', 'திரும்பு', 'பேக்', 'முந்தைய',
-         'pinnala', 'thirumbu', 'back', 'previous', 'return'],
+         'pinnala', 'thirumbu', 'back', 'previous'],
   help: ['உதவி', 'ஹெல்ப்', 'கமாண்ட்', 'என்னசொல்லலாம்',
          'udhavi', 'help', 'commands', 'whatcanisay'],
   excel: ['எக்செல்', 'எக்ஸெல்', 'எக்ஸ்போர்ட்', 'excel', 'export', 'xlsx', 'spreadsheet'],
@@ -166,7 +184,7 @@ export const KW = {
 export const FILLER = [
   'ரூபாய்', 'ரூவா', 'ரூ', 'ரூபா', 'rupees', 'rupee', 'rs', 'inr',
   'கிலோ', 'கிராம்', 'லிட்டர்', 'மில்லி', 'பாக்கெட்', 'பீஸ்', 'எண்ணிக்கை', 'நபர்',
-  'kg', 'kilo', 'gram', 'grams', 'litre', 'liter', 'ltr', 'ml', 'packet', 'pack',
+  'kg', 'kgs', 'kilo', 'gram', 'grams', 'litre', 'liter', 'ltr', 'ml', 'packet', 'pack',
   'piece', 'pieces', 'pcs', 'nos', 'no', 'plate', 'cup', 'box', 'bottle',
   'பிளேட்', 'கப்', 'பாட்டில்', 'டப்பா',
   'மற்றும்', 'அப்புறம்', 'பிறகு', 'கொஞ்சம்', 'ஒரு', 'the', 'and', 'then', 'also',
@@ -180,6 +198,9 @@ export const FILLER = [
 import type { NavTarget } from './types';
 
 export const NAV_WORDS: { target: NavTarget; words: string[] }[] = [
+  // Before newSale: "விற்பனை ரிட்டர்ன்" carries a sale word too, and the longest
+  // match wins, so the return entry has to be in the running for it.
+  { target: 'newSaleReturn', words: ['விற்பனைரிட்டர்ன்', 'ரிட்டர்ன்', 'திரும்பபெறு', 'திருப்பிவாங்கு', 'கிரெடிட்நோட்', 'salereturn', 'creditnote', 'return', 'returns', 'goodsreturn', 'sarakkuthirumbal'] },
   { target: 'newSale', words: ['புதுவிற்பனை', 'விற்பனைபில்', 'சேல்ஸ்பில்', 'விற்பனை', 'சேல்ஸ்', 'newsale', 'salesinvoice', 'newinvoice', 'saleinvoice', 'sale', 'sales', 'vithpanai', 'virpanai'] },
   { target: 'newPurchase', words: ['புதுகொள்முதல்', 'கொள்முதல்பில்', 'கொள்முதல்', 'பர்ச்சேஸ்', 'newpurchase', 'purchasebill', 'purchaseinvoice', 'purchase', 'kolmudhal'] },
   { target: 'newQuotation', words: ['மதிப்பீடு', 'கோட்டேஷன்', 'quotation', 'quote', 'estimate'] },
@@ -192,6 +213,12 @@ export const NAV_WORDS: { target: NavTarget; words: string[] }[] = [
   { target: 'newParty', words: ['புதுவாடிக்கையாளர்', 'புதுகஸ்டமர்', 'newparty', 'newcustomer', 'addcustomer', 'newsupplier'] },
   { target: 'newItem', words: ['புதுபொருள்', 'புதுஐட்டம்', 'newitem', 'additem', 'newproduct'] },
   { target: 'reportSales', words: ['விற்பனைஅறிக்கை', 'salesreport'] },
+  // The whole document list. "பில்" alone still means "make the bill" (it is a
+  // submit word), so only the plural/list forms land here.
+  { target: 'invoices', words: ['பில்பட்டியல்', 'எல்லாபில்', 'பில்கள்', 'இன்வாய்ஸ்', 'billlist', 'allbills', 'invoices', 'transactions', 'bills'] },
+  // "லாபம்" alone is the whole question a shopkeeper asks, so it needs no
+  // report/page word to count as navigation.
+  { target: 'reportProfit', words: ['லாபம்', 'லாபநஷ்டம்', 'ப்ராஃபிட்', 'laabam', 'labam', 'profit', 'profitloss', 'profitreport', 'earning', 'earnings', 'margin'] },
   { target: 'reportOutstanding', words: ['பாக்கி', 'நிலுவை', 'outstanding', 'receivable', 'duereport'] },
   { target: 'reportStock', words: ['ஸ்டாக்அறிக்கை', 'இருப்பு', 'stockreport', 'inventory'] },
   { target: 'reportGst', words: ['ஜிஎஸ்டிஅறிக்கை', 'gstreport', 'gstsummary'] },
@@ -280,7 +307,9 @@ export const ACTION_WORDS: { action: VoiceAction; words: string[]; with?: string
 
 export const PAYMENT_MODE_WORDS: { mode: 'cash' | 'upi' | 'card' | 'bank'; words: string[] }[] = [
   { mode: 'upi', words: ['யுபிஐ', 'ஜிபே', 'போன்பே', 'பேடிஎம்', 'ஸ்கேன்', 'upi', 'gpay', 'googlepay', 'phonepe', 'paytm', 'scan', 'qr'] },
-  { mode: 'card', words: ['கார்டு', 'கிரெடிட்', 'டெபிட்', 'ஸ்வைப்', 'card', 'credit', 'debit', 'swipe'] },
+  // A bare "credit" is NOT here: "credit note" is a sale return, and a shop that
+  // means the card says "card" or "credit card" (joined, so both still match).
+  { mode: 'card', words: ['கார்டு', 'கிரெடிட்கார்டு', 'டெபிட்கார்டு', 'டெபிட்', 'ஸ்வைப்', 'card', 'creditcard', 'debitcard', 'debit', 'swipe'] },
   { mode: 'bank', words: ['வங்கி', 'பேங்க்', 'டிரான்ஸ்ஃபர்', 'நெப்ட்', 'bank', 'transfer', 'neft', 'imps', 'rtgs', 'cheque', 'check'] },
   { mode: 'cash', words: ['ரொக்கம்', 'கேஷ்', 'பணமாக', 'cash', 'rokkam'] },
 ];

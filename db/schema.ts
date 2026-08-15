@@ -42,6 +42,9 @@ export const items = sqliteTable('items', {
   taxRate: integer('tax_rate').notNull().default(0), // basis points
   openingStock: integer('opening_stock').notNull().default(0), // thousandths
   currentStock: integer('current_stock').notNull().default(0), // thousandths
+  // Reorder level: below this the item is flagged as running out. 0 = only an
+  // empty shelf counts as low, which is what the app did before this existed.
+  minStock: integer('min_stock').notNull().default(0), // thousandths
   voiceAlias: text('voice_alias'), // Tamil/spoken name(s), comma-separated — voice matching
   // Photo of the product, shown on the Quick Bill tiles so the counter can be
   // worked by picture alone. A file:// uri inside the app's document dir (see
@@ -52,7 +55,10 @@ export const items = sqliteTable('items', {
 
 export const invoices = sqliteTable('invoices', {
   id: integer('id').primaryKey({ autoIncrement: true }),
-  type: text('type', { enum: ['sale', 'purchase', 'quotation', 'challan'] }).notNull(),
+  // 'saleReturn' is the credit note: goods coming back from a customer. It is an
+  // invoice in every other respect — same numbering, same lines, same PDF — but
+  // its money and its stock run the opposite way to a sale.
+  type: text('type', { enum: ['sale', 'purchase', 'quotation', 'challan', 'saleReturn'] }).notNull(),
   invoiceNo: text('invoice_no').notNull(), // generated per financial year, not user-editable
   partyId: integer('party_id')
     .notNull()
@@ -65,6 +71,18 @@ export const invoices = sqliteTable('invoices', {
   paymentStatus: text('payment_status', { enum: ['unpaid', 'partial', 'paid'] })
     .notNull()
     .default('unpaid'),
+  // When the money is due. NULL = due on the day of the bill, which is how a
+  // counter sale works and what every existing row means.
+  dueDate: text('due_date'), // ISO 'YYYY-MM-DD'
+  // The state the goods were supplied to, frozen at billing time (a party can
+  // move). Same state as the business → CGST+SGST; different → IGST. NULL falls
+  // back to the party's state when the invoice is printed.
+  placeOfSupply: text('place_of_supply'),
+  // Paise added (or removed) to land the grand total on a whole rupee.
+  roundOff: integer('round_off').notNull().default(0),
+  // For a sale return: the invoice it reverses. NULL when the goods came back
+  // without anyone finding the original bill.
+  sourceInvoiceId: integer('source_invoice_id'),
   // Whether the line rates on this invoice already contained GST (see utils/gst
   // TaxMode). Stored per invoice so a reprint shows the same numbers forever;
   // `subtotal`/`tax_total` are ALWAYS the split-out taxable value + tax either way.
@@ -86,6 +104,17 @@ export const invoiceItems = sqliteTable('invoice_items', {
   rate: integer('rate').notNull(), // paise per unit
   taxRate: integer('tax_rate').notNull().default(0), // basis points
   amount: integer('amount').notNull(), // paise (pre-tax line total = qty * rate)
+  // What this item COST at the moment the bill was made (paise per unit) — the
+  // item's purchase price, copied down. Profit is sale value minus this, so it
+  // has to be a snapshot: re-pricing a purchase tomorrow must not rewrite the
+  // profit on a bill already given to a customer. NULL on rows written before
+  // this column existed; the profit report falls back to the item's price.
+  costPrice: integer('cost_price'), // paise per unit
+  // Discount on this line alone, paise, already taken off `amount`.
+  discount: integer('discount').notNull().default(0),
+  // The item's HSN/SAC as it stood when the bill was made — a tax invoice has to
+  // reprint identically years later, even if the item is reclassified.
+  hsnCode: text('hsn_code'),
 });
 
 export const payments = sqliteTable('payments', {
@@ -100,6 +129,9 @@ export const payments = sqliteTable('payments', {
   // column existed — those fall back to the party type (customer=in, supplier=out).
   // An explicit value is what makes a refund to a customer possible.
   direction: text('direction', { enum: ['in', 'out'] }),
+  // Which cash box or bank account the money moved through. NULL = not recorded
+  // (every row written before accounts existed).
+  accountId: integer('account_id').references(() => bankAccounts.id),
   date: text('date').notNull(), // ISO 'YYYY-MM-DD'
   notes: text('notes'),
   createdAt: createdAt(),

@@ -10,8 +10,10 @@ export default function InvoiceLayout() {
         headerTitleStyle: { color: '#111' },
       }}
     >
+      <Stack.Screen name="index" options={{ title: 'All Bills' }} />
       <Stack.Screen name="new" options={{ title: 'New Invoice', presentation: 'modal' }} />
       <Stack.Screen name="[id]" options={{ title: 'Invoice' }} />
+      <Stack.Screen name="edit/[id]" options={{ title: 'Edit', presentation: 'modal' }} />
     </Stack>
   );
 }

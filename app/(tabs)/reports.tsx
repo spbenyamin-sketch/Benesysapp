@@ -4,6 +4,12 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 const REPORTS: { href: Href; emoji: string; title: string; sub: string }[] = [
   { href: '/report/sales', emoji: '🧾', title: 'Sale Report', sub: 'Sales over a date range' },
   {
+    href: '/report/profit',
+    emoji: '📈',
+    title: 'Profit Report',
+    sub: 'Sales minus cost and expenses, item-wise',
+  },
+  {
     href: '/report/outstanding',
     emoji: '💰',
     title: 'Party Outstanding',

@@ -36,11 +36,14 @@ describe('prefixFor', () => {
     expect(prefixFor('purchase')).toBe('PUR');
     expect(prefixFor('quotation')).toBe('QTN');
     expect(prefixFor('challan')).toBe('DC');
+    expect(prefixFor('saleReturn')).toBe('CN');
   });
 
   it('lets the business profile override the sale prefix only', () => {
     expect(prefixFor('sale', 'BENE')).toBe('BENE');
     expect(prefixFor('purchase', 'BENE')).toBe('PUR');
+    // A credit note keeps its own series even when sales are renumbered.
+    expect(prefixFor('saleReturn', 'BENE')).toBe('CN');
   });
 
   it('ignores a blank or whitespace override', () => {

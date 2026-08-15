@@ -8,9 +8,9 @@ import type { Invoice, Party, Payment } from '@/db/schema';
 // Sign convention (see db/schema.ts):
 //   balance > 0  → the party owes YOU   (receivable)
 //   balance < 0  → YOU owe the party    (payable)
-// Only sale/purchase invoices are financial; quotations/challans are ignored.
+// Sales, purchases and sale returns are financial; quotations/challans are not.
 
-export type LedgerKind = 'opening' | 'sale' | 'purchase' | 'payment';
+export type LedgerKind = 'opening' | 'sale' | 'purchase' | 'saleReturn' | 'payment';
 
 export interface LedgerEntry {
   key: string;
@@ -35,8 +35,23 @@ export interface PartyWithBalance {
 function invoiceDelta(inv: Invoice): number {
   if (inv.type === 'sale') return inv.grandTotal; // customer owes us more
   if (inv.type === 'purchase') return -inv.grandTotal; // we owe the supplier
+  // Goods came back: the customer owes that much less — and if they had already
+  // paid, the balance goes negative, which is exactly the refund we owe them.
+  if (inv.type === 'saleReturn') return -inv.grandTotal;
   return 0; // quotation / challan → non-financial
 }
+
+const LEDGER_KIND: Partial<Record<Invoice['type'], LedgerKind>> = {
+  sale: 'sale',
+  purchase: 'purchase',
+  saleReturn: 'saleReturn',
+};
+
+const LEDGER_LABEL: Partial<Record<Invoice['type'], string>> = {
+  sale: 'Sale',
+  purchase: 'Purchase',
+  saleReturn: 'Sale return',
+};
 
 // A recorded payment moves the balance by the direction it actually ran: money
 // received (in) shrinks a receivable, money paid (out) shrinks a payable. The
@@ -70,8 +85,8 @@ export async function getPartyLedger(partyId: number): Promise<PartyLedger | nul
     txns.push({
       key: `inv-${inv.id}`,
       date: inv.date,
-      kind: inv.type === 'sale' ? 'sale' : 'purchase',
-      label: `${inv.type === 'sale' ? 'Sale' : 'Purchase'} · ${inv.invoiceNo}`,
+      kind: LEDGER_KIND[inv.type] ?? 'sale',
+      label: `${LEDGER_LABEL[inv.type] ?? 'Sale'} · ${inv.invoiceNo}`,
       delta,
     });
   }

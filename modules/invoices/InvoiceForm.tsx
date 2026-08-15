@@ -1,5 +1,5 @@
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -13,7 +13,13 @@ import {
 } from 'react-native';
 import Button from '@/components/Button';
 import PickerField, { type PickerOption } from '@/components/PickerField';
-import { createInvoiceWithItems, type InvoiceLineInput } from '@/modules/invoices/service';
+import {
+  createInvoiceWithItems,
+  getInvoiceWithItems,
+  updateInvoiceWithItems,
+  type InvoiceLineInput,
+} from '@/modules/invoices/service';
+import { netPaidForInvoice } from '@/modules/payments/service';
 import { listItems } from '@/modules/items/service';
 import { listParties } from '@/modules/parties/service';
 import { getDefaultTaxMode } from '@/modules/settings/service';
@@ -24,8 +30,10 @@ import { computeTotals, TAX_MODE_LABEL, type TaxMode } from '@/utils/gst';
 import {
   formatMoney,
   formatTaxRate,
+  paiseToRupeeInput,
   parseQtyToThousandths,
   parseRupeesToPaise,
+  qtyToInput,
 } from '@/utils/format';
 import {
   formatQtyValue,
@@ -42,6 +50,7 @@ const TITLES: Record<InvoiceType, { noun: string; cta: string }> = {
   purchase: { noun: 'Purchase bill', cta: 'Create purchase' },
   quotation: { noun: 'Quotation', cta: 'Create quotation' },
   challan: { noun: 'Delivery challan', cta: 'Create challan' },
+  saleReturn: { noun: 'Sale return', cta: 'Create sale return' },
 };
 
 // One row in the editable line-items list. qty/rate are kept as strings while
@@ -54,23 +63,56 @@ interface LineDraft {
   taxRate: number; // basis points
   qtyStr: string;
   rateStr: string;
+  /** Carried over from the invoice being returned, so the profit report unwinds
+   *  exactly what that sale earned rather than today's cost. */
+  costPrice?: number;
 }
 
 function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+/** Ask before leaving the shop owing the customer money. */
+function confirmOverpaid(paid: number, newTotal: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    Alert.alert(
+      'Already paid more than this',
+      `${formatMoney(paid)} has been received against this bill, but the new total is ${formatMoney(
+        newTotal,
+      )}. ${formatMoney(paid - newTotal)} will show as owed back to them.`,
+      [
+        { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+        { text: 'Save anyway', onPress: () => resolve(true) },
+      ],
+      { cancelable: true, onDismiss: () => resolve(false) },
+    );
+  });
+}
+
 export default function InvoiceForm({
   type,
   initialPartyId,
+  sourceInvoiceId,
+  editInvoiceId,
 }: {
   type: InvoiceType;
   initialPartyId?: number;
+  /** Invoice this document is being raised against — a sale being returned. Its
+   *  party, lines, rates, tax basis and costs are copied in to start from. */
+  sourceInvoiceId?: number;
+  /** Set when correcting a document that is already saved: the same form, but
+   *  it writes back over that document instead of creating another one. */
+  editInvoiceId?: number;
 }) {
   const router = useRouter();
   const { lang } = useVoice();
   const titles = TITLES[type];
   const isPurchase = type === 'purchase';
+  const isReturn = type === 'saleReturn';
+  const isEdit = editInvoiceId != null;
+  // Both flows start by reading an existing document; only the destination of
+  // the save differs.
+  const prefillId = editInvoiceId ?? sourceInvoiceId;
 
   const [parties, setParties] = useState<Party[]>([]);
   const [items, setItems] = useState<Item[]>([]);
@@ -89,13 +131,47 @@ export default function InvoiceForm({
         if (!active) return;
         setParties(p);
         setItems(i);
-        setTaxMode(mode);
+        // A document raised against (or being) another one inherits ITS tax
+        // basis — see the prefill below — so the app-wide default must not
+        // overwrite it.
+        if (!prefillId) setTaxMode(mode);
       });
       return () => {
         active = false;
       };
-    }, []),
+    }, [prefillId]),
   );
+
+  // Returning goods, or correcting a saved bill: either way, start from the
+  // document itself. Everything stays editable, so a partial return is a matter
+  // of changing quantities or deleting rows.
+  useEffect(() => {
+    if (!prefillId) return;
+    let active = true;
+    getInvoiceWithItems(prefillId).then((source) => {
+      if (!active || !source) return;
+      setPartyId(source.invoice.partyId);
+      setTaxMode(source.invoice.taxMode);
+      if (isEdit) setDate(source.invoice.date);
+      setDiscountStr(source.invoice.discount ? paiseToRupeeInput(source.invoice.discount) : '');
+      setLines(
+        source.lines.map((l, i) => ({
+          key: `src${i}`,
+          itemId: l.itemId,
+          itemName: l.itemName,
+          unit: l.itemUnit,
+          taxRate: l.taxRate,
+          qtyStr: qtyToInput(l.qty),
+          rateStr: paiseToRupeeInput(l.rate),
+          costPrice: l.costPrice ?? undefined,
+        })),
+      );
+      setLineSeq(source.lines.length);
+    });
+    return () => {
+      active = false;
+    };
+  }, [sourceInvoiceId]);
 
   const partyOptions: PickerOption[] = useMemo(
     () =>
@@ -184,6 +260,7 @@ export default function InvoiceForm({
         qty: parseQtyToThousandths(l.qtyStr),
         rate: parseRupeesToPaise(l.rateStr),
         taxRate: l.taxRate,
+        costPrice: l.costPrice,
       })),
     [lines],
   );
@@ -206,12 +283,25 @@ export default function InvoiceForm({
       Alert.alert('Check quantities', 'Every line needs a quantity greater than zero.');
       return;
     }
+    // Cutting a bill below what the customer has already handed over is allowed
+    // — it happens whenever an over-charge is found — but it must never be a
+    // surprise, so the money that has to go back is named before saving.
+    if (isEdit) {
+      const paid = await netPaidForInvoice(editInvoiceId);
+      if (paid > totals.grandTotal) {
+        const proceed = await confirmOverpaid(paid, totals.grandTotal);
+        if (!proceed) return;
+      }
+    }
+
     setSaving(true);
     try {
-      const inv = await createInvoiceWithItems(
-        { type, partyId, date, discount, paymentStatus: 'unpaid', taxMode },
-        parsedLines,
-      );
+      const inv = isEdit
+        ? await updateInvoiceWithItems(editInvoiceId, { partyId, date, discount, taxMode }, parsedLines)
+        : await createInvoiceWithItems(
+            { type, partyId, date, discount, paymentStatus: 'unpaid', taxMode },
+            parsedLines,
+          );
       router.replace({ pathname: '/invoice/[id]', params: { id: inv.id } });
     } catch (e) {
       setSaving(false);
@@ -450,13 +540,22 @@ export default function InvoiceForm({
           <TotalRow label="Grand total" value={formatMoney(totals.grandTotal)} strong />
         </View>
 
-        <Button label={titles.cta} onPress={save} loading={saving} style={styles.save} />
+        <Button
+          label={isEdit ? 'Save changes' : titles.cta}
+          onPress={save}
+          loading={saving}
+          style={styles.save}
+        />
         <Text style={styles.hint}>
-          {type === 'sale'
+          {isEdit
+            ? 'The bill number stays the same. Stock is corrected to match the new lines, and the payment status is worked out again.'
+            : type === 'sale'
             ? 'Stock decreases when you save. Record payment from the invoice screen.'
             : isPurchase
-              ? 'Stock increases when you save. Record payment from the invoice screen.'
-              : 'Quotations and challans don’t affect stock or ledgers.'}
+              ? 'Stock increases when you save, and each item’s purchase price is updated to the rate you paid. Record payment from the invoice screen.'
+              : isReturn
+                ? 'Stock comes back in when you save, and the customer’s balance drops by this much. Record the refund from the invoice screen if you pay them back in cash.'
+                : 'Quotations and challans don’t affect stock or ledgers.'}
         </Text>
       </ScrollView>
     </KeyboardAvoidingView>

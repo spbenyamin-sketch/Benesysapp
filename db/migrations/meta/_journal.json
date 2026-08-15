@@ -36,6 +36,20 @@
       "when": 1785839007898,
       "tag": "0004_lively_alice",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1786791883261,
+      "tag": "0005_late_nico_minoru",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1786794293620,
+      "tag": "0006_reflective_blur",
+      "breakpoints": true
     }
   ]
 }

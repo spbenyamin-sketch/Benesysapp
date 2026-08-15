@@ -12,7 +12,9 @@ import { getSetting } from '@/modules/settings/service';
 import {
   gstRateBreakup,
   gstSummary,
+  marginPercent,
   partyOutstanding,
+  profitReport,
   salesReport,
   stockSummary,
 } from '@/modules/reports/service';
@@ -136,7 +138,11 @@ function rateSheet(name: string, rows: Awaited<ReturnType<typeof gstRateBreakup>
 export async function exportSalesReportExcel(from: string, to: string): Promise<string> {
   const report = await salesReport(from, to);
   const preamble = await preambleFor('Sales Report', { from, to });
-  return shareWorkbook([invoiceSheet('Sales', report.rows, preamble)], `sales-report${stamp(from, to)}.xlsx`);
+  const sheets = [invoiceSheet('Sales', report.rows, preamble)];
+  // Returns get their own sheet rather than negative rows among the sales: the
+  // accountant wants to see the credit notes as documents in their own right.
+  if (report.returns.length) sheets.push(invoiceSheet('Sale returns', report.returns));
+  return shareWorkbook(sheets, `sales-report${stamp(from, to)}.xlsx`);
 }
 
 export async function exportOutstandingExcel(): Promise<string> {
@@ -224,6 +230,82 @@ export async function exportStockExcel(): Promise<string> {
 }
 
 /**
+ * Profit: the summary a shopkeeper reads top-to-bottom (sales → cost → gross →
+ * overheads → net), then the item rows behind it and the overheads they were
+ * charged against.
+ */
+export async function exportProfitExcel(from: string, to: string): Promise<string> {
+  const report = await profitReport(from, to);
+  const preamble = await preambleFor('Profit Report', { from, to });
+
+  const summary: SheetSpec = {
+    name: 'Summary',
+    preamble,
+    columns: [
+      { header: 'Particulars', width: 32 },
+      { header: 'Amount', width: 18, money: true },
+    ],
+    rows: [
+      ['Sale value (before GST)', money(report.saleValue)],
+      ['Less: discount given', money(-report.discount)],
+      ['Net sales', money(report.netSaleValue)],
+      ['Less: cost of goods sold', money(-report.costValue)],
+      ['GROSS PROFIT', money(report.grossProfit)],
+      ['Gross margin %', marginPercent(report.grossProfit, report.netSaleValue)],
+      ['', ''],
+      ['Less: expenses', money(-report.expenses)],
+      ['', ''],
+      ['Sale invoices', report.invoiceCount],
+    ],
+    totals: ['NET PROFIT', money(report.netProfit)],
+  };
+
+  const itemSheet: SheetSpec = {
+    name: 'Item-wise',
+    columns: [
+      { header: 'Item', width: 28 },
+      { header: 'Unit', width: 10 },
+      { header: 'Qty sold', width: 12 },
+      { header: 'Sale value', width: 15, money: true },
+      { header: 'Cost', width: 15, money: true },
+      { header: 'Profit', width: 15, money: true },
+      { header: 'Margin %', width: 11 },
+    ],
+    rows: report.items.map((r) => [
+      r.name,
+      r.unit,
+      qty(r.qty),
+      money(r.saleValue),
+      money(r.costValue),
+      money(r.profit),
+      marginPercent(r.profit, r.saleValue),
+    ]),
+    totals: [
+      'TOTAL',
+      '',
+      '',
+      money(report.saleValue),
+      money(report.costValue),
+      money(report.saleValue - report.costValue),
+      marginPercent(report.saleValue - report.costValue, report.saleValue),
+    ],
+  };
+
+  const expenseSheet: SheetSpec = {
+    name: 'Expenses',
+    columns: [
+      { header: 'Category', width: 26 },
+      { header: 'Entries', width: 10 },
+      { header: 'Amount', width: 16, money: true },
+    ],
+    rows: report.expenseRows.map((e) => [e.category, e.count, money(e.total)]),
+    totals: ['TOTAL', '', money(report.expenses)],
+  };
+
+  return shareWorkbook([summary, itemSheet, expenseSheet], `profit-report${stamp(from, to)}.xlsx`);
+}
+
+/**
  * The richest export — this is the one that goes to the accountant: a summary
  * block, the rate-wise slab tables, and the full sales/purchase invoice lists.
  */
@@ -242,13 +324,14 @@ export async function exportGstExcel(from: string, to: string): Promise<string> 
       { header: 'Amount', width: 18, money: true },
     ],
     rows: [
-      ['Taxable sales (output)', money(data.taxableSales)],
-      ['GST collected on sales', money(data.outputTax)],
+      ['Taxable sales (output, net of returns)', money(data.taxableSales)],
+      ['GST collected on sales (net of returns)', money(data.outputTax)],
       ['', ''],
       ['Taxable purchases (input)', money(data.taxablePurchases)],
       ['GST paid on purchases', money(data.inputTax)],
       ['', ''],
       ['Sale invoices', data.salesRows.length],
+      ['Sale returns (credit notes)', data.saleReturnRows.length],
       ['Purchase bills', data.purchaseRows.length],
     ],
     totals: [
@@ -257,14 +340,13 @@ export async function exportGstExcel(from: string, to: string): Promise<string> 
     ],
   };
 
-  return shareWorkbook(
-    [
-      summary,
-      rateSheet('Sales rate-wise', rates.sales),
-      rateSheet('Purchase rate-wise', rates.purchases),
-      invoiceSheet('Sales invoices', data.salesRows),
-      invoiceSheet('Purchase bills', data.purchaseRows),
-    ],
-    `gst-report${stamp(from, to)}.xlsx`,
-  );
+  const sheets: SheetSpec[] = [
+    summary,
+    rateSheet('Sales rate-wise', rates.sales),
+    rateSheet('Purchase rate-wise', rates.purchases),
+    invoiceSheet('Sales invoices', data.salesRows),
+  ];
+  if (data.saleReturnRows.length) sheets.push(invoiceSheet('Sale returns', data.saleReturnRows));
+  sheets.push(invoiceSheet('Purchase bills', data.purchaseRows));
+  return shareWorkbook(sheets, `gst-report${stamp(from, to)}.xlsx`);
 }

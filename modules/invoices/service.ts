@@ -1,4 +1,4 @@
-import { desc, eq, sql } from 'drizzle-orm';
+import { desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '@/db/client';
 import {
   invoiceItems,
@@ -11,6 +11,7 @@ import {
   type NewInvoiceItem,
   type Party,
 } from '@/db/schema';
+import { recomputeInvoiceStatus } from '@/modules/payments/service';
 import { getSetting } from '@/modules/settings/service';
 import { computeTotals, type TaxMode } from '@/utils/gst';
 import { nextInvoiceNo, type InvoiceType } from '@/utils/invoiceNumber';
@@ -67,6 +68,20 @@ export interface InvoiceLineInput {
   qty: number; // thousandths
   rate: number; // paise per unit
   taxRate: number; // basis points
+  /** What the goods cost us, paise per unit. Defaults to the item's purchase
+   *  price on a sale, and to the pre-tax rate being paid on a purchase. */
+  costPrice?: number;
+}
+
+/**
+ * Pre-tax cost of ONE unit, from a line's pre-tax total and its quantity —
+ * `amount` already has any inclusive GST backed out of it (see utils/gst), which
+ * is what makes this comparable with the pre-tax sale value the profit report
+ * comes from. A zero quantity has no meaningful unit cost.
+ */
+export function unitCostFrom(amount: number, qty: number): number {
+  if (qty <= 0) return 0;
+  return Math.round((amount * 1000) / qty);
 }
 
 export interface InvoiceHeaderInput {
@@ -76,13 +91,15 @@ export interface InvoiceHeaderInput {
   discount?: number; // paise
   paymentStatus?: Invoice['paymentStatus'];
   taxMode?: TaxMode; // default 'exclusive' — see utils/gst
+  dueDate?: string | null; // ISO day; null = due immediately
+  placeOfSupply?: string | null; // Indian state; null = fall back to the party's
 }
 
-// Stock direction: a sale ships goods out (−), a purchase brings them in (+);
-// quotations/challans don't move stock.
-function stockSign(type: InvoiceType): -1 | 0 | 1 {
+// Stock direction: a sale ships goods out (−), a purchase and a sale return
+// bring them in (+); quotations/challans don't move stock.
+export function stockSign(type: InvoiceType): -1 | 0 | 1 {
   if (type === 'sale') return -1;
-  if (type === 'purchase') return 1;
+  if (type === 'purchase' || type === 'saleReturn') return 1;
   return 0;
 }
 
@@ -105,9 +122,38 @@ export async function createInvoiceWithItems(
   const salePrefix = header.type === 'sale' ? await getSetting('sale_prefix') : undefined;
   const invoiceNo = nextInvoiceNo(header.type, existing.map((e) => e.invoiceNo), now, salePrefix);
 
+  // The cost of the goods, frozen at billing time. Re-pricing an item next month
+  // must not change what a bill already given to a customer earned — so the
+  // profit report reads this column, not the item's price of the day.
+  const itemIds = [...new Set(lines.map((l) => l.itemId))];
+  const priceRows = itemIds.length
+    ? await db
+        .select({ id: items.id, purchasePrice: items.purchasePrice, hsnCode: items.hsnCode })
+        .from(items)
+        .where(inArray(items.id, itemIds))
+    : [];
+  const purchasePriceOf = new Map(priceRows.map((r) => [r.id, r.purchasePrice]));
+  // The HSN is copied down too: a tax invoice has to reprint identically years
+  // later, even after the item is reclassified.
+  const hsnOf = new Map(priceRows.map((r) => [r.id, r.hsnCode]));
+
+  // Where the goods were supplied, frozen now: it decides CGST+SGST vs IGST on
+  // the printed bill, and a party who moves house years later must not change
+  // the tax on a bill already issued.
+  const [buyer] = await db
+    .select({ state: parties.state })
+    .from(parties)
+    .where(eq(parties.id, header.partyId));
+  const placeOfSupply = header.placeOfSupply ?? buyer?.state ?? null;
+
   const taxMode: TaxMode = header.taxMode ?? 'exclusive';
   const { lines: computed, totals } = computeTotals(lines, header.discount ?? 0, taxMode);
   const sign = stockSign(header.type);
+  const isPurchase = header.type === 'purchase';
+  // On a purchase the rate paid IS the cost; on everything else it's what the
+  // stock cost the last time the item was priced.
+  const costOf = (l: InvoiceLineInput, i: number): number =>
+    l.costPrice ?? (isPurchase ? unitCostFrom(computed[i].amount, l.qty) : purchasePriceOf.get(l.itemId) ?? 0);
 
   return db.transaction((tx) => {
     const inv = tx
@@ -123,31 +169,189 @@ export async function createInvoiceWithItems(
         grandTotal: totals.grandTotal,
         paymentStatus: header.paymentStatus ?? 'unpaid',
         taxMode,
+        dueDate: header.dueDate ?? null,
+        placeOfSupply,
       })
       .returning()
       .get();
 
-    lines.forEach((l, i) => {
-      tx.insert(invoiceItems)
-        .values({
-          invoiceId: inv.id,
-          itemId: l.itemId,
-          qty: l.qty,
-          rate: l.rate,
-          taxRate: l.taxRate,
-          amount: computed[i].amount,
-        })
-        .run();
-      if (sign !== 0) {
+    writeLines(tx, inv.id, lines, computed, { sign, isPurchase, costOf, hsnOf });
+    return inv;
+  });
+}
+
+/** The transaction handle handed to a `db.transaction` callback. */
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * Write a document's lines and move the stock they represent. Shared by create
+ * and edit so the two can never drift apart on cost, HSN or stock direction.
+ */
+function writeLines(
+  tx: Tx,
+  invoiceId: number,
+  lines: InvoiceLineInput[],
+  computed: { amount: number }[],
+  ctx: {
+    sign: -1 | 0 | 1;
+    isPurchase: boolean;
+    costOf: (l: InvoiceLineInput, i: number) => number;
+    hsnOf: Map<number, string | null>;
+  },
+): void {
+  lines.forEach((l, i) => {
+    const cost = ctx.costOf(l, i);
+    tx.insert(invoiceItems)
+      .values({
+        invoiceId,
+        itemId: l.itemId,
+        qty: l.qty,
+        rate: l.rate,
+        taxRate: l.taxRate,
+        amount: computed[i].amount,
+        costPrice: cost,
+        hsnCode: ctx.hsnOf.get(l.itemId) ?? null,
+      })
+      .run();
+    if (ctx.sign === 0) return;
+    // Buying the goods is also the moment we learn what they now cost, so a
+    // purchase carries the new price back onto the item — the next sale is then
+    // measured against what was actually paid, not last season's rate. A
+    // free/zero line is never allowed to wipe a real price.
+    tx.update(items)
+      .set({
+        currentStock: sql`${items.currentStock} + ${ctx.sign * l.qty}`,
+        ...(ctx.isPurchase && cost > 0 ? { purchasePrice: cost } : {}),
+      })
+      .where(eq(items.id, l.itemId))
+      .run();
+  });
+}
+
+/**
+ * What one line of an EDITED document costs us.
+ *
+ * The order matters, and it is the whole reason profit survives an edit:
+ *   1. a cost handed in explicitly (a sale return carries the original one);
+ *   2. on a purchase, the rate being paid — there the rate IS the cost, so a
+ *      corrected rate is a corrected cost;
+ *   3. the cost frozen when this bill was first made, for an item that was
+ *      already on it — editing a sale today must not re-price what it earned;
+ *   4. only for a line that is genuinely new: what the item costs today.
+ */
+export function editedLineCost(args: {
+  explicit?: number;
+  isPurchase: boolean;
+  amount: number; // pre-tax line total, paise
+  qty: number; // thousandths
+  frozen?: number | null;
+  current?: number | null;
+}): number {
+  if (args.explicit != null) return args.explicit;
+  if (args.isPurchase) return unitCostFrom(args.amount, args.qty);
+  return args.frozen ?? args.current ?? 0;
+}
+
+/**
+ * Edit a saved document: its lines are replaced wholesale and the stock they
+ * had moved is put back first, so the shelf ends up holding exactly what the
+ * new lines say. Atomic — a failure halfway leaves the old bill untouched.
+ *
+ * What deliberately does NOT change:
+ *   • the invoice number and the document type — a bill that has been handed to
+ *     a customer keeps its identity;
+ *   • the cost frozen on a line that is still on the bill, so editing a sale
+ *     today cannot rewrite the profit it earned when it was made. (A purchase
+ *     is the exception: there the rate IS the cost, so a corrected rate is a
+ *     corrected cost.)
+ *
+ * The payment status is recomputed at the end — dropping the total below what
+ * has already been received leaves the invoice fully paid, and the excess shows
+ * up in the party's ledger as money owed back.
+ */
+export async function updateInvoiceWithItems(
+  id: number,
+  header: Omit<InvoiceHeaderInput, 'type'>,
+  lines: InvoiceLineInput[],
+): Promise<Invoice> {
+  const existing = await getInvoice(id);
+  if (!existing) throw new Error('That document no longer exists.');
+  const oldLines = await listInvoiceItems(id);
+
+  const itemIds = [...new Set(lines.map((l) => l.itemId))];
+  const priceRows = itemIds.length
+    ? await db
+        .select({ id: items.id, purchasePrice: items.purchasePrice, hsnCode: items.hsnCode })
+        .from(items)
+        .where(inArray(items.id, itemIds))
+    : [];
+  const purchasePriceOf = new Map(priceRows.map((r) => [r.id, r.purchasePrice]));
+  const hsnOf = new Map(priceRows.map((r) => [r.id, r.hsnCode]));
+  // What each item cost when this bill was first made.
+  const frozenCostOf = new Map(oldLines.map((l) => [l.itemId, l.costPrice]));
+
+  // Fields the edit form does not carry are preserved, not blanked. The place of
+  // supply is only re-derived when the bill is moved to a different party.
+  const partyChanged = header.partyId !== existing.partyId;
+  const [newBuyer] = partyChanged
+    ? await db.select({ state: parties.state }).from(parties).where(eq(parties.id, header.partyId))
+    : [];
+  const placeOfSupply =
+    header.placeOfSupply !== undefined
+      ? header.placeOfSupply
+      : partyChanged
+        ? newBuyer?.state ?? null
+        : existing.placeOfSupply;
+  const dueDate = header.dueDate !== undefined ? header.dueDate : existing.dueDate;
+
+  const taxMode: TaxMode = header.taxMode ?? existing.taxMode;
+  const { lines: computed, totals } = computeTotals(lines, header.discount ?? 0, taxMode);
+  const sign = stockSign(existing.type);
+  const isPurchase = existing.type === 'purchase';
+  const costOf = (l: InvoiceLineInput, i: number): number =>
+    editedLineCost({
+      explicit: l.costPrice,
+      isPurchase,
+      amount: computed[i].amount,
+      qty: l.qty,
+      frozen: frozenCostOf.get(l.itemId),
+      current: purchasePriceOf.get(l.itemId),
+    });
+
+  db.transaction((tx) => {
+    // Put back the stock the old lines had moved, then start again.
+    if (sign !== 0) {
+      for (const l of oldLines) {
         tx.update(items)
-          .set({ currentStock: sql`${items.currentStock} + ${sign * l.qty}` })
+          .set({ currentStock: sql`${items.currentStock} - ${sign * l.qty}` })
           .where(eq(items.id, l.itemId))
           .run();
       }
-    });
+    }
+    tx.delete(invoiceItems).where(eq(invoiceItems.invoiceId, id)).run();
 
-    return inv;
+    tx.update(invoices)
+      .set({
+        partyId: header.partyId,
+        date: header.date,
+        subtotal: totals.subtotal,
+        taxTotal: totals.taxTotal,
+        discount: totals.discount,
+        grandTotal: totals.grandTotal,
+        taxMode,
+        dueDate,
+        placeOfSupply,
+      })
+      .where(eq(invoices.id, id))
+      .run();
+
+    writeLines(tx, id, lines, computed, { sign, isPurchase, costOf, hsnOf });
   });
+
+  await recomputeInvoiceStatus(id);
+  const updated = await getInvoice(id);
+  if (!updated) throw new Error('The document could not be reloaded after saving.');
+  return updated;
 }
 
 export interface InvoiceLineRow extends InvoiceItem {
@@ -174,6 +378,9 @@ export async function getInvoiceWithItems(id: number): Promise<InvoiceDetail | n
       rate: invoiceItems.rate,
       taxRate: invoiceItems.taxRate,
       amount: invoiceItems.amount,
+      costPrice: invoiceItems.costPrice,
+      discount: invoiceItems.discount,
+      hsnCode: invoiceItems.hsnCode,
       itemName: items.name,
       itemUnit: items.unit,
     })
@@ -223,6 +430,10 @@ export async function listInvoicesWithParty(limit?: number): Promise<InvoiceWith
       grandTotal: invoices.grandTotal,
       paymentStatus: invoices.paymentStatus,
       taxMode: invoices.taxMode,
+      dueDate: invoices.dueDate,
+      placeOfSupply: invoices.placeOfSupply,
+      roundOff: invoices.roundOff,
+      sourceInvoiceId: invoices.sourceInvoiceId,
       createdAt: invoices.createdAt,
       partyName: parties.name,
     })

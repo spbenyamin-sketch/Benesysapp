@@ -19,6 +19,7 @@ const TYPE_LABEL: Record<InvoiceType, string> = {
   purchase: 'Purchase bill',
   quotation: 'Quotation',
   challan: 'Delivery challan',
+  saleReturn: 'Sale return (credit note)',
 };
 
 const STATUS_TONE: Record<string, string> = {
@@ -86,6 +87,14 @@ export default function InvoiceDetailScreen() {
       case 'total':
         return totalLine(formatMoney(detail.invoice.grandTotal), lang);
       case 'navigate':
+        // "ரிட்டர்ன்" on a sale opens the credit note already filled in.
+        if (intent.target === 'newSaleReturn' && detail.invoice.type === 'sale') {
+          router.push({
+            pathname: '/invoice/new',
+            params: { type: 'saleReturn', from: detail.invoice.id },
+          });
+          return lang === 'ta-IN' ? 'விற்பனை ரிட்டர்ன்' : 'Sale return';
+        }
         if (intent.target !== 'newPayment') return false;
         router.push({
           pathname: '/payment/new',
@@ -97,6 +106,10 @@ export default function InvoiceDetailScreen() {
         });
         return lang === 'ta-IN' ? 'பணம் பதிவு' : 'Record payment';
       case 'action':
+        if (intent.action === 'edit') {
+          router.push({ pathname: '/invoice/edit/[id]', params: { id: detail.invoice.id } });
+          return lang === 'ta-IN' ? 'திருத்தலாம்' : 'Editing';
+        }
         if (intent.action !== 'delete') return false;
         confirmDelete();
         return true;
@@ -107,7 +120,7 @@ export default function InvoiceDetailScreen() {
 
   const confirmDelete = () => {
     if (!detail) return;
-    const isStock = detail.invoice.type === 'sale' || detail.invoice.type === 'purchase';
+    const isStock = detail.invoice.type !== 'quotation' && detail.invoice.type !== 'challan';
     Alert.alert(
       'Delete this document?',
       `${detail.invoice.invoiceNo} will be permanently removed${isStock ? ' and its stock movement reversed' : ''}.`,
@@ -200,7 +213,7 @@ export default function InvoiceDetailScreen() {
           <TotalRow label="Grand total" value={formatMoney(invoice.grandTotal)} strong />
         </View>
 
-        {(invoice.type === 'sale' || invoice.type === 'purchase') && invoice.paymentStatus !== 'paid' ? (
+        {invoice.type !== 'quotation' && invoice.type !== 'challan' && invoice.paymentStatus !== 'paid' ? (
           <Button
             label="Record payment"
             tone="ghost"
@@ -212,6 +225,27 @@ export default function InvoiceDetailScreen() {
                   invoiceId: invoice.id,
                   direction: defaultDirectionForInvoice(invoice.type),
                 },
+              })
+            }
+            style={styles.action}
+          />
+        ) : null}
+        <Button
+          label="Edit"
+          tone="ghost"
+          onPress={() =>
+            router.push({ pathname: '/invoice/edit/[id]', params: { id: invoice.id } })
+          }
+          style={styles.action}
+        />
+        {invoice.type === 'sale' ? (
+          <Button
+            label="Sale return"
+            tone="ghost"
+            onPress={() =>
+              router.push({
+                pathname: '/invoice/new',
+                params: { type: 'saleReturn', from: invoice.id },
               })
             }
             style={styles.action}

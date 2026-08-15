@@ -65,6 +65,12 @@ const NAV_ROUTES: Record<NavTarget, { href: any; label: string; labelTa: string 
   newPurchase: { href: { pathname: '/invoice/new', params: { type: 'purchase' } }, label: 'New purchase', labelTa: 'புது கொள்முதல்' },
   newQuotation: { href: { pathname: '/invoice/new', params: { type: 'quotation' } }, label: 'New quotation', labelTa: 'மதிப்பீடு' },
   newChallan: { href: { pathname: '/invoice/new', params: { type: 'challan' } }, label: 'New challan', labelTa: 'சலான்' },
+  invoices: { href: '/invoice', label: 'All bills', labelTa: 'எல்லா பில்' },
+  newSaleReturn: {
+    href: { pathname: '/invoice/new', params: { type: 'saleReturn' } },
+    label: 'Sale return',
+    labelTa: 'விற்பனை ரிட்டர்ன்',
+  },
   newParty: { href: '/party/new', label: 'New party', labelTa: 'புது வாடிக்கையாளர்' },
   newItem: { href: '/item/new', label: 'New item', labelTa: 'புது பொருள்' },
   newPayment: { href: '/payment/new', label: 'New payment', labelTa: 'பணம் பெறுதல்' },
@@ -73,6 +79,7 @@ const NAV_ROUTES: Record<NavTarget, { href: any; label: string; labelTa: string 
   reportSales: { href: '/report/sales', label: 'Sales report', labelTa: 'விற்பனை அறிக்கை' },
   reportOutstanding: { href: '/report/outstanding', label: 'Outstanding', labelTa: 'நிலுவை' },
   reportStock: { href: '/report/stock', label: 'Stock report', labelTa: 'ஸ்டாக் அறிக்கை' },
+  reportProfit: { href: '/report/profit', label: 'Profit report', labelTa: 'லாப அறிக்கை' },
   reportGst: { href: '/report/gst', label: 'GST report', labelTa: 'ஜிஎஸ்டி அறிக்கை' },
 };
 

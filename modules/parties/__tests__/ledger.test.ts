@@ -73,6 +73,10 @@ function invoice(over: Partial<Invoice> = {}): Invoice {
     grandTotal: 11800,
     paymentStatus: 'unpaid',
     taxMode: 'exclusive',
+    dueDate: null,
+    placeOfSupply: null,
+    roundOff: 0,
+    sourceInvoiceId: null,
     createdAt: '2026-04-10T00:00:00.000Z',
     ...over,
   };
@@ -86,6 +90,7 @@ function payment(over: Partial<Payment> = {}): Payment {
     amount: 5000,
     mode: 'cash',
     direction: null,
+    accountId: null,
     date: '2026-04-11',
     notes: null,
     createdAt: '2026-04-11T00:00:00.000Z',
@@ -146,6 +151,39 @@ describe('getPartyLedger', () => {
     mockListPaymentsByParty.mockResolvedValue([payment({ amount: 30000 })]);
     const ledger = await getPartyLedger(1);
     expect(ledger?.balance).toBe(0);
+  });
+
+  it('takes a sale return back off what the customer owes', async () => {
+    mockGetParty.mockResolvedValue(party());
+    mockListInvoicesByParty.mockResolvedValue([
+      invoice({ id: 1, grandTotal: 11800, date: '2026-04-10' }),
+      invoice({
+        id: 2,
+        type: 'saleReturn',
+        invoiceNo: 'CN/2026-27/001',
+        grandTotal: 5900,
+        date: '2026-04-12',
+      }),
+    ]);
+    const ledger = await getPartyLedger(1);
+    expect(ledger?.balance).toBe(5900);
+    expect(ledger?.entries.at(-1)).toMatchObject({
+      kind: 'saleReturn',
+      label: 'Sale return · CN/2026-27/001',
+    });
+  });
+
+  it('owes the customer a refund when they return more than they still owe', async () => {
+    mockGetParty.mockResolvedValue(party());
+    mockListInvoicesByParty.mockResolvedValue([invoice({ grandTotal: 11800 })]);
+    mockListPaymentsByParty.mockResolvedValue([payment({ amount: 11800, date: '2026-04-11' })]);
+    mockListInvoicesByParty.mockResolvedValue([
+      invoice({ grandTotal: 11800 }),
+      invoice({ id: 2, type: 'saleReturn', grandTotal: 11800, date: '2026-04-12' }),
+    ]);
+    const ledger = await getPartyLedger(1);
+    // Paid in full, then returned the lot — we are holding their money.
+    expect(ledger?.balance).toBe(-11800);
   });
 
   it('lets an explicit direction override the party default (customer refund)', async () => {

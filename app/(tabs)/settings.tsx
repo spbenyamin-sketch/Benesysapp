@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { Pressable } from 'react-native';
 import Button from '@/components/Button';
+import SelectField from '@/components/SelectField';
 import TextField from '@/components/TextField';
 import {
   getAutoBackupConfig,
@@ -45,8 +46,10 @@ import {
   setDefaultTaxMode,
   setSetting,
 } from '@/modules/settings/service';
+import { matchOption } from '@/modules/voice/match';
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
 import { VOICE_LANG_LABEL, type VoiceLang } from '@/modules/voice/types';
+import { INDIAN_STATES } from '@/utils/constants';
 import { TAX_MODE_LABEL, type TaxMode } from '@/utils/gst';
 
 // Keys persisted in the settings key/value table.
@@ -54,6 +57,10 @@ const KEYS = {
   name: 'business_name',
   gstin: 'business_gstin',
   address: 'business_address',
+  // The shop's own state. Decides whether a bill prints CGST+SGST (buyer in the
+  // same state) or IGST (buyer elsewhere), so it belongs to the profile, not to
+  // any one invoice.
+  state: 'business_state',
   phone: 'business_phone',
   prefix: 'sale_prefix',
 } as const;
@@ -62,6 +69,7 @@ export default function SettingsScreen() {
   const [name, setName] = useState('');
   const [gstin, setGstin] = useState('');
   const [address, setAddress] = useState('');
+  const [bizState, setBizState] = useState('');
   const [phone, setPhone] = useState('');
   const [prefix, setPrefix] = useState('');
   const [saving, setSaving] = useState(false);
@@ -102,6 +110,9 @@ export default function SettingsScreen() {
           return true;
         case 'address':
           setAddress(intent.value);
+          return true;
+        case 'state':
+          setBizState(matchOption(intent.value, INDIAN_STATES) ?? intent.value);
           return true;
         case 'phone':
           setPhone(intent.value);
@@ -170,6 +181,7 @@ export default function SettingsScreen() {
         setName(map.get(KEYS.name) ?? '');
         setGstin(map.get(KEYS.gstin) ?? '');
         setAddress(map.get(KEYS.address) ?? '');
+        setBizState(map.get(KEYS.state) ?? '');
         setPhone(map.get(KEYS.phone) ?? '');
         setPrefix(map.get(KEYS.prefix) ?? '');
       });
@@ -186,6 +198,7 @@ export default function SettingsScreen() {
         setSetting(KEYS.name, name.trim()),
         setSetting(KEYS.gstin, gstin.trim()),
         setSetting(KEYS.address, address.trim()),
+        setSetting(KEYS.state, bizState.trim()),
         setSetting(KEYS.phone, phone.trim()),
         setSetting(KEYS.prefix, prefix.trim()),
       ]);
@@ -371,6 +384,16 @@ export default function SettingsScreen() {
           autoCapitalize="characters"
         />
         <TextField label="Address" value={address} onChangeText={setAddress} placeholder="Business address" multiline />
+        <SelectField
+          label="State"
+          value={bizState}
+          onSelect={setBizState}
+          options={INDIAN_STATES}
+          placeholder="Select state"
+        />
+        <Text style={styles.sectionHint}>
+          Your own state. A bill to the same state prints CGST + SGST; anywhere else prints IGST.
+        </Text>
         <TextField
           label="Phone"
           value={phone}

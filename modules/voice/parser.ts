@@ -12,6 +12,7 @@ import {
   CODE_FIELDS,
   FIELD_WORDS,
   FILLER,
+  FRACTION_GLYPHS,
   KW,
   NAV_WORDS,
   NUM_COMPOUND,
@@ -21,6 +22,7 @@ import {
   PARTY_WORDS,
   PAYMENT_MODE_WORDS,
   PICK_WORDS,
+  POINT_WORDS,
   TAMIL_DIGITS,
   TEXT_FIELDS,
 } from './lexicon';
@@ -37,9 +39,22 @@ const GO_WORDS = [...KW.open, ...KW.newWord, 'போ', 'போங்க', 'ச�
 export function normalize(text: string): string {
   let s = (text ?? '').toLowerCase().trim();
   for (const [glyph, digit] of Object.entries(TAMIL_DIGITS)) s = s.split(glyph).join(digit);
+  for (const [glyph, dec] of Object.entries(FRACTION_GLYPHS)) s = s.split(glyph).join(` ${dec} `);
+  // "1 1/2 kg" → "1 0.5 kg", which the number reader adds up to 1.5. Only the
+  // denominators a shop actually says are converted, and only when the
+  // numerator is smaller — so a spoken date ("12/05/2026") is left alone.
+  s = s.replace(/(\d+)\s*\/\s*(\d+)(\s*\/)?/g, (m, n: string, d: string, more?: string) => {
+    const num = Number(n);
+    const den = Number(d);
+    if (more || n.length > 1 || num >= den || ![2, 3, 4, 8].includes(den)) return m;
+    return ` ${Math.round((num / den) * 1000) / 1000} `;
+  });
+  // "one and a half" — that "and" joins a number to its fraction, and would
+  // otherwise be read as a clause separator ("one" | "a half kg chicken").
+  s = s.replace(/\s+and\s+(?:a\s+)?(half|quarter)\b/g, ' $1');
   // ₹500 / rs.500 → "500" (the currency word is filler anyway)
   s = s.replace(/[₹]/g, ' ');
-  return s.replace(/\s+/g, ' ');
+  return s.replace(/\s+/g, ' ').trim();
 }
 
 /** One utterance → clauses. "ரெண்டு டீ, மூணு காபி" → ['ரெண்டு டீ', 'மூணு காபி']. */
@@ -155,6 +170,21 @@ export function readNumberAt(tokens: string[], i: number): NumberSpan | null {
       current = (current === 0 ? 1 : current) * NUM_SCALES[t];
       total += current;
       current = 0;
+    } else if (matched && POINT_WORDS.includes(t)) {
+      // "ஒன்று புள்ளி ஐந்து" → 1.5. The digits after the point are read one by
+      // one, and the number ends with them.
+      let j = i + n + 1;
+      let digits = '';
+      while (j < tokens.length) {
+        const d = /^\d$/.test(tokens[j]) ? Number(tokens[j]) : NUM_WORDS[tokens[j]];
+        if (d == null || d > 9 || !Number.isInteger(d)) break;
+        digits += String(d);
+        j++;
+      }
+      if (!digits) break;
+      current += Number(`0.${digits}`);
+      n = j - i;
+      break;
     } else {
       break;
     }

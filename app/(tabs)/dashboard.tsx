@@ -11,6 +11,7 @@ const TYPE_TAG: Record<string, string> = {
   purchase: 'Purchase',
   quotation: 'Quote',
   challan: 'Challan',
+  saleReturn: 'Return',
 };
 
 function todayISO(): string {
@@ -44,9 +45,15 @@ export default function DashboardScreen() {
       listInvoicesWithParty().then((all) => {
         if (!active) return;
         const today = todayISO();
+        // Net of anything brought back today — "today's sales" should not count
+        // goods that walked back in through the door.
         const sum = all
-          .filter((i) => i.type === 'sale' && i.date === today)
-          .reduce((s, i) => s + i.grandTotal, 0);
+          .filter((i) => i.date === today)
+          .reduce(
+            (s, i) =>
+              i.type === 'sale' ? s + i.grandTotal : i.type === 'saleReturn' ? s - i.grandTotal : s,
+            0,
+          );
         setTodaySales(sum);
       });
       return () => {
@@ -139,7 +146,12 @@ export default function DashboardScreen() {
             <Kpi label="To pay" value={formatMoney(payable)} tone="#c0392b" />
           </View>
 
-          <Text style={styles.sectionTitle}>Recent</Text>
+          <View style={styles.sectionHead}>
+            <Text style={styles.sectionTitle}>Recent</Text>
+            <Pressable onPress={() => router.push('/invoice')} hitSlop={8}>
+              <Text style={styles.seeAll}>All bills ›</Text>
+            </Pressable>
+          </View>
         </View>
       }
       renderItem={({ item }) => (
@@ -210,7 +222,15 @@ const styles = StyleSheet.create({
   kpi: { flex: 1, backgroundColor: '#f7f7f9', borderRadius: 12, padding: 12, gap: 4 },
   kpiLabel: { fontSize: 12, color: '#888' },
   kpiValue: { fontSize: 16, fontWeight: '700' },
-  sectionTitle: { fontSize: 16, fontWeight: '700', color: '#111', marginTop: 8 },
+  sectionHead: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 8,
+    gap: 12,
+  },
+  sectionTitle: { fontSize: 16, fontWeight: '700', color: '#111' },
+  seeAll: { fontSize: 14, fontWeight: '600', color: '#208AEF' },
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',

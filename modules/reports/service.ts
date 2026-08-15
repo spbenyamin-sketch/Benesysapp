@@ -2,9 +2,15 @@
 // these compose the existing services rather than issuing new raw SQL, so the
 // number conventions and ledger sign rules stay in one place.
 
-import { and, eq, gte, lte } from 'drizzle-orm';
+import { and, eq, gte, inArray, lte } from 'drizzle-orm';
 import { db } from '@/db/client';
-import { invoiceItems, invoices, type Item } from '@/db/schema';
+import { invoiceItems, invoices, items as itemsTable, type Item } from '@/db/schema';
+import {
+  filterExpensesByRange,
+  listExpenses,
+  summariseExpenses,
+  type CategoryTotal,
+} from '@/modules/expenses/service';
 import { listItems } from '@/modules/items/service';
 import { listInvoicesWithParty, type InvoiceWithParty } from '@/modules/invoices/service';
 import { listPartiesWithBalance, type PartyWithBalance } from '@/modules/parties/ledger';
@@ -13,29 +19,43 @@ import { lineTax } from '@/utils/gst';
 const inRange = (date: string, from: string, to: string) => date >= from && date <= to;
 
 // ── Sales report ──────────────────────────────────────────────────────────────
+// Every total here is NET of sale returns: goods that came back were never
+// really sold, and a shopkeeper asking "how much did I sell this month" is not
+// asking for a figure that still counts them.
 export interface SalesReport {
   from: string;
   to: string;
-  count: number;
-  subtotal: number;
-  taxTotal: number;
-  discount: number;
-  grandTotal: number;
-  rows: InvoiceWithParty[];
+  count: number; // sale invoices
+  subtotal: number; // net of returns
+  taxTotal: number; // net of returns
+  discount: number; // net of returns
+  grandTotal: number; // net of returns
+  rows: InvoiceWithParty[]; // the sale invoices themselves
+  returnCount: number;
+  returnTotal: number; // gross value of what came back
+  returns: InvoiceWithParty[];
 }
+
+const sumBy = (rows: InvoiceWithParty[], pick: (r: InvoiceWithParty) => number) =>
+  rows.reduce((s, r) => s + pick(r), 0);
 
 export async function salesReport(from: string, to: string): Promise<SalesReport> {
   const all = await listInvoicesWithParty();
-  const rows = all.filter((i) => i.type === 'sale' && inRange(i.date, from, to));
+  const inWindow = all.filter((i) => inRange(i.date, from, to));
+  const rows = inWindow.filter((i) => i.type === 'sale');
+  const returns = inWindow.filter((i) => i.type === 'saleReturn');
   return {
     from,
     to,
     count: rows.length,
-    subtotal: rows.reduce((s, r) => s + r.subtotal, 0),
-    taxTotal: rows.reduce((s, r) => s + r.taxTotal, 0),
-    discount: rows.reduce((s, r) => s + r.discount, 0),
-    grandTotal: rows.reduce((s, r) => s + r.grandTotal, 0),
+    subtotal: sumBy(rows, (r) => r.subtotal) - sumBy(returns, (r) => r.subtotal),
+    taxTotal: sumBy(rows, (r) => r.taxTotal) - sumBy(returns, (r) => r.taxTotal),
+    discount: sumBy(rows, (r) => r.discount) - sumBy(returns, (r) => r.discount),
+    grandTotal: sumBy(rows, (r) => r.grandTotal) - sumBy(returns, (r) => r.grandTotal),
     rows,
+    returnCount: returns.length,
+    returnTotal: sumBy(returns, (r) => r.grandTotal),
+    returns,
   };
 }
 
@@ -101,25 +121,188 @@ export interface GstSummary {
   netPayable: number; // outputTax − inputTax
   /** Invoice-level detail, kept for the Excel export (and any future drill-down). */
   salesRows: InvoiceWithParty[];
+  saleReturnRows: InvoiceWithParty[];
   purchaseRows: InvoiceWithParty[];
 }
 
 export async function gstSummary(from: string, to: string): Promise<GstSummary> {
   const all = await listInvoicesWithParty();
-  const sales = all.filter((i) => i.type === 'sale' && inRange(i.date, from, to));
-  const purchases = all.filter((i) => i.type === 'purchase' && inRange(i.date, from, to));
-  const outputTax = sales.reduce((s, r) => s + r.taxTotal, 0);
-  const inputTax = purchases.reduce((s, r) => s + r.taxTotal, 0);
+  const inWindow = all.filter((i) => inRange(i.date, from, to));
+  const sales = inWindow.filter((i) => i.type === 'sale');
+  const returns = inWindow.filter((i) => i.type === 'saleReturn');
+  const purchases = inWindow.filter((i) => i.type === 'purchase');
+  // Tax charged on goods that came back was never earned, so it comes straight
+  // off the output tax — otherwise the shop pays GST on a sale it refunded.
+  const outputTax = sumBy(sales, (r) => r.taxTotal) - sumBy(returns, (r) => r.taxTotal);
+  const inputTax = sumBy(purchases, (r) => r.taxTotal);
   return {
     from,
     to,
-    taxableSales: sales.reduce((s, r) => s + r.subtotal, 0),
+    taxableSales: sumBy(sales, (r) => r.subtotal) - sumBy(returns, (r) => r.subtotal),
     outputTax,
-    taxablePurchases: purchases.reduce((s, r) => s + r.subtotal, 0),
+    taxablePurchases: sumBy(purchases, (r) => r.subtotal),
     inputTax,
     netPayable: outputTax - inputTax,
     salesRows: sales,
+    saleReturnRows: returns,
     purchaseRows: purchases,
+  };
+}
+
+// ── Profit ────────────────────────────────────────────────────────────────────
+// The question a shop asks at closing time: what did today actually earn?
+//
+//   gross profit = what was sold (pre-tax, less any bill discount) − what it cost
+//   net profit   = gross profit − the overheads paid in the same period
+//
+// GST is deliberately outside all of this: tax collected is the government's
+// money passing through, never income. Cost comes from the snapshot written onto
+// each sold line at billing time (invoice_items.cost_price), so re-pricing an
+// item tomorrow cannot rewrite what last month earned.
+
+/** One sold line, already flattened out of the join — the unit the maths works on. */
+export interface ProfitLine {
+  itemId: number;
+  name: string;
+  unit: string;
+  qty: number; // thousandths
+  amount: number; // paise, pre-tax sale value of the line
+  costPrice: number | null; // paise/unit frozen at billing time; null on older rows
+  itemPurchasePrice: number; // paise/unit, today's price — the fallback for those
+}
+
+export interface ProfitItemRow {
+  itemId: number;
+  name: string;
+  unit: string;
+  qty: number; // thousandths sold
+  saleValue: number; // paise, pre-tax
+  costValue: number; // paise
+  profit: number; // paise
+}
+
+export interface ProfitReport {
+  from: string;
+  to: string;
+  invoiceCount: number;
+  saleValue: number; // pre-tax value of everything sold
+  discount: number; // bill-level discounts given away
+  netSaleValue: number; // saleValue − discount
+  costValue: number;
+  grossProfit: number; // netSaleValue − costValue
+  expenses: number; // gross paise spent in the same range
+  netProfit: number; // grossProfit − expenses
+  expenseRows: CategoryTotal[]; // biggest spend first
+  items: ProfitItemRow[]; // biggest earner first
+  /** Lines billed before costs were recorded — valued at today's purchase price. */
+  estimatedLines: number;
+  /** Lines with no cost at all, which therefore read as pure profit. */
+  zeroCostLines: number;
+}
+
+/** Item-wise roll-up of sold lines. Pure, so the maths is testable without a DB. */
+export function summariseProfitLines(lines: ProfitLine[]): {
+  items: ProfitItemRow[];
+  saleValue: number;
+  costValue: number;
+  estimatedLines: number;
+  zeroCostLines: number;
+} {
+  const byItem = new Map<number, ProfitItemRow>();
+  let estimatedLines = 0;
+  let zeroCostLines = 0;
+
+  for (const line of lines) {
+    if (line.costPrice == null) estimatedLines += 1;
+    const unitCost = line.costPrice ?? line.itemPurchasePrice;
+    if (unitCost <= 0) zeroCostLines += 1;
+    const costValue = Math.round((line.qty * unitCost) / 1000);
+
+    const row = byItem.get(line.itemId) ?? {
+      itemId: line.itemId,
+      name: line.name,
+      unit: line.unit,
+      qty: 0,
+      saleValue: 0,
+      costValue: 0,
+      profit: 0,
+    };
+    row.qty += line.qty;
+    row.saleValue += line.amount;
+    row.costValue += costValue;
+    row.profit = row.saleValue - row.costValue;
+    byItem.set(line.itemId, row);
+  }
+
+  const items = [...byItem.values()].sort((a, b) => b.profit - a.profit);
+  return {
+    items,
+    saleValue: items.reduce((s, r) => s + r.saleValue, 0),
+    costValue: items.reduce((s, r) => s + r.costValue, 0),
+    estimatedLines,
+    zeroCostLines,
+  };
+}
+
+/** Profit as a percentage of the sale value — 0 when nothing was sold. */
+export function marginPercent(profit: number, saleValue: number): number {
+  if (saleValue <= 0) return 0;
+  return Math.round((profit / saleValue) * 1000) / 10;
+}
+
+export async function profitReport(from: string, to: string): Promise<ProfitReport> {
+  const billed = await db
+    .select({
+      type: invoices.type,
+      itemId: invoiceItems.itemId,
+      name: itemsTable.name,
+      unit: itemsTable.unit,
+      qty: invoiceItems.qty,
+      amount: invoiceItems.amount,
+      costPrice: invoiceItems.costPrice,
+      itemPurchasePrice: itemsTable.purchasePrice,
+    })
+    .from(invoiceItems)
+    .innerJoin(invoices, eq(invoiceItems.invoiceId, invoices.id))
+    .innerJoin(itemsTable, eq(invoiceItems.itemId, itemsTable.id))
+    .where(
+      and(
+        inArray(invoices.type, ['sale', 'saleReturn']),
+        gte(invoices.date, from),
+        lte(invoices.date, to),
+      ),
+    );
+
+  // A returned line is a sale run backwards: it takes its value AND its cost
+  // back out of the period, so the item row ends up with what really stayed sold.
+  const soldLines: ProfitLine[] = billed.map(({ type, ...line }) =>
+    type === 'saleReturn' ? { ...line, qty: -line.qty, amount: -line.amount } : line,
+  );
+
+  const [sales, allExpenses] = await Promise.all([salesReport(from, to), listExpenses()]);
+  const spend = summariseExpenses(filterExpensesByRange(allExpenses, from, to));
+  const rolled = summariseProfitLines(soldLines);
+
+  // The bill-level discount belongs to the invoice, not to any one line, so it
+  // is taken off the total rather than spread across the item rows.
+  const netSaleValue = rolled.saleValue - sales.discount;
+  const grossProfit = netSaleValue - rolled.costValue;
+
+  return {
+    from,
+    to,
+    invoiceCount: sales.count,
+    saleValue: rolled.saleValue,
+    discount: sales.discount,
+    netSaleValue,
+    costValue: rolled.costValue,
+    grossProfit,
+    expenses: spend.total,
+    netProfit: grossProfit - spend.total,
+    expenseRows: spend.byCategory,
+    items: rolled.items,
+    estimatedLines: rolled.estimatedLines,
+    zeroCostLines: rolled.zeroCostLines,
   };
 }
 
@@ -156,7 +339,11 @@ export async function gstRateBreakup(
   const group = (type: 'sale' | 'purchase'): GstRateRow[] => {
     const byRate = new Map<number, GstRateRow>();
     for (const r of rows) {
-      if (r.type !== type) continue;
+      // A sale return belongs in the sales slab it reverses, with the sign
+      // flipped — that is what makes the slab table add up to the summary.
+      const isReturn = type === 'sale' && r.type === 'saleReturn';
+      if (r.type !== type && !isReturn) continue;
+      const sign = isReturn ? -1 : 1;
       const entry = byRate.get(r.taxRate) ?? {
         taxRate: r.taxRate,
         taxable: 0,
@@ -165,8 +352,8 @@ export async function gstRateBreakup(
         sgst: 0,
         lines: 0,
       };
-      entry.taxable += r.amount;
-      entry.tax += lineTax(r.amount, r.taxRate);
+      entry.taxable += sign * r.amount;
+      entry.tax += sign * lineTax(r.amount, r.taxRate);
       entry.lines += 1;
       byRate.set(r.taxRate, entry);
     }

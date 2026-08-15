@@ -13,6 +13,7 @@ export default function ReportLayout() {
       <Stack.Screen name="sales" options={{ title: 'Sale Report' }} />
       <Stack.Screen name="outstanding" options={{ title: 'Party Outstanding' }} />
       <Stack.Screen name="stock" options={{ title: 'Stock Summary' }} />
+      <Stack.Screen name="profit" options={{ title: 'Profit Report' }} />
       <Stack.Screen name="gst" options={{ title: 'GST Summary' }} />
     </Stack>
   );

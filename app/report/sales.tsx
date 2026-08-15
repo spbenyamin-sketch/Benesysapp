@@ -49,8 +49,14 @@ export default function SalesReportScreen() {
             <Stat label="Invoices" value={String(report?.count ?? 0)} />
             <Stat label="Subtotal" value={formatMoney(report?.subtotal ?? 0)} />
             <Stat label="Tax" value={formatMoney(report?.taxTotal ?? 0)} />
-            <Stat label="Total" value={formatMoney(report?.grandTotal ?? 0)} strong />
+            <Stat label="Net total" value={formatMoney(report?.grandTotal ?? 0)} strong />
           </View>
+          {!!report?.returnCount && (
+            <Text style={styles.returnNote}>
+              Less {report.returnCount} sale return(s) worth {formatMoney(report.returnTotal)} —
+              already taken off the totals above.
+            </Text>
+          )}
           <ExcelExportButton onExport={() => exportSalesReportExcel(from, to)} />
           <Text style={styles.sectionTitle}>Invoices</Text>
         </View>
@@ -95,6 +101,7 @@ const styles = StyleSheet.create({
   statValue: { fontSize: 16, fontWeight: '600', color: '#111' },
   statStrong: { color: '#208AEF', fontSize: 18, fontWeight: '700' },
   sectionTitle: { fontSize: 16, fontWeight: '700', color: '#111' },
+  returnNote: { fontSize: 13, color: '#b8860b', lineHeight: 18 },
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',
