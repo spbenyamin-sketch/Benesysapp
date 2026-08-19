@@ -11,6 +11,9 @@ import {
 } from 'react-native';
 import { deleteParty } from '@/modules/parties/service';
 import { getPartyLedger, type LedgerEntry, type PartyLedger } from '@/modules/parties/ledger';
+import { sendWhatsAppReminder } from '@/modules/parties/reminder';
+import { sharePartyStatement } from '@/modules/parties/statement';
+import { getSetting } from '@/modules/settings/service';
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
 import { balanceSummary, formatDate, formatMoney } from '@/utils/format';
 
@@ -20,6 +23,7 @@ export default function PartyLedgerScreen() {
   const router = useRouter();
   const { lang } = useVoice();
   const [ledger, setLedger] = useState<PartyLedger | null | undefined>(undefined);
+  const [busy, setBusy] = useState<'remind' | 'statement' | null>(null);
 
   // Voice: "மொத்தம்" reads the balance out · "பேமெண்ட்" opens the payment screen
   // already pointed at this party · "எடிட்" / "டெலிட்" the header buttons.
@@ -60,6 +64,43 @@ export default function PartyLedgerScreen() {
       };
     }, [partyId]),
   );
+
+  /**
+   * Open WhatsApp with the reminder already written. Nothing is sent from here —
+   * the shopkeeper reads it and presses send, so no customer ever gets a message
+   * the shop did not choose to write.
+   */
+  const remind = async () => {
+    if (!ledger) return;
+    setBusy('remind');
+    try {
+      const businessName = (await getSetting('business_name')) || 'My Business';
+      const result = await sendWhatsAppReminder(ledger.party, {
+        balance: ledger.balance,
+        businessName,
+        lang,
+      });
+      if (result === 'no-phone') {
+        Alert.alert('No phone number', `Add a phone number for ${ledger.party.name} first.`);
+      } else if (result === 'failed') {
+        Alert.alert('Could not open WhatsApp', 'WhatsApp does not seem to be available here.');
+      }
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const sendStatement = async () => {
+    if (!ledger) return;
+    setBusy('statement');
+    try {
+      await sharePartyStatement(ledger);
+    } catch (e) {
+      Alert.alert('Could not make the statement', (e as Error)?.message ?? String(e));
+    } finally {
+      setBusy(null);
+    }
+  };
 
   const confirmDelete = () => {
     if (!ledger) return;
@@ -139,6 +180,28 @@ export default function PartyLedgerScreen() {
               <Text style={styles.payBtnText}>+ Record payment</Text>
             </Pressable>
 
+            <View style={styles.actionRow}>
+              {/* Only worth offering to someone who actually owes money. */}
+              {balance > 0 ? (
+                <Pressable
+                  style={[styles.actionBtn, busy === 'remind' && styles.actionBusy]}
+                  onPress={remind}
+                  disabled={busy !== null}
+                >
+                  <Text style={styles.actionText}>Remind on WhatsApp</Text>
+                </Pressable>
+              ) : null}
+              <Pressable
+                style={[styles.actionBtn, busy === 'statement' && styles.actionBusy]}
+                onPress={sendStatement}
+                disabled={busy !== null}
+              >
+                <Text style={styles.actionText}>
+                  {busy === 'statement' ? 'Preparing…' : 'Send statement'}
+                </Text>
+              </Pressable>
+            </View>
+
             <View style={styles.details}>
               <Detail label="Type" value={party.type === 'customer' ? 'Customer' : 'Supplier'} />
               {party.phone ? <Detail label="Phone" value={party.phone} /> : null}
@@ -215,6 +278,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   payBtnText: { color: '#208AEF', fontWeight: '600', fontSize: 15 },
+  actionRow: { flexDirection: 'row', gap: 10 },
+  actionBtn: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 10,
+    paddingVertical: 11,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionBusy: { opacity: 0.5 },
+  actionText: { color: '#444', fontWeight: '600', fontSize: 14, textAlign: 'center' },
   details: { gap: 8 },
   detailRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 16 },
   detailLabel: { color: '#888', fontSize: 14 },

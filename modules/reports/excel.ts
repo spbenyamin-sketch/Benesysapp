@@ -9,6 +9,7 @@
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { getSetting } from '@/modules/settings/service';
+import { agingReport, AGING_BUCKETS } from '@/modules/reports/aging';
 import {
   gstRateBreakup,
   gstSummary,
@@ -148,6 +149,42 @@ export async function exportSalesReportExcel(from: string, to: string): Promise<
   // accountant wants to see the credit notes as documents in their own right.
   if (report.returns.length) sheets.push(invoiceSheet('Sale returns', report.returns));
   return shareWorkbook(sheets, `sales-report${stamp(from, to)}.xlsx`);
+}
+
+/**
+ * The chase list, oldest money to the right. One row per party, with the
+ * columns adding across to the party's balance and down to the report total —
+ * so the accountant's copy says exactly what the screen says.
+ */
+export async function exportAgingExcel(): Promise<string> {
+  const data = await agingReport();
+  const preamble = await preambleFor('Receivables Aging');
+  preamble.push(`As of: ${data.asOf}`);
+
+  return shareWorkbook(
+    [
+      {
+        name: 'Aging',
+        preamble,
+        columns: [
+          { header: 'Party', width: 28 },
+          { header: 'Phone', width: 16 },
+          { header: 'Oldest (days)', width: 14 },
+          ...AGING_BUCKETS.map((b) => ({ header: b.label, width: 15, money: true })),
+          { header: 'Total', width: 16, money: true },
+        ],
+        rows: data.rows.map((r) => [
+          r.party.name,
+          r.party.phone ?? '',
+          r.oldestDays,
+          ...r.buckets.map(money),
+          money(r.total),
+        ]),
+        totals: ['TOTAL', '', '', ...data.buckets.map(money), money(data.total)],
+      },
+    ],
+    'aging-report.xlsx',
+  );
 }
 
 export async function exportOutstandingExcel(): Promise<string> {

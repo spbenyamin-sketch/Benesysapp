@@ -28,6 +28,7 @@ import { addedLine, removedLine, t, totalLine } from '@/modules/voice/phrases';
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
 import { computeTotals, supplyType, TAX_MODE_LABEL, type TaxMode } from '@/utils/gst';
 import {
+  addDays,
   formatMoney,
   formatTaxRate,
   paiseToRupeeInput,
@@ -75,6 +76,13 @@ function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+// Credit terms a counter actually says out loud. Days from the bill's own date,
+// so moving the bill date moves the presets with it.
+const DUE_PRESETS = [0, 7, 15, 30];
+const duePresetLabel = (days: number) => (days === 0 ? 'Today' : `${days} days`);
+/** What "Add due date" starts at — a month's credit, the commonest term. */
+const DEFAULT_DUE_DAYS = 30;
+
 /** Ask before leaving the shop owing the customer money. */
 function confirmOverpaid(paid: number, newTotal: number): Promise<boolean> {
   return new Promise((resolve) => {
@@ -121,6 +129,10 @@ export default function InvoiceForm({
   const [items, setItems] = useState<Item[]>([]);
   const [partyId, setPartyId] = useState<number | null>(initialPartyId ?? null);
   const [date, setDate] = useState(todayISO());
+  // '' = no due date, which is what every bill meant before this existed: due
+  // on the day it was made.
+  const [dueDate, setDueDate] = useState('');
+  const [showDue, setShowDue] = useState(false);
   const [discountStr, setDiscountStr] = useState('');
   const [lines, setLines] = useState<LineDraft[]>([]);
   const [saving, setSaving] = useState(false);
@@ -169,8 +181,14 @@ export default function InvoiceForm({
       if (!active || !source) return;
       setPartyId(source.invoice.partyId);
       setTaxMode(source.invoice.taxMode);
-      if (isEdit) setDate(source.invoice.date);
-      else setSourcePlace(source.invoice.placeOfSupply);
+      if (isEdit) {
+        setDate(source.invoice.date);
+        // Correcting a bill must not quietly drop the credit it was given.
+        if (source.invoice.dueDate) {
+          setDueDate(source.invoice.dueDate);
+          setShowDue(true);
+        }
+      } else setSourcePlace(source.invoice.placeOfSupply);
       setDiscountStr(source.invoice.discount ? paiseToRupeeInput(source.invoice.discount) : '');
       setLines(
         source.lines.map((l, i) => ({
@@ -331,8 +349,14 @@ export default function InvoiceForm({
 
     setSaving(true);
     try {
+      // '' means no credit term at all, which the column stores as NULL.
+      const due = showDue ? dueDate.trim() || null : null;
       const inv = isEdit
-        ? await updateInvoiceWithItems(editInvoiceId, { partyId, date, discount, taxMode }, parsedLines)
+        ? await updateInvoiceWithItems(
+            editInvoiceId,
+            { partyId, date, discount, taxMode, dueDate: due },
+            parsedLines,
+          )
         : await createInvoiceWithItems(
             {
               type,
@@ -341,6 +365,7 @@ export default function InvoiceForm({
               discount,
               paymentStatus: 'unpaid',
               taxMode,
+              dueDate: due,
               // A credit note is taxed where the sale it reverses was taxed.
               placeOfSupply: sourcePlace,
             },
@@ -449,7 +474,24 @@ export default function InvoiceForm({
         />
 
         <View style={styles.field}>
-          <Text style={styles.label}>Date</Text>
+          <View style={styles.sectionRow}>
+            <Text style={styles.label}>Date</Text>
+            {/* Only a bill that money is owed on can fall due. */}
+            {type === 'sale' || type === 'purchase' ? (
+              <Pressable
+                hitSlop={8}
+                onPress={() => {
+                  setShowDue((on) => {
+                    if (on) setDueDate('');
+                    else if (!dueDate) setDueDate(addDays(date, DEFAULT_DUE_DAYS));
+                    return !on;
+                  });
+                }}
+              >
+                <Text style={styles.toggleLink}>{showDue ? 'No due date' : 'Add due date'}</Text>
+              </Pressable>
+            ) : null}
+          </View>
           <TextInput
             style={styles.dateInput}
             value={date}
@@ -458,6 +500,36 @@ export default function InvoiceForm({
             placeholderTextColor="#aaa"
           />
         </View>
+
+        {showDue ? (
+          <View style={styles.field}>
+            <Text style={styles.label}>Due date</Text>
+            <TextInput
+              style={styles.dateInput}
+              value={dueDate}
+              onChangeText={setDueDate}
+              placeholder="YYYY-MM-DD"
+              placeholderTextColor="#aaa"
+            />
+            <View style={styles.presetRow}>
+              {DUE_PRESETS.map((days) => {
+                const value = addDays(date, days);
+                const on = dueDate === value;
+                return (
+                  <Pressable
+                    key={days}
+                    style={[styles.preset, on && styles.presetOn]}
+                    onPress={() => setDueDate(value)}
+                  >
+                    <Text style={[styles.presetText, on && styles.presetTextOn]}>
+                      {duePresetLabel(days)}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        ) : null}
 
         <View style={styles.sectionRow}>
           <Text style={styles.sectionTitle}>Items</Text>

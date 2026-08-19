@@ -58,6 +58,39 @@ export function formatDate(iso: string): string {
   return `${day} ${MONTHS[mi]} ${y}`;
 }
 
+// ── Day arithmetic on ISO 'YYYY-MM-DD' days ──────────────────────────────────
+// Everything here works in UTC on purpose. A bill's date is a DAY, not a moment;
+// parsing it in the phone's local zone would shift it by one either side of
+// midnight and make a bill fall due on the wrong day.
+
+/** An ISO day → milliseconds at UTC midnight. NaN when it isn't a date. */
+function dayMs(iso: string): number {
+  const [y, m, d] = iso.slice(0, 10).split('-').map(Number);
+  if (!y || !m || !d) return NaN;
+  return Date.UTC(y, m - 1, d);
+}
+
+const DAY = 86400000;
+
+/** ISO day + n days → ISO day. A negative n goes backwards. */
+export function addDays(iso: string, days: number): string {
+  const ms = dayMs(iso);
+  if (Number.isNaN(ms)) return iso;
+  return new Date(ms + days * DAY).toISOString().slice(0, 10);
+}
+
+/**
+ * Whole days from one ISO day to another; negative when `to` is earlier.
+ * Returns 0 if either side isn't a date, so a corrupt row ages as "today"
+ * rather than landing in a bucket by accident.
+ */
+export function daysBetween(from: string, to: string): number {
+  const a = dayMs(from);
+  const b = dayMs(to);
+  if (Number.isNaN(a) || Number.isNaN(b)) return 0;
+  return Math.round((b - a) / DAY);
+}
+
 /**
  * How a signed ledger balance reads to the user.
  * Sign convention (see db/schema.ts): > 0 → party owes YOU (receivable);

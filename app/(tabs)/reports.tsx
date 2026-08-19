@@ -15,6 +15,12 @@ const REPORTS: { href: Href; emoji: string; title: string; sub: string }[] = [
     title: 'Party Outstanding',
     sub: 'Who owes you, who you owe',
   },
+  {
+    href: '/report/aging',
+    emoji: '⏳',
+    title: 'Receivables Aging',
+    sub: 'How long the money has been owed, and who to remind',
+  },
   { href: '/report/stock', emoji: '📦', title: 'Stock Summary', sub: 'On-hand quantity and value' },
   { href: '/report/gst', emoji: '🧮', title: 'GST Summary', sub: 'Output vs input tax' },
   {

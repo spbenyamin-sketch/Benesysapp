@@ -32,7 +32,12 @@ export interface PartyWithBalance {
   balance: number;
 }
 
-function invoiceDelta(inv: Invoice): number {
+/**
+ * What one document does to the party's balance. Exported because the aging
+ * report has to age exactly the charges this ledger counts — two answers to
+ * "how much do they owe" would be one answer too many.
+ */
+export function invoiceDelta(inv: Invoice): number {
   if (inv.type === 'sale') return inv.grandTotal; // customer owes us more
   if (inv.type === 'purchase') return -inv.grandTotal; // we owe the supplier
   // Goods came back: the customer owes that much less — and if they had already

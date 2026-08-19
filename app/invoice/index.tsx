@@ -2,6 +2,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import DateRange, { defaultRange } from '@/components/DateRange';
+import { daysOverdue, isOverdue } from '@/modules/invoices/due';
 import { listInvoicesWithParty, type InvoiceWithParty } from '@/modules/invoices/service';
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
 import { formatDate, formatMoney } from '@/utils/format';
@@ -58,6 +59,7 @@ export default function InvoiceListScreen() {
   const [query, setQuery] = useState('');
   const [from, setFrom] = useState(init.from);
   const [to, setTo] = useState(init.to);
+  const today = new Date().toISOString().slice(0, 10);
 
   useFocusEffect(
     useCallback(() => {
@@ -158,6 +160,7 @@ export default function InvoiceListScreen() {
       }
       renderItem={({ item }) => {
         const isReturn = item.type === 'saleReturn';
+        const late = isOverdue(item, today);
         return (
           <Pressable
             style={styles.row}
@@ -176,8 +179,12 @@ export default function InvoiceListScreen() {
                 {isReturn ? '−' : ''}
                 {formatMoney(item.grandTotal)}
               </Text>
-              <Text style={[styles.rowStatus, { color: statusTone(item) }]}>
-                {STATUS_LABEL[item.paymentStatus]}
+              {/* A bill that has run past the day it was promised says so here
+                  instead of just "Unpaid" — that is the row worth chasing. */}
+              <Text style={[styles.rowStatus, { color: late ? '#c0392b' : statusTone(item) }]}>
+                {late
+                  ? `Overdue ${daysOverdue(item, today)}d`
+                  : STATUS_LABEL[item.paymentStatus]}
               </Text>
             </View>
           </Pressable>

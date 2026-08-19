@@ -1,7 +1,8 @@
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import { listSettings } from '@/modules/settings/service';
-import { formatDate, formatMoney, formatQty, formatTaxRate } from '@/utils/format';
+import { getBusinessProfile, type BusinessProfile } from '@/modules/settings/service';
+import { formatDate, formatQty, formatTaxRate } from '@/utils/format';
+import { escapeHtml, htmlMoney } from '@/utils/html';
 import {
   lineAmount,
   lineTax,
@@ -22,33 +23,8 @@ const DOC_LABEL: Record<InvoiceType, string> = {
   saleReturn: 'CREDIT NOTE',
 };
 
-// Business-profile keys (written by the Phase 8 settings screen).
-interface BusinessProfile {
-  name: string;
-  gstin?: string;
-  address?: string;
-  phone?: string;
-  /** The shop's own state — one half of the CGST+SGST vs IGST decision. */
-  state?: string;
-}
-
-async function loadProfile(): Promise<BusinessProfile> {
-  const rows = await listSettings();
-  const map = new Map(rows.map((r) => [r.key, r.value ?? '']));
-  return {
-    name: map.get('business_name') || 'My Business',
-    gstin: map.get('business_gstin') || undefined,
-    address: map.get('business_address') || undefined,
-    phone: map.get('business_phone') || undefined,
-    state: map.get('business_state') || undefined,
-  };
-}
-
-const esc = (s: string) =>
-  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-
-/** A stray NaN/undefined from old data must never reach the paper as "₹NaN". */
-const money = (paise: number) => formatMoney(Number.isFinite(paise) ? Math.round(paise) : 0);
+const esc = escapeHtml;
+const money = htmlMoney;
 
 // ── Rate-wise tax summary ─────────────────────────────────────────────────────
 // The table a GST invoice is expected to carry: one row per slab, with the
@@ -231,6 +207,7 @@ function buildHtml(detail: InvoiceDetail, biz: BusinessProfile): string {
       <div style="text-align:right">
         <div><b>${esc(invoice.invoiceNo)}</b></div>
         <div class="muted">${formatDate(invoice.date)}</div>
+        ${invoice.dueDate ? `<div class="muted">Due: ${formatDate(invoice.dueDate)}</div>` : ''}
         <div class="muted">${invoice.paymentStatus.toUpperCase()}</div>
       </div>
     </div>
@@ -260,7 +237,7 @@ function buildHtml(detail: InvoiceDetail, biz: BusinessProfile): string {
 
 /** Render the invoice to a PDF and open the native share sheet. */
 export async function shareInvoicePdf(detail: InvoiceDetail): Promise<void> {
-  const biz = await loadProfile();
+  const biz = await getBusinessProfile();
   const { uri } = await Print.printToFileAsync({ html: buildHtml(detail, biz) });
   if (await Sharing.isAvailableAsync()) {
     await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: detail.invoice.invoiceNo });
@@ -273,6 +250,6 @@ export async function shareInvoicePdf(detail: InvoiceDetail): Promise<void> {
  * works in Expo Go, no thermal-printer native module needed.
  */
 export async function printInvoice(detail: InvoiceDetail): Promise<void> {
-  const biz = await loadProfile();
+  const biz = await getBusinessProfile();
   await Print.printAsync({ html: buildHtml(detail, biz) });
 }

@@ -26,6 +26,32 @@ export async function deleteSetting(key: string): Promise<void> {
   await db.delete(settings).where(eq(settings.key, key));
 }
 
+/**
+ * The shop's own details, as they head a printed bill or statement. Read in one
+ * pass so a document never issues five queries for five fields, and kept here so
+ * the keys are spelled in exactly one place.
+ */
+export interface BusinessProfile {
+  name: string;
+  gstin?: string;
+  address?: string;
+  phone?: string;
+  /** The shop's state — one half of the CGST+SGST vs IGST decision. */
+  state?: string;
+}
+
+export async function getBusinessProfile(): Promise<BusinessProfile> {
+  const rows = await listSettings();
+  const map = new Map(rows.map((r) => [r.key, r.value ?? '']));
+  return {
+    name: map.get('business_name') || 'My Business',
+    gstin: map.get('business_gstin') || undefined,
+    address: map.get('business_address') || undefined,
+    phone: map.get('business_phone') || undefined,
+    state: map.get('business_state') || undefined,
+  };
+}
+
 // ── Typed accessors for settings the whole app reads ──────────────────────────
 // Kept here (not scattered through screens) so a key is spelled in exactly one
 // place and a missing/garbage value always falls back to a safe default.

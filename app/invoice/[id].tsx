@@ -7,6 +7,7 @@ import {
   getInvoiceWithItems,
   type InvoiceDetail,
 } from '@/modules/invoices/service';
+import { daysOverdue, isOverdue } from '@/modules/invoices/due';
 import { printInvoice, shareInvoicePdf } from '@/modules/invoices/pdf';
 import { defaultDirectionForInvoice } from '@/modules/payments/service';
 import { getSetting } from '@/modules/settings/service';
@@ -174,6 +175,8 @@ export default function InvoiceDetailScreen() {
   const placeOfSupply = invoice.placeOfSupply || party?.state || '';
   const tax = splitTaxForStates(invoice.taxTotal, bizState, placeOfSupply);
   const inRate = invoice.taxMode === 'inclusive' ? ' (in rate)' : '';
+  const today = new Date().toISOString().slice(0, 10);
+  const late = isOverdue(invoice, today);
 
   return (
     <>
@@ -188,6 +191,12 @@ export default function InvoiceDetailScreen() {
           </View>
           <Text style={styles.invoiceNo}>{invoice.invoiceNo}</Text>
           <Text style={styles.date}>{formatDate(invoice.date)}</Text>
+          {invoice.dueDate ? (
+            <Text style={[styles.date, late && styles.overdue]}>
+              Due {formatDate(invoice.dueDate)}
+              {late ? ` · ${daysOverdue(invoice, today)} days late` : ''}
+            </Text>
+          ) : null}
           {/* Only worth saying when it changes the tax: a local bill's place of
               supply is the shop's own state and tells the counter nothing. */}
           {tax.supply === 'inter' && placeOfSupply ? (
@@ -319,6 +328,7 @@ const styles = StyleSheet.create({
   badgeText: { color: '#fff', fontSize: 11, fontWeight: '700' },
   invoiceNo: { fontSize: 22, fontWeight: '700', color: '#111' },
   date: { fontSize: 14, color: '#888' },
+  overdue: { color: '#c0392b', fontWeight: '600' },
   partyName: { fontSize: 16, color: '#208AEF', fontWeight: '600', marginTop: 6 },
   table: { borderWidth: 1, borderColor: '#eee', borderRadius: 12, overflow: 'hidden' },
   lineRow: {

@@ -1,5 +1,7 @@
 import {
+  addDays,
   balanceSummary,
+  daysBetween,
   formatDate,
   formatMoney,
   formatQty,
@@ -128,5 +130,43 @@ describe('tax rate helpers', () => {
     for (const bp of [0, 250, 500, 1200, 1800, 2800]) {
       expect(parseTaxRateToBasisPoints(taxRateToInput(bp))).toBe(bp);
     }
+  });
+});
+
+// ── Day arithmetic ───────────────────────────────────────────────────────────
+// A bill's date is a DAY, not a moment. These run in UTC on purpose: parsed in a
+// local zone, a bill made at 11pm would fall due a day early.
+
+describe('addDays', () => {
+  it('moves forward and backward by whole days', () => {
+    expect(addDays('2026-08-19', 30)).toBe('2026-09-18');
+    expect(addDays('2026-08-19', 0)).toBe('2026-08-19');
+    expect(addDays('2026-08-19', -19)).toBe('2026-07-31');
+  });
+
+  it('crosses a month, a year and a leap day', () => {
+    expect(addDays('2026-12-25', 10)).toBe('2027-01-04');
+    expect(addDays('2028-02-28', 1)).toBe('2028-02-29'); // 2028 is a leap year
+    expect(addDays('2027-02-28', 1)).toBe('2027-03-01');
+  });
+
+  it('hands back anything that is not a date', () => {
+    expect(addDays('not-a-date', 5)).toBe('not-a-date');
+  });
+});
+
+describe('daysBetween', () => {
+  it('counts whole days, signed', () => {
+    expect(daysBetween('2026-08-01', '2026-08-31')).toBe(30);
+    expect(daysBetween('2026-08-31', '2026-08-01')).toBe(-30);
+    expect(daysBetween('2026-08-19', '2026-08-19')).toBe(0);
+  });
+
+  it('is unaffected by a timestamp tail on either side', () => {
+    expect(daysBetween('2026-08-01T23:59:59.999Z', '2026-08-02T00:00:00.000Z')).toBe(1);
+  });
+
+  it('treats a corrupt date as today rather than guessing', () => {
+    expect(daysBetween('rubbish', '2026-08-19')).toBe(0);
   });
 });
