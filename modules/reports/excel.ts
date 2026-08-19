@@ -10,12 +10,16 @@ import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { getSetting } from '@/modules/settings/service';
 import { agingReport, AGING_BUCKETS } from '@/modules/reports/aging';
+import { dayBook, DAY_BOOK_LABEL } from '@/modules/reports/daybook';
 import {
   gstRateBreakup,
   gstSummary,
+  itemSalesReport,
   marginPercent,
   partyOutstanding,
+  percentOf,
   profitReport,
+  purchaseReport,
   salesReport,
   stockSummary,
 } from '@/modules/reports/service';
@@ -140,6 +144,116 @@ function rateSheet(name: string, rows: Awaited<ReturnType<typeof gstRateBreakup>
 }
 
 // ── Public exports, one per report screen ─────────────────────────────────────
+
+/** The purchase side: the bills, and a sheet of who the money went to. */
+export async function exportPurchaseReportExcel(from: string, to: string): Promise<string> {
+  const report = await purchaseReport(from, to);
+  const preamble = await preambleFor('Purchase Report', { from, to });
+  const sheets: SheetSpec[] = [invoiceSheet('Purchases', report.rows, preamble)];
+  if (report.suppliers.length) {
+    sheets.push({
+      name: 'By supplier',
+      columns: [
+        { header: 'Supplier', width: 28 },
+        { header: 'Bills', width: 10 },
+        { header: 'Share %', width: 10 },
+        { header: 'Total', width: 16, money: true },
+      ],
+      rows: report.suppliers.map((s) => [
+        s.partyName,
+        s.count,
+        percentOf(s.total, report.grandTotal),
+        money(s.total),
+      ]),
+      totals: ['TOTAL', report.count, 100, money(report.grandTotal)],
+    });
+  }
+  return shareWorkbook(sheets, `purchase-report${stamp(from, to)}.xlsx`);
+}
+
+/** What moved off the shelf, biggest first — quantity and value, net of returns. */
+export async function exportItemSalesExcel(from: string, to: string): Promise<string> {
+  const report = await itemSalesReport(from, to);
+  const preamble = await preambleFor('Item-wise Sales', { from, to });
+  return shareWorkbook(
+    [
+      {
+        name: 'Item-wise sales',
+        preamble,
+        columns: [
+          { header: 'Item', width: 30 },
+          { header: 'Unit', width: 10 },
+          { header: 'Quantity', width: 14 },
+          { header: 'Bills', width: 10 },
+          { header: 'Share %', width: 10 },
+          { header: 'Sale value', width: 16, money: true },
+        ],
+        rows: report.rows.map((r) => [
+          r.name,
+          r.unit,
+          qty(r.qty),
+          r.bills,
+          percentOf(r.saleValue, report.totalValue),
+          money(r.saleValue),
+        ]),
+        totals: ['TOTAL', '', '', '', 100, money(report.totalValue)],
+      },
+    ],
+    `item-sales${stamp(from, to)}.xlsx`,
+  );
+}
+
+/**
+ * One day, as the shop lived it. The cash column is the point: a credit sale is
+ * on the page but contributes nothing to it, so the sheet cannot be read as
+ * takings the shop never received.
+ */
+export async function exportDayBookExcel(day: string): Promise<string> {
+  const book = await dayBook(day);
+  const preamble = await preambleFor('Day Book');
+  preamble.push(`Day: ${day}`);
+  return shareWorkbook(
+    [
+      {
+        name: 'Day book',
+        preamble,
+        columns: [
+          { header: 'Type', width: 14 },
+          { header: 'Reference', width: 20 },
+          { header: 'With', width: 28 },
+          { header: 'Cash', width: 10 },
+          { header: 'Amount', width: 16, money: true },
+        ],
+        rows: book.entries.map((e) => [
+          DAY_BOOK_LABEL[e.kind],
+          e.title,
+          e.sub,
+          e.cash ? 'Yes' : 'Credit',
+          money(e.amount),
+        ]),
+        totals: ['NET CASH', '', '', '', money(book.summary.netCash)],
+      },
+      {
+        name: 'Summary',
+        columns: [
+          { header: 'Particulars', width: 30 },
+          { header: 'Amount', width: 16, money: true },
+        ],
+        rows: [
+          ['Cash received', money(book.summary.cashIn)],
+          ['Cash paid out', money(book.summary.cashOut)],
+          ['', ''],
+          ['Sales billed (incl. credit)', money(book.summary.salesBilled)],
+          ['Sale returns billed', money(book.summary.returnsBilled)],
+          ['Purchases billed (incl. credit)', money(book.summary.purchasesBilled)],
+          ['Expenses', money(book.summary.expenses)],
+        ],
+        totals: ['NET CASH', money(book.summary.netCash)],
+      },
+    ],
+    `day-book-${day}.xlsx`,
+  );
+}
 
 export async function exportSalesReportExcel(from: string, to: string): Promise<string> {
   const report = await salesReport(from, to);

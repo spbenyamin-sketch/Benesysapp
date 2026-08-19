@@ -60,6 +60,63 @@ export async function salesReport(from: string, to: string): Promise<SalesReport
   };
 }
 
+// ── Purchase report ───────────────────────────────────────────────────────────
+// The mirror of the sales report, plus the question a sales report never has to
+// answer: WHO the money went to. A shop with one supplier taking half its
+// spending should be able to see that in one look.
+
+export interface SupplierTotal {
+  partyId: number;
+  partyName: string;
+  count: number;
+  total: number; // paise
+}
+
+export interface PurchaseReport {
+  from: string;
+  to: string;
+  count: number;
+  subtotal: number;
+  taxTotal: number;
+  discount: number;
+  grandTotal: number;
+  rows: InvoiceWithParty[];
+  suppliers: SupplierTotal[]; // biggest spend first
+}
+
+/** Roll invoices up by the party they were made with. Pure — no DB. */
+export function summarisePartyTotals(rows: InvoiceWithParty[]): SupplierTotal[] {
+  const byParty = new Map<number, SupplierTotal>();
+  for (const r of rows) {
+    const entry = byParty.get(r.partyId) ?? {
+      partyId: r.partyId,
+      partyName: r.partyName,
+      count: 0,
+      total: 0,
+    };
+    entry.count += 1;
+    entry.total += r.grandTotal;
+    byParty.set(r.partyId, entry);
+  }
+  return [...byParty.values()].sort((a, b) => b.total - a.total);
+}
+
+export async function purchaseReport(from: string, to: string): Promise<PurchaseReport> {
+  const all = await listInvoicesWithParty();
+  const rows = all.filter((i) => i.type === 'purchase' && inRange(i.date, from, to));
+  return {
+    from,
+    to,
+    count: rows.length,
+    subtotal: sumBy(rows, (r) => r.subtotal),
+    taxTotal: sumBy(rows, (r) => r.taxTotal),
+    discount: sumBy(rows, (r) => r.discount),
+    grandTotal: sumBy(rows, (r) => r.grandTotal),
+    rows,
+    suppliers: summarisePartyTotals(rows),
+  };
+}
+
 // ── Party outstanding ─────────────────────────────────────────────────────────
 export interface Outstanding {
   receivables: PartyWithBalance[]; // parties who owe you (balance > 0)
@@ -245,10 +302,15 @@ export function summariseProfitLines(lines: ProfitLine[]): {
   };
 }
 
+/** One number as a percentage of another, to one decimal. 0 when there is no whole. */
+export function percentOf(part: number, whole: number): number {
+  if (whole <= 0) return 0;
+  return Math.round((part / whole) * 1000) / 10;
+}
+
 /** Profit as a percentage of the sale value — 0 when nothing was sold. */
 export function marginPercent(profit: number, saleValue: number): number {
-  if (saleValue <= 0) return 0;
-  return Math.round((profit / saleValue) * 1000) / 10;
+  return percentOf(profit, saleValue);
 }
 
 export async function profitReport(from: string, to: string): Promise<ProfitReport> {
@@ -304,6 +366,100 @@ export async function profitReport(from: string, to: string): Promise<ProfitRepo
     items: rolled.items,
     estimatedLines: rolled.estimatedLines,
     zeroCostLines: rolled.zeroCostLines,
+  };
+}
+
+// ── Item-wise sales ───────────────────────────────────────────────────────────
+// Not "what did I earn" (that is the profit report) but "what is actually
+// moving". Quantity and value only, so a shop can see its runners and its dead
+// stock without cost prices getting in the way.
+
+/** One sold line, flattened out of the join. Returns arrive with a negative qty. */
+export interface ItemSaleLine {
+  itemId: number;
+  name: string;
+  unit: string;
+  invoiceId: number;
+  qty: number; // thousandths
+  amount: number; // paise, pre-tax
+}
+
+export interface ItemSalesRow {
+  itemId: number;
+  name: string;
+  unit: string;
+  qty: number; // thousandths, net of returns
+  bills: number; // how many documents it appeared on
+  saleValue: number; // paise, pre-tax, net of returns
+}
+
+export interface ItemSalesReport {
+  from: string;
+  to: string;
+  rows: ItemSalesRow[]; // biggest value first
+  totalValue: number;
+  totalItems: number; // distinct items that moved
+}
+
+/**
+ * Roll sold lines up per item. Pure, so the maths is testable without a DB.
+ * A returned line comes in negative and simply nets off, which is what makes
+ * "sold 10, 2 came back" read as 8 rather than as two separate facts.
+ */
+export function summariseItemSales(lines: ItemSaleLine[]): ItemSalesRow[] {
+  const byItem = new Map<number, ItemSalesRow & { billIds: Set<number> }>();
+  for (const line of lines) {
+    const row = byItem.get(line.itemId) ?? {
+      itemId: line.itemId,
+      name: line.name,
+      unit: line.unit,
+      qty: 0,
+      bills: 0,
+      saleValue: 0,
+      billIds: new Set<number>(),
+    };
+    row.qty += line.qty;
+    row.saleValue += line.amount;
+    row.billIds.add(line.invoiceId);
+    byItem.set(line.itemId, row);
+  }
+  return [...byItem.values()]
+    .map(({ billIds, ...row }) => ({ ...row, bills: billIds.size }))
+    .sort((a, b) => b.saleValue - a.saleValue);
+}
+
+export async function itemSalesReport(from: string, to: string): Promise<ItemSalesReport> {
+  const billed = await db
+    .select({
+      type: invoices.type,
+      invoiceId: invoiceItems.invoiceId,
+      itemId: invoiceItems.itemId,
+      name: itemsTable.name,
+      unit: itemsTable.unit,
+      qty: invoiceItems.qty,
+      amount: invoiceItems.amount,
+    })
+    .from(invoiceItems)
+    .innerJoin(invoices, eq(invoiceItems.invoiceId, invoices.id))
+    .innerJoin(itemsTable, eq(invoiceItems.itemId, itemsTable.id))
+    .where(
+      and(
+        inArray(invoices.type, ['sale', 'saleReturn']),
+        gte(invoices.date, from),
+        lte(invoices.date, to),
+      ),
+    );
+
+  const lines: ItemSaleLine[] = billed.map(({ type, ...line }) =>
+    type === 'saleReturn' ? { ...line, qty: -line.qty, amount: -line.amount } : line,
+  );
+  const rows = summariseItemSales(lines);
+  return {
+    from,
+    to,
+    rows,
+    totalValue: rows.reduce((s, r) => s + r.saleValue, 0),
+    totalItems: rows.length,
   };
 }
 

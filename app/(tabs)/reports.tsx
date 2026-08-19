@@ -2,7 +2,25 @@ import { useRouter, type Href } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 const REPORTS: { href: Href; emoji: string; title: string; sub: string }[] = [
+  {
+    href: '/report/daybook',
+    emoji: '📒',
+    title: 'Day Book',
+    sub: 'Everything that happened on one day',
+  },
   { href: '/report/sales', emoji: '🧾', title: 'Sale Report', sub: 'Sales over a date range' },
+  {
+    href: '/report/itemsales',
+    emoji: '🏆',
+    title: 'Item-wise Sales',
+    sub: 'What sells, by quantity and value',
+  },
+  {
+    href: '/report/purchase',
+    emoji: '🛒',
+    title: 'Purchase Report',
+    sub: 'What was bought, and from whom',
+  },
   {
     href: '/report/profit',
     emoji: '📈',
