@@ -4,7 +4,9 @@ import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View
 import Button from '@/components/Button';
 import {
   deleteInvoiceWithItems,
+  getInvoice,
   getInvoiceWithItems,
+  returnsAgainst,
   type InvoiceDetail,
 } from '@/modules/invoices/service';
 import { daysOverdue, isOverdue } from '@/modules/invoices/due';
@@ -23,6 +25,7 @@ const TYPE_LABEL: Record<InvoiceType, string> = {
   quotation: 'Quotation',
   challan: 'Delivery challan',
   saleReturn: 'Sale return (credit note)',
+  purchaseReturn: 'Purchase return (debit note)',
 };
 
 const STATUS_TONE: Record<string, string> = {
@@ -42,17 +45,29 @@ export default function InvoiceDetailScreen() {
   // The shop's own state, against which this bill's place of supply decides
   // whether the tax shown is CGST + SGST or IGST — the same call the PDF makes.
   const [bizState, setBizState] = useState<string | undefined>(undefined);
+  // Credit notes already raised against this bill, and — on a credit note — the
+  // bill it gives back. Both come from the same link, read in both directions.
+  const [returns, setReturns] = useState<{ id: number; invoiceNo: string; grandTotal: number }[]>(
+    [],
+  );
+  const [source, setSource] = useState<{ id: number; invoiceNo: string } | null>(null);
 
   useFocusEffect(
     useCallback(() => {
       let active = true;
-      Promise.all([getInvoiceWithItems(invoiceId), getSetting('business_state')]).then(
-        ([d, state]) => {
-          if (!active) return;
-          setDetail(d);
-          setBizState(state);
-        },
-      );
+      Promise.all([
+        getInvoiceWithItems(invoiceId),
+        getSetting('business_state'),
+        returnsAgainst(invoiceId),
+      ]).then(async ([d, state, back]) => {
+        if (!active) return;
+        setDetail(d);
+        setBizState(state);
+        setReturns(back);
+        const from = d?.invoice.sourceInvoiceId;
+        const original = from ? await getInvoice(from) : undefined;
+        if (active) setSource(original ?? null);
+      });
       return () => {
         active = false;
       };
@@ -97,13 +112,24 @@ export default function InvoiceDetailScreen() {
       case 'total':
         return totalLine(formatMoney(detail.invoice.grandTotal), lang);
       case 'navigate':
-        // "ரிட்டர்ன்" on a sale opens the credit note already filled in.
-        if (intent.target === 'newSaleReturn' && detail.invoice.type === 'sale') {
+        // "ரிட்டர்ன்" opens the note that gives this document back — a credit
+        // note on a sale, a debit note on a purchase.
+        if (
+          intent.target === 'newSaleReturn' &&
+          (detail.invoice.type === 'sale' || detail.invoice.type === 'purchase')
+        ) {
+          const back = returnTypeFor(detail.invoice.type);
           router.push({
             pathname: '/invoice/new',
-            params: { type: 'saleReturn', from: detail.invoice.id },
+            params: { type: back, from: detail.invoice.id },
           });
-          return lang === 'ta-IN' ? 'விற்பனை ரிட்டர்ன்' : 'Sale return';
+          return back === 'purchaseReturn'
+            ? lang === 'ta-IN'
+              ? 'கொள்முதல் ரிட்டர்ன்'
+              : 'Purchase return'
+            : lang === 'ta-IN'
+              ? 'விற்பனை ரிட்டர்ன்'
+              : 'Sale return';
         }
         if (intent.target !== 'newPayment') return false;
         router.push({
@@ -177,6 +203,8 @@ export default function InvoiceDetailScreen() {
   const inRate = invoice.taxMode === 'inclusive' ? ' (in rate)' : '';
   const today = new Date().toISOString().slice(0, 10);
   const late = isOverdue(invoice, today);
+  const returnedSum = returns.reduce((s, r) => s + r.grandTotal, 0);
+  const fullyReturned = returnedSum >= invoice.grandTotal && invoice.grandTotal > 0;
 
   return (
     <>
@@ -207,6 +235,15 @@ export default function InvoiceDetailScreen() {
               onPress={() => router.push({ pathname: '/party/[id]', params: { id: party.id } })}
             >
               <Text style={styles.partyName}>{party.name} ›</Text>
+            </Pressable>
+          ) : null}
+          {/* A credit note names the bill it gives back, so the two are one tap
+              apart in either direction. */}
+          {source ? (
+            <Pressable
+              onPress={() => router.push({ pathname: '/invoice/[id]', params: { id: source.id } })}
+            >
+              <Text style={styles.linkLine}>Against {source.invoiceNo} ›</Text>
             </Pressable>
           ) : null}
         </View>
@@ -254,6 +291,25 @@ export default function InvoiceDetailScreen() {
           <TotalRow label="Grand total" value={formatMoney(invoice.grandTotal)} strong />
         </View>
 
+        {returns.length ? (
+          <View style={styles.returnsBlock}>
+            <Text style={styles.returnsTitle}>
+              Returned on this bill · {formatMoney(returnedSum)}
+              {fullyReturned ? ' (all of it)' : ''}
+            </Text>
+            {returns.map((r) => (
+              <Pressable
+                key={r.id}
+                style={styles.returnRow}
+                onPress={() => router.push({ pathname: '/invoice/[id]', params: { id: r.id } })}
+              >
+                <Text style={styles.returnNo}>{r.invoiceNo} ›</Text>
+                <Text style={styles.returnAmount}>- {formatMoney(r.grandTotal)}</Text>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
+
         {invoice.type !== 'quotation' && invoice.type !== 'challan' && invoice.paymentStatus !== 'paid' ? (
           <Button
             label="Record payment"
@@ -279,14 +335,14 @@ export default function InvoiceDetailScreen() {
           }
           style={styles.action}
         />
-        {invoice.type === 'sale' ? (
+        {invoice.type === 'sale' || invoice.type === 'purchase' ? (
           <Button
-            label="Sale return"
+            label={returnLabel(invoice.type, returnedSum, fullyReturned)}
             tone="ghost"
             onPress={() =>
               router.push({
                 pathname: '/invoice/new',
-                params: { type: 'saleReturn', from: invoice.id },
+                params: { type: returnTypeFor(invoice.type), from: invoice.id },
               })
             }
             style={styles.action}
@@ -306,6 +362,17 @@ export default function InvoiceDetailScreen() {
       </ScrollView>
     </>
   );
+}
+
+/** Goods go back to whoever they came from — the document type follows. */
+function returnTypeFor(type: InvoiceType): InvoiceType {
+  return type === 'purchase' ? 'purchaseReturn' : 'saleReturn';
+}
+
+function returnLabel(type: InvoiceType, returnedSum: number, fully: boolean): string {
+  const noun = type === 'purchase' ? 'Purchase return' : 'Sale return';
+  if (fully) return `${noun} (already fully returned)`;
+  return returnedSum > 0 ? 'Return the rest' : noun;
 }
 
 function TotalRow({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
@@ -330,6 +397,12 @@ const styles = StyleSheet.create({
   date: { fontSize: 14, color: '#888' },
   overdue: { color: '#c0392b', fontWeight: '600' },
   partyName: { fontSize: 16, color: '#208AEF', fontWeight: '600', marginTop: 6 },
+  linkLine: { fontSize: 13, color: '#208AEF', fontWeight: '600', marginTop: 4 },
+  returnsBlock: { borderWidth: 1, borderColor: '#f0e0c0', backgroundColor: '#fdf9f0', borderRadius: 12, padding: 12, gap: 8 },
+  returnsTitle: { fontSize: 13, fontWeight: '700', color: '#8a6d1f' },
+  returnRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  returnNo: { fontSize: 14, color: '#208AEF', fontWeight: '600' },
+  returnAmount: { fontSize: 14, color: '#b8860b', fontWeight: '600' },
   table: { borderWidth: 1, borderColor: '#eee', borderRadius: 12, overflow: 'hidden' },
   lineRow: {
     flexDirection: 'row',

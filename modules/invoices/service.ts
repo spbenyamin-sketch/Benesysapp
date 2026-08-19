@@ -96,12 +96,14 @@ export interface InvoiceHeaderInput {
   taxMode?: TaxMode; // default 'exclusive' — see utils/gst
   dueDate?: string | null; // ISO day; null = due immediately
   placeOfSupply?: string | null; // Indian state; null = fall back to the party's
+  /** The document this one reverses — the sale a credit note gives back. */
+  sourceInvoiceId?: number | null;
 }
 
-// Stock direction: a sale ships goods out (−), a purchase and a sale return
-// bring them in (+); quotations/challans don't move stock.
+// Stock direction: goods leave on a sale and on a purchase return (−), and come
+// in on a purchase and a sale return (+); quotations/challans don't move stock.
 export function stockSign(type: InvoiceType): -1 | 0 | 1 {
-  if (type === 'sale') return -1;
+  if (type === 'sale' || type === 'purchaseReturn') return -1;
   if (type === 'purchase' || type === 'saleReturn') return 1;
   return 0;
 }
@@ -176,6 +178,9 @@ export async function createInvoiceWithItems(
         taxMode,
         dueDate: header.dueDate ?? null,
         placeOfSupply,
+        // Written so the bill knows what has already come back on it — without
+        // this a single sale could be returned again and again.
+        sourceInvoiceId: header.sourceInvoiceId ?? null,
       })
       .returning()
       .get();
@@ -364,6 +369,28 @@ export async function updateInvoiceWithItems(
   const updated = await getInvoice(id);
   if (!updated) throw new Error('The document could not be reloaded after saving.');
   return updated;
+}
+
+/**
+ * The credit/debit notes raised against one document, and what they add up to.
+ *
+ * A partial return is normal — half a crate comes back, the rest is kept — so
+ * this does not block a second one. It exists so the shop can SEE what has
+ * already gone back before writing another, and so the app can say something
+ * when the returns start to exceed the bill itself.
+ */
+export async function returnsAgainst(invoiceId: number): Promise<Invoice[]> {
+  return db
+    .select()
+    .from(invoices)
+    .where(eq(invoices.sourceInvoiceId, invoiceId))
+    .orderBy(invoices.date, invoices.id);
+}
+
+/** Paise already returned against a document. */
+export async function returnedTotal(invoiceId: number, excludeId?: number): Promise<number> {
+  const rows = await returnsAgainst(invoiceId);
+  return rows.reduce((s, r) => (r.id === excludeId ? s : s + r.grandTotal), 0);
 }
 
 export interface InvoiceLineRow extends InvoiceItem {

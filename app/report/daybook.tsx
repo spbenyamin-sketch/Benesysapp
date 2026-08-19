@@ -13,6 +13,7 @@ const KIND_TONE: Record<DayBookKind, string> = {
   sale: '#208AEF',
   saleReturn: '#b8860b',
   purchase: '#6b4fbb',
+  purchaseReturn: '#9b8ad4',
   paymentIn: '#1a9d5a',
   paymentOut: '#c0392b',
   expense: '#e07b39',
@@ -115,7 +116,10 @@ export default function DayBookScreen() {
           <View style={styles.billedRow}>
             <Billed label="Sales billed" value={s?.salesBilled ?? 0} />
             <Billed label="Purchases billed" value={s?.purchasesBilled ?? 0} />
-            {s?.returnsBilled ? <Billed label="Returns" value={s.returnsBilled} /> : null}
+            {s?.returnsBilled ? <Billed label="Sale returns" value={s.returnsBilled} /> : null}
+            {s?.purchaseReturnsBilled ? (
+              <Billed label="Purchase returns" value={s.purchaseReturnsBilled} />
+            ) : null}
             {s?.expenses ? <Billed label="Expenses" value={s.expenses} /> : null}
           </View>
           <Text style={styles.hint}>

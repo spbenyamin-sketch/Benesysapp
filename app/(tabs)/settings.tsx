@@ -3,6 +3,7 @@ import { useCallback, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import {
   Alert,
+  Image,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -14,6 +15,11 @@ import { Pressable } from 'react-native';
 import Button from '@/components/Button';
 import SelectField from '@/components/SelectField';
 import TextField from '@/components/TextField';
+import {
+  deleteBrandImage,
+  pickBrandImage,
+  type BrandImage,
+} from '@/modules/settings/brandImages';
 import {
   getAutoBackupConfig,
   PER_DAY_CHOICES,
@@ -63,6 +69,12 @@ const KEYS = {
   state: 'business_state',
   phone: 'business_phone',
   prefix: 'sale_prefix',
+  // What the printed bill carries beyond the numbers: the shop's mark at the
+  // top, its signature at the foot, its terms, and a code to pay it by.
+  logo: 'business_logo',
+  signature: 'business_signature',
+  terms: 'invoice_terms',
+  upi: 'business_upi',
 } as const;
 
 export default function SettingsScreen() {
@@ -72,6 +84,10 @@ export default function SettingsScreen() {
   const [bizState, setBizState] = useState('');
   const [phone, setPhone] = useState('');
   const [prefix, setPrefix] = useState('');
+  const [logo, setLogo] = useState('');
+  const [signature, setSignature] = useState('');
+  const [terms, setTerms] = useState('');
+  const [upi, setUpi] = useState('');
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [restoring, setRestoring] = useState(false);
@@ -184,12 +200,43 @@ export default function SettingsScreen() {
         setBizState(map.get(KEYS.state) ?? '');
         setPhone(map.get(KEYS.phone) ?? '');
         setPrefix(map.get(KEYS.prefix) ?? '');
+        setLogo(map.get(KEYS.logo) ?? '');
+        setSignature(map.get(KEYS.signature) ?? '');
+        setTerms(map.get(KEYS.terms) ?? '');
+        setUpi(map.get(KEYS.upi) ?? '');
       });
       return () => {
         active = false;
       };
     }, []),
   );
+
+  /**
+   * Pick a logo or a signature. The old file is deleted as soon as a new one is
+   * chosen — these live in the app's own storage and would otherwise pile up
+   * inside every backup.
+   */
+  const chooseBrandImage = async (kind: BrandImage) => {
+    try {
+      const picked = await pickBrandImage(kind);
+      if (!picked) return;
+      const previous = kind === 'logo' ? logo : signature;
+      if (kind === 'logo') setLogo(picked);
+      else setSignature(picked);
+      await setSetting(kind === 'logo' ? KEYS.logo : KEYS.signature, picked);
+      if (previous && previous !== picked) deleteBrandImage(previous);
+    } catch (e) {
+      Alert.alert('Could not use that image', (e as Error)?.message ?? String(e));
+    }
+  };
+
+  const clearBrandImage = async (kind: BrandImage) => {
+    const previous = kind === 'logo' ? logo : signature;
+    if (kind === 'logo') setLogo('');
+    else setSignature('');
+    await setSetting(kind === 'logo' ? KEYS.logo : KEYS.signature, '');
+    deleteBrandImage(previous);
+  };
 
   const saveProfile = async () => {
     setSaving(true);
@@ -201,6 +248,10 @@ export default function SettingsScreen() {
         setSetting(KEYS.state, bizState.trim()),
         setSetting(KEYS.phone, phone.trim()),
         setSetting(KEYS.prefix, prefix.trim()),
+        setSetting(KEYS.logo, logo),
+        setSetting(KEYS.signature, signature),
+        setSetting(KEYS.terms, terms.trim()),
+        setSetting(KEYS.upi, upi.trim()),
       ]);
       Alert.alert('Saved', 'Business profile updated. It will appear on invoice PDFs.');
     } catch (e) {
@@ -410,6 +461,44 @@ export default function SettingsScreen() {
         />
         <Text style={styles.sectionHint}>
           Sale invoices are numbered like {`{prefix}`}/2026-27/001. Leave blank for “INV”.
+        </Text>
+
+        {/* Everything below is optional and prints only when it is filled in —
+            a shop that ignores this section gets the bill it got before. */}
+        <View style={styles.brandRow}>
+          <BrandImageField
+            label="Logo"
+            uri={logo}
+            square
+            onPick={() => chooseBrandImage('logo')}
+            onClear={() => clearBrandImage('logo')}
+          />
+          <BrandImageField
+            label="Signature"
+            uri={signature}
+            onPick={() => chooseBrandImage('signature')}
+            onClear={() => clearBrandImage('signature')}
+          />
+        </View>
+
+        <TextField
+          label="Terms on the bill"
+          value={terms}
+          onChangeText={setTerms}
+          placeholder="Goods once sold will not be taken back."
+          multiline
+        />
+
+        <TextField
+          label="UPI id"
+          value={upi}
+          onChangeText={setUpi}
+          placeholder="shop@okaxis"
+          autoCapitalize="none"
+        />
+        <Text style={styles.sectionHint}>
+          Printed on the bill as a scan-to-pay code, with the amount already in it. Leave blank for
+          no code.
         </Text>
 
         <Button label="Save profile" onPress={saveProfile} loading={saving} style={styles.save} />
@@ -688,9 +777,68 @@ export default function SettingsScreen() {
   );
 }
 
+/**
+ * A logo or signature slot: the picture when there is one, an invitation when
+ * there is not. Clearing is deliberately one tap away, not hidden in a menu —
+ * a wrong logo on every bill is the kind of thing noticed in a hurry.
+ */
+function BrandImageField({
+  label,
+  uri,
+  square,
+  onPick,
+  onClear,
+}: {
+  label: string;
+  uri: string;
+  square?: boolean;
+  onPick: () => void;
+  onClear: () => void;
+}) {
+  return (
+    <View style={styles.brandCol}>
+      <Text style={styles.brandLabel}>{label}</Text>
+      <Pressable
+        style={[styles.brandBox, square ? styles.brandSquare : styles.brandWide]}
+        onPress={onPick}
+      >
+        {uri ? (
+          <Image source={{ uri }} style={styles.brandImage} resizeMode="contain" />
+        ) : (
+          <Text style={styles.brandAdd}>+ Add</Text>
+        )}
+      </Pressable>
+      {uri ? (
+        <Pressable hitSlop={8} onPress={onClear}>
+          <Text style={styles.brandRemove}>Remove</Text>
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: '#fff' },
   container: { padding: 16, gap: 14, paddingBottom: 40 },
+  brandRow: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
+  brandCol: { flex: 1, gap: 6, alignItems: 'flex-start' },
+  brandLabel: { fontSize: 13, fontWeight: '600', color: '#444' },
+  brandBox: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderStyle: 'dashed',
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fafafa',
+    width: '100%',
+    overflow: 'hidden',
+  },
+  brandSquare: { height: 84 },
+  brandWide: { height: 84 },
+  brandImage: { width: '100%', height: '100%' },
+  brandAdd: { color: '#208AEF', fontWeight: '600', fontSize: 14 },
+  brandRemove: { color: '#c0392b', fontWeight: '600', fontSize: 12 },
   sectionTitle: { fontSize: 17, fontWeight: '700', color: '#111' },
   subTitle: { fontSize: 15, fontWeight: '700', color: '#333', marginTop: 6 },
   sectionHint: { fontSize: 12, color: '#888', marginTop: -8 },

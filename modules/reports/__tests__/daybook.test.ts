@@ -57,6 +57,7 @@ describe('summariseDayBook', () => {
       salesBilled: 0,
       returnsBilled: 0,
       purchasesBilled: 0,
+      purchaseReturnsBilled: 0,
       expenses: 0,
     });
   });

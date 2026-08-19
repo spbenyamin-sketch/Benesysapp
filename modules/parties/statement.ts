@@ -5,6 +5,7 @@
 
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
+import { imageDataUri } from '@/modules/settings/brandImages';
 import { getBusinessProfile, type BusinessProfile } from '@/modules/settings/service';
 import { balanceSummary, formatDate } from '@/utils/format';
 import { escapeHtml as esc, htmlMoney as money } from '@/utils/html';
@@ -28,7 +29,7 @@ function row(entry: LedgerEntry): string {
       </tr>`;
 }
 
-function buildHtml(ledger: PartyLedger, biz: BusinessProfile): string {
+function buildHtml(ledger: PartyLedger, biz: BusinessProfile, logo: string | null): string {
   const { party, entries, balance } = ledger;
   const summary = balanceSummary(balance);
   // The period the statement actually covers, taken from the entries themselves
@@ -55,13 +56,21 @@ function buildHtml(ledger: PartyLedger, biz: BusinessProfile): string {
     .num { text-align: right; }
     tfoot td { font-weight: 700; border-bottom: none; border-top: 1px solid #ccc; }
     .closing { margin-top: 20px; margin-left: auto; width: 280px; border-top: 2px solid #111; padding-top: 10px; display: flex; justify-content: space-between; font-size: 16px; font-weight: 700; }
+    .head { display: flex; align-items: flex-start; gap: 14px; }
+    .head-text { flex: 1; }
+    .logo { width: 68px; height: 68px; object-fit: contain; }
     .foot { margin-top: 40px; color: #999; font-size: 11px; text-align: center; }
   </style></head><body>
-    <div class="doc">STATEMENT OF ACCOUNT</div>
-    <div class="biz">${esc(biz.name)}</div>
-    ${biz.address ? `<div class="muted">${esc(biz.address)}</div>` : ''}
-    ${biz.gstin ? `<div class="muted">GSTIN: ${esc(biz.gstin)}</div>` : ''}
-    ${biz.phone ? `<div class="muted">${esc(biz.phone)}</div>` : ''}
+    <div class="head">
+      ${logo ? `<img class="logo" src="${logo}" />` : ''}
+      <div class="head-text">
+        <div class="biz">${esc(biz.name)}</div>
+        ${biz.address ? `<div class="muted">${esc(biz.address)}</div>` : ''}
+        ${biz.gstin ? `<div class="muted">GSTIN: ${esc(biz.gstin)}</div>` : ''}
+        ${biz.phone ? `<div class="muted">${esc(biz.phone)}</div>` : ''}
+      </div>
+      <div class="doc">STATEMENT OF ACCOUNT</div>
+    </div>
 
     <div class="row">
       <div>
@@ -105,7 +114,8 @@ function buildHtml(ledger: PartyLedger, biz: BusinessProfile): string {
 /** Render the statement to a PDF and open the native share sheet. */
 export async function sharePartyStatement(ledger: PartyLedger): Promise<void> {
   const biz = await getBusinessProfile();
-  const { uri } = await Print.printToFileAsync({ html: buildHtml(ledger, biz) });
+  const logo = await imageDataUri(biz.logoUri);
+  const { uri } = await Print.printToFileAsync({ html: buildHtml(ledger, biz, logo) });
   if (await Sharing.isAvailableAsync()) {
     await Sharing.shareAsync(uri, {
       mimeType: 'application/pdf',
@@ -117,5 +127,6 @@ export async function sharePartyStatement(ledger: PartyLedger): Promise<void> {
 /** Open the OS print dialog for the statement. */
 export async function printPartyStatement(ledger: PartyLedger): Promise<void> {
   const biz = await getBusinessProfile();
-  await Print.printAsync({ html: buildHtml(ledger, biz) });
+  const logo = await imageDataUri(biz.logoUri);
+  await Print.printAsync({ html: buildHtml(ledger, biz, logo) });
 }

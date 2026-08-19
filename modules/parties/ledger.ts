@@ -10,7 +10,13 @@ import type { Invoice, Party, Payment } from '@/db/schema';
 //   balance < 0  → YOU owe the party    (payable)
 // Sales, purchases and sale returns are financial; quotations/challans are not.
 
-export type LedgerKind = 'opening' | 'sale' | 'purchase' | 'saleReturn' | 'payment';
+export type LedgerKind =
+  | 'opening'
+  | 'sale'
+  | 'purchase'
+  | 'saleReturn'
+  | 'purchaseReturn'
+  | 'payment';
 
 export interface LedgerEntry {
   key: string;
@@ -43,6 +49,10 @@ export function invoiceDelta(inv: Invoice): number {
   // Goods came back: the customer owes that much less — and if they had already
   // paid, the balance goes negative, which is exactly the refund we owe them.
   if (inv.type === 'saleReturn') return -inv.grandTotal;
+  // Goods went back to the supplier: we owe them that much less — and if they
+  // had already been paid, the balance goes positive, which is exactly the
+  // refund they owe us.
+  if (inv.type === 'purchaseReturn') return inv.grandTotal;
   return 0; // quotation / challan → non-financial
 }
 
@@ -50,12 +60,14 @@ const LEDGER_KIND: Partial<Record<Invoice['type'], LedgerKind>> = {
   sale: 'sale',
   purchase: 'purchase',
   saleReturn: 'saleReturn',
+  purchaseReturn: 'purchaseReturn',
 };
 
 const LEDGER_LABEL: Partial<Record<Invoice['type'], string>> = {
   sale: 'Sale',
   purchase: 'Purchase',
   saleReturn: 'Sale return',
+  purchaseReturn: 'Purchase return',
 };
 
 // A recorded payment moves the balance by the direction it actually ran: money

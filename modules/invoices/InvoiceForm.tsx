@@ -16,6 +16,7 @@ import PickerField, { type PickerOption } from '@/components/PickerField';
 import {
   createInvoiceWithItems,
   getInvoiceWithItems,
+  returnedTotal,
   updateInvoiceWithItems,
   type InvoiceLineInput,
 } from '@/modules/invoices/service';
@@ -52,6 +53,7 @@ const TITLES: Record<InvoiceType, { noun: string; cta: string }> = {
   quotation: { noun: 'Quotation', cta: 'Create quotation' },
   challan: { noun: 'Delivery challan', cta: 'Create challan' },
   saleReturn: { noun: 'Sale return', cta: 'Create sale return' },
+  purchaseReturn: { noun: 'Purchase return', cta: 'Create purchase return' },
 };
 
 // One row in the editable line-items list. qty/rate are kept as strings while
@@ -82,6 +84,27 @@ const DUE_PRESETS = [0, 7, 15, 30];
 const duePresetLabel = (days: number) => (days === 0 ? 'Today' : `${days} days`);
 /** What "Add due date" starts at — a month's credit, the commonest term. */
 const DEFAULT_DUE_DAYS = 30;
+
+/**
+ * Ask before giving back more than the bill was ever worth. Legitimate most of
+ * the time it is seen — a partial return followed by the rest — but if the two
+ * together overshoot, somebody has returned the same goods twice.
+ */
+function confirmOverReturn(already: number, now: number, billTotal: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    Alert.alert(
+      'More than the bill',
+      `${formatMoney(already)} has already been returned on a bill of ${formatMoney(
+        billTotal,
+      )}. This one adds ${formatMoney(now)}, which takes the total past what was sold.`,
+      [
+        { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+        { text: 'Return anyway', onPress: () => resolve(true) },
+      ],
+      { cancelable: true, onDismiss: () => resolve(false) },
+    );
+  });
+}
 
 /** Ask before leaving the shop owing the customer money. */
 function confirmOverpaid(paid: number, newTotal: number): Promise<boolean> {
@@ -118,8 +141,13 @@ export default function InvoiceForm({
   const router = useRouter();
   const { lang } = useVoice();
   const titles = TITLES[type];
+  // Three different questions, deliberately kept apart:
+  //   isSupplierSide — who the document is with, and which price to start from
+  //   isPurchase     — whether the rate on it IS the cost (only a real purchase)
+  //   isReturn       — whether goods are going back, either way round
+  const isSupplierSide = type === 'purchase' || type === 'purchaseReturn';
   const isPurchase = type === 'purchase';
-  const isReturn = type === 'saleReturn';
+  const isReturn = type === 'saleReturn' || type === 'purchaseReturn';
   const isEdit = editInvoiceId != null;
   // Both flows start by reading an existing document; only the destination of
   // the save differs.
@@ -146,6 +174,10 @@ export default function InvoiceForm({
   // Where the document being returned was supplied to. A credit note has to
   // carry the tax of the bill it reverses, even if the customer has since moved.
   const [sourcePlace, setSourcePlace] = useState<string | null | undefined>(undefined);
+  // What the document being returned was worth, and what has already gone back
+  // on it. Both only ever set when raising a return against a bill.
+  const [sourceTotal, setSourceTotal] = useState(0);
+  const [alreadyReturned, setAlreadyReturned] = useState(0);
 
   useFocusEffect(
     useCallback(() => {
@@ -188,7 +220,13 @@ export default function InvoiceForm({
           setDueDate(source.invoice.dueDate);
           setShowDue(true);
         }
-      } else setSourcePlace(source.invoice.placeOfSupply);
+      } else {
+        setSourcePlace(source.invoice.placeOfSupply);
+        setSourceTotal(source.invoice.grandTotal);
+        void returnedTotal(prefillId).then((sum) => {
+          if (active) setAlreadyReturned(sum);
+        });
+      }
       setDiscountStr(source.invoice.discount ? paiseToRupeeInput(source.invoice.discount) : '');
       setLines(
         source.lines.map((l, i) => ({
@@ -228,9 +266,9 @@ export default function InvoiceForm({
       items.map((it) => ({
         id: it.id,
         label: it.name,
-        sublabel: `${formatMoney(isPurchase ? it.purchasePrice : it.salePrice)} · ${it.unit}`,
+        sublabel: `${formatMoney(isSupplierSide ? it.purchasePrice : it.salePrice)} · ${it.unit}`,
       })),
-    [items, isPurchase],
+    [items, isSupplierSide],
   );
 
   /**
@@ -259,7 +297,7 @@ export default function InvoiceForm({
           unit: it.unit,
           taxRate: it.taxRate,
           qtyStr: String(qty),
-          rateStr: String(rate ?? (isPurchase ? it.purchasePrice : it.salePrice) / 100),
+          rateStr: String(rate ?? (isSupplierSide ? it.purchasePrice : it.salePrice) / 100),
           discountStr: '',
         },
       ];
@@ -325,7 +363,7 @@ export default function InvoiceForm({
 
   const save = async () => {
     if (!partyId) {
-      Alert.alert('Party required', `Select a ${isPurchase ? 'supplier' : 'customer'} first.`);
+      Alert.alert('Party required', `Select a ${isSupplierSide ? 'supplier' : 'customer'} first.`);
       return;
     }
     if (parsedLines.length === 0) {
@@ -345,6 +383,13 @@ export default function InvoiceForm({
         const proceed = await confirmOverpaid(paid, totals.grandTotal);
         if (!proceed) return;
       }
+    }
+
+    // Giving back more than was ever sold is almost always the same goods
+    // returned twice — worth naming before it lands in the books.
+    if (isReturn && sourceInvoiceId && alreadyReturned + totals.grandTotal > sourceTotal) {
+      const proceed = await confirmOverReturn(alreadyReturned, totals.grandTotal, sourceTotal);
+      if (!proceed) return;
     }
 
     setSaving(true);
@@ -368,6 +413,9 @@ export default function InvoiceForm({
               dueDate: due,
               // A credit note is taxed where the sale it reverses was taxed.
               placeOfSupply: sourcePlace,
+              // The bill this gives back, so it can never be given back twice
+              // without the shop being told.
+              sourceInvoiceId: isReturn ? sourceInvoiceId ?? null : null,
             },
             parsedLines,
           );
@@ -464,11 +512,11 @@ export default function InvoiceForm({
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
         <PickerField
-          label={isPurchase ? 'Supplier' : 'Customer'}
+          label={isSupplierSide ? 'Supplier' : 'Customer'}
           value={partyId}
           onSelect={setPartyId}
           options={partyOptions}
-          placeholder={`Select ${isPurchase ? 'supplier' : 'customer'}`}
+          placeholder={`Select ${isSupplierSide ? 'supplier' : 'customer'}`}
           required
           emptyText="No parties yet — add one from the Parties tab."
         />
@@ -696,16 +744,25 @@ export default function InvoiceForm({
           loading={saving}
           style={styles.save}
         />
+        {isReturn && sourceInvoiceId && alreadyReturned > 0 ? (
+          <Text style={styles.returnNote}>
+            {formatMoney(alreadyReturned)} of this {formatMoney(sourceTotal)} bill has already been
+            returned.
+          </Text>
+        ) : null}
+
         <Text style={styles.hint}>
           {isEdit
             ? 'The bill number stays the same. Stock is corrected to match the new lines, and the payment status is worked out again.'
             : type === 'sale'
-            ? 'Stock decreases when you save. Record payment from the invoice screen.'
-            : isPurchase
-              ? 'Stock increases when you save, and each item’s purchase price is updated to the rate you paid. Record payment from the invoice screen.'
-              : isReturn
-                ? 'Stock comes back in when you save, and the customer’s balance drops by this much. Record the refund from the invoice screen if you pay them back in cash.'
-                : 'Quotations and challans don’t affect stock or ledgers.'}
+              ? 'Stock decreases when you save. Record payment from the invoice screen.'
+              : isPurchase
+                ? 'Stock increases when you save, and each item’s purchase price is updated to the rate you paid. Record payment from the invoice screen.'
+                : type === 'saleReturn'
+                  ? 'Stock comes back in when you save, and the customer’s balance drops by this much. Record the refund from the invoice screen if you pay them back in cash.'
+                  : type === 'purchaseReturn'
+                    ? 'Stock goes back out when you save, and you owe the supplier this much less. Record the refund from the invoice screen if they pay you back. The item’s purchase price is left alone — the rate here is what was paid, not a new cost.'
+                    : 'Quotations and challans don’t affect stock or ledgers.'}
         </Text>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -828,4 +885,5 @@ const styles = StyleSheet.create({
   totalStrong: { fontSize: 18, fontWeight: '700', color: '#111' },
   save: { marginTop: 8 },
   hint: { fontSize: 12, color: '#888', textAlign: 'center' },
+  returnNote: { fontSize: 13, color: '#b8860b', textAlign: 'center', lineHeight: 18 },
 });

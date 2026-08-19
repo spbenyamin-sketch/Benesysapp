@@ -1,8 +1,10 @@
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
+import { imageDataUri } from '@/modules/settings/brandImages';
 import { getBusinessProfile, type BusinessProfile } from '@/modules/settings/service';
 import { formatDate, formatQty, formatTaxRate } from '@/utils/format';
 import { escapeHtml, htmlMoney } from '@/utils/html';
+import { qrSvg, upiPayload } from '@/utils/qr';
 import {
   lineAmount,
   lineTax,
@@ -21,6 +23,7 @@ const DOC_LABEL: Record<InvoiceType, string> = {
   quotation: 'QUOTATION',
   challan: 'DELIVERY CHALLAN',
   saleReturn: 'CREDIT NOTE',
+  purchaseReturn: 'DEBIT NOTE',
 };
 
 const esc = escapeHtml;
@@ -76,7 +79,63 @@ function rateRows(detail: InvoiceDetail, supply: SupplyType): RateRow[] {
   return rows.map((r) => ({ ...r, ...splitTax(r.tax, supply) }));
 }
 
-function buildHtml(detail: InvoiceDetail, biz: BusinessProfile): string {
+/**
+ * The pictures the page needs, already inlined. The print view renders in its
+ * own sandbox and will not reliably load a file:// path, so the bytes travel
+ * inside the HTML.
+ */
+interface PrintAssets {
+  logo: string | null;
+  signature: string | null;
+}
+
+async function loadAssets(biz: BusinessProfile): Promise<PrintAssets> {
+  const [logo, signature] = await Promise.all([
+    imageDataUri(biz.logoUri),
+    imageDataUri(biz.signatureUri),
+  ]);
+  return { logo, signature };
+}
+
+/**
+ * The scan-to-pay block, or nothing at all.
+ *
+ * Only on a document the shop is owed money on. A bill already settled gets no
+ * code — a QR on a paid bill is an invitation to pay it twice. A part-paid one
+ * gets a code with NO amount in it, because the page does not know what is left
+ * and a wrong figure is worse than none.
+ */
+function payBlock(detail: InvoiceDetail, biz: BusinessProfile): string {
+  const { invoice } = detail;
+  if (!biz.upiId || invoice.type !== 'sale') return '';
+  if (invoice.paymentStatus === 'paid' || invoice.grandTotal <= 0) return '';
+  const partial = invoice.paymentStatus === 'partial';
+  try {
+    const svg = qrSvg(
+      upiPayload({
+        vpa: biz.upiId,
+        name: biz.name,
+        amount: partial ? undefined : invoice.grandTotal,
+        note: invoice.invoiceNo,
+      }),
+      110,
+    );
+    return `<div class="pay">
+      ${svg}
+      <div class="pay-label">${
+        partial
+          ? 'Scan to pay the balance'
+          : `Scan to pay ${esc(money(invoice.grandTotal))}`
+      }</div>
+      <div class="pay-upi">${esc(biz.upiId)}</div>
+    </div>`;
+  } catch {
+    // A code that cannot be built is simply left off; the bill still prints.
+    return '';
+  }
+}
+
+function buildHtml(detail: InvoiceDetail, biz: BusinessProfile, assets: PrintAssets): string {
   const { invoice, party, lines } = detail;
 
   // Buyer's state, frozen on the invoice when it was made; older invoices fall
@@ -187,14 +246,33 @@ function buildHtml(detail: InvoiceDetail, biz: BusinessProfile): string {
     .summary { margin-top: 24px; }
     .summary-title { margin-top: 24px; font-size: 11px; text-transform: uppercase; color: #555; font-weight: 700; }
     .summary tfoot td { font-weight: 700; border-bottom: none; border-top: 1px solid #ccc; }
-    .foot { margin-top: 40px; color: #999; font-size: 11px; text-align: center; }
+    .head { display: flex; align-items: flex-start; gap: 14px; }
+    .head-text { flex: 1; }
+    .logo { width: 68px; height: 68px; object-fit: contain; }
+    .closing { display: flex; align-items: flex-end; gap: 20px; margin-top: 28px; }
+    .closing-left { flex: 1; }
+    .terms-title { font-size: 11px; text-transform: uppercase; color: #555; font-weight: 700; }
+    .terms { font-size: 11px; color: #666; white-space: pre-wrap; max-width: 280px; margin-top: 4px; }
+    .pay { text-align: center; }
+    .pay-label { font-size: 11px; font-weight: 700; color: #111; margin-top: 2px; }
+    .pay-upi { font-size: 10px; color: #888; }
+    .sign { text-align: center; min-width: 150px; }
+    .sign-img { width: 130px; height: 46px; object-fit: contain; }
+    .sign-space { height: 46px; }
+    .sign-line { border-top: 1px solid #bbb; padding-top: 4px; font-size: 11px; font-weight: 600; }
+    .foot { margin-top: 28px; color: #999; font-size: 11px; text-align: center; }
   </style></head><body>
-    <div class="doc">${DOC_LABEL[invoice.type]}</div>
-    <div class="biz">${esc(biz.name)}</div>
-    ${biz.address ? `<div class="muted">${esc(biz.address)}</div>` : ''}
-    ${biz.gstin ? `<div class="muted">GSTIN: ${esc(biz.gstin)}</div>` : ''}
-    ${biz.state ? `<div class="muted">State: ${esc(biz.state)}</div>` : ''}
-    ${biz.phone ? `<div class="muted">${esc(biz.phone)}</div>` : ''}
+    <div class="head">
+      ${assets.logo ? `<img class="logo" src="${assets.logo}" />` : ''}
+      <div class="head-text">
+        <div class="biz">${esc(biz.name)}</div>
+        ${biz.address ? `<div class="muted">${esc(biz.address)}</div>` : ''}
+        ${biz.gstin ? `<div class="muted">GSTIN: ${esc(biz.gstin)}</div>` : ''}
+        ${biz.state ? `<div class="muted">State: ${esc(biz.state)}</div>` : ''}
+        ${biz.phone ? `<div class="muted">${esc(biz.phone)}</div>` : ''}
+      </div>
+      <div class="doc">${DOC_LABEL[invoice.type]}</div>
+    </div>
 
     <div class="row">
       <div>
@@ -229,6 +307,22 @@ function buildHtml(detail: InvoiceDetail, biz: BusinessProfile): string {
 
     ${summary ? `<div class="summary-title">Tax summary</div>${summary}` : ''}
 
+    <div class="closing">
+      <div class="closing-left">
+        ${
+          biz.terms
+            ? `<div class="terms-title">Terms</div><div class="terms">${esc(biz.terms)}</div>`
+            : ''
+        }
+      </div>
+      ${payBlock(detail, biz)}
+      <div class="sign">
+        ${assets.signature ? `<img class="sign-img" src="${assets.signature}" />` : '<div class="sign-space"></div>'}
+        <div class="sign-line">For ${esc(biz.name)}</div>
+        <div class="muted">Authorised signatory</div>
+      </div>
+    </div>
+
     <div class="foot">
       ${invoice.taxMode === 'inclusive' ? 'Rates shown are inclusive of GST. · ' : ''}Generated by the billing app · This is a computer-generated document.
     </div>
@@ -238,7 +332,8 @@ function buildHtml(detail: InvoiceDetail, biz: BusinessProfile): string {
 /** Render the invoice to a PDF and open the native share sheet. */
 export async function shareInvoicePdf(detail: InvoiceDetail): Promise<void> {
   const biz = await getBusinessProfile();
-  const { uri } = await Print.printToFileAsync({ html: buildHtml(detail, biz) });
+  const assets = await loadAssets(biz);
+  const { uri } = await Print.printToFileAsync({ html: buildHtml(detail, biz, assets) });
   if (await Sharing.isAvailableAsync()) {
     await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: detail.invoice.invoiceNo });
   }
@@ -251,5 +346,6 @@ export async function shareInvoicePdf(detail: InvoiceDetail): Promise<void> {
  */
 export async function printInvoice(detail: InvoiceDetail): Promise<void> {
   const biz = await getBusinessProfile();
-  await Print.printAsync({ html: buildHtml(detail, biz) });
+  const assets = await loadAssets(biz);
+  await Print.printAsync({ html: buildHtml(detail, biz, assets) });
 }

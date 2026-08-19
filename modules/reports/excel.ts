@@ -152,6 +152,9 @@ export async function exportPurchaseReportExcel(from: string, to: string): Promi
   const report = await purchaseReport(from, to);
   const preamble = await preambleFor('Purchase Report', { from, to });
   const sheets: SheetSpec[] = [invoiceSheet('Purchases', report.rows, preamble)];
+  // Debit notes get their own sheet rather than negative rows among the bills:
+  // the accountant wants them as documents in their own right.
+  if (report.returns.length) sheets.push(invoiceSheet('Purchase returns', report.returns));
   if (report.suppliers.length) {
     sheets.push({
       name: 'By supplier',
@@ -536,12 +539,13 @@ export async function exportGstExcel(from: string, to: string): Promise<string> 
       ['Taxable sales (output, net of returns)', money(data.taxableSales)],
       ['GST collected on sales (net of returns)', money(data.outputTax)],
       ['', ''],
-      ['Taxable purchases (input)', money(data.taxablePurchases)],
-      ['GST paid on purchases', money(data.inputTax)],
+      ['Taxable purchases (input, net of returns)', money(data.taxablePurchases)],
+      ['GST paid on purchases (net of returns)', money(data.inputTax)],
       ['', ''],
       ['Sale invoices', data.salesRows.length],
       ['Sale returns (credit notes)', data.saleReturnRows.length],
       ['Purchase bills', data.purchaseRows.length],
+      ['Purchase returns (debit notes)', data.purchaseReturnRows.length],
     ],
     totals: [
       data.netPayable >= 0 ? 'NET GST PAYABLE' : 'NET INPUT CREDIT',
@@ -557,5 +561,8 @@ export async function exportGstExcel(from: string, to: string): Promise<string> 
   ];
   if (data.saleReturnRows.length) sheets.push(invoiceSheet('Sale returns', data.saleReturnRows));
   sheets.push(invoiceSheet('Purchase bills', data.purchaseRows));
+  if (data.purchaseReturnRows.length) {
+    sheets.push(invoiceSheet('Purchase returns', data.purchaseReturnRows));
+  }
   return shareWorkbook(sheets, `gst-report${stamp(from, to)}.xlsx`);
 }

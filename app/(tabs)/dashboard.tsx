@@ -13,6 +13,7 @@ const TYPE_TAG: Record<string, string> = {
   quotation: 'Quote',
   challan: 'Challan',
   saleReturn: 'Return',
+  purchaseReturn: 'Pur. return',
 };
 
 function todayISO(): string {

@@ -93,7 +93,8 @@ export function paymentDirection(
 /**
  * The direction a payment against this invoice normally runs. Money goes out to
  * a supplier we bought from — and out to a customer we took goods back from,
- * because settling a credit note means refunding them.
+ * because settling a credit note means refunding them. A debit note runs the
+ * other way: goods went back to the supplier, so the money comes back to us.
  */
 export function defaultDirectionForInvoice(type: string): Direction {
   return type === 'purchase' || type === 'saleReturn' ? 'out' : 'in';

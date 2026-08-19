@@ -77,44 +77,70 @@ export interface PurchaseReport {
   from: string;
   to: string;
   count: number;
+  // Every figure below is NET of purchase returns: goods sent back were never
+  // really bought, and a shop asking "what did I spend" is not asking for a
+  // number that still counts them.
   subtotal: number;
   taxTotal: number;
   discount: number;
   grandTotal: number;
   rows: InvoiceWithParty[];
   suppliers: SupplierTotal[]; // biggest spend first
+  returnCount: number;
+  returnTotal: number; // gross value of what went back
+  returns: InvoiceWithParty[];
 }
 
-/** Roll invoices up by the party they were made with. Pure — no DB. */
-export function summarisePartyTotals(rows: InvoiceWithParty[]): SupplierTotal[] {
+/**
+ * Roll invoices up by the party they were made with. Pure — no DB.
+ * Anything in `credits` (returns) is netted off that party's total, so a
+ * supplier who took half a load back does not look like a bigger one.
+ */
+export function summarisePartyTotals(
+  rows: InvoiceWithParty[],
+  credits: InvoiceWithParty[] = [],
+): SupplierTotal[] {
   const byParty = new Map<number, SupplierTotal>();
-  for (const r of rows) {
+  const entryFor = (r: InvoiceWithParty) => {
     const entry = byParty.get(r.partyId) ?? {
       partyId: r.partyId,
       partyName: r.partyName,
       count: 0,
       total: 0,
     };
+    byParty.set(r.partyId, entry);
+    return entry;
+  };
+  for (const r of rows) {
+    const entry = entryFor(r);
     entry.count += 1;
     entry.total += r.grandTotal;
-    byParty.set(r.partyId, entry);
   }
+  // A return does not add to the bill COUNT — it is not another purchase.
+  for (const r of credits) entryFor(r).total -= r.grandTotal;
   return [...byParty.values()].sort((a, b) => b.total - a.total);
 }
 
 export async function purchaseReport(from: string, to: string): Promise<PurchaseReport> {
   const all = await listInvoicesWithParty();
-  const rows = all.filter((i) => i.type === 'purchase' && inRange(i.date, from, to));
+  const inWindow = all.filter((i) => inRange(i.date, from, to));
+  const rows = inWindow.filter((i) => i.type === 'purchase');
+  const returns = inWindow.filter((i) => i.type === 'purchaseReturn');
   return {
     from,
     to,
     count: rows.length,
-    subtotal: sumBy(rows, (r) => r.subtotal),
-    taxTotal: sumBy(rows, (r) => r.taxTotal),
-    discount: sumBy(rows, (r) => r.discount),
-    grandTotal: sumBy(rows, (r) => r.grandTotal),
+    subtotal: sumBy(rows, (r) => r.subtotal) - sumBy(returns, (r) => r.subtotal),
+    taxTotal: sumBy(rows, (r) => r.taxTotal) - sumBy(returns, (r) => r.taxTotal),
+    discount: sumBy(rows, (r) => r.discount) - sumBy(returns, (r) => r.discount),
+    grandTotal: sumBy(rows, (r) => r.grandTotal) - sumBy(returns, (r) => r.grandTotal),
     rows,
-    suppliers: summarisePartyTotals(rows),
+    // What each supplier cost net of what went back to them — the same netting
+    // the totals use, so the shares still add up to the total spent.
+    suppliers: summarisePartyTotals(rows, returns),
+    returnCount: returns.length,
+    returnTotal: sumBy(returns, (r) => r.grandTotal),
+    returns,
   };
 }
 
@@ -191,6 +217,7 @@ export interface GstSummary {
   salesRows: InvoiceWithParty[];
   saleReturnRows: InvoiceWithParty[];
   purchaseRows: InvoiceWithParty[];
+  purchaseReturnRows: InvoiceWithParty[];
 }
 
 export async function gstSummary(from: string, to: string): Promise<GstSummary> {
@@ -199,21 +226,26 @@ export async function gstSummary(from: string, to: string): Promise<GstSummary> 
   const sales = inWindow.filter((i) => i.type === 'sale');
   const returns = inWindow.filter((i) => i.type === 'saleReturn');
   const purchases = inWindow.filter((i) => i.type === 'purchase');
+  const purchaseReturns = inWindow.filter((i) => i.type === 'purchaseReturn');
   // Tax charged on goods that came back was never earned, so it comes straight
   // off the output tax — otherwise the shop pays GST on a sale it refunded.
   const outputTax = sumBy(sales, (r) => r.taxTotal) - sumBy(returns, (r) => r.taxTotal);
-  const inputTax = sumBy(purchases, (r) => r.taxTotal);
+  // The mirror on the buying side: credit cannot be claimed on tax that was
+  // handed back with the goods.
+  const inputTax = sumBy(purchases, (r) => r.taxTotal) - sumBy(purchaseReturns, (r) => r.taxTotal);
   return {
     from,
     to,
     taxableSales: sumBy(sales, (r) => r.subtotal) - sumBy(returns, (r) => r.subtotal),
     outputTax,
-    taxablePurchases: sumBy(purchases, (r) => r.subtotal),
+    taxablePurchases:
+      sumBy(purchases, (r) => r.subtotal) - sumBy(purchaseReturns, (r) => r.subtotal),
     inputTax,
     netPayable: outputTax - inputTax,
     salesRows: sales,
     saleReturnRows: returns,
     purchaseRows: purchases,
+    purchaseReturnRows: purchaseReturns,
   };
 }
 
@@ -520,9 +552,11 @@ export async function gstRateBreakup(
   const group = (type: 'sale' | 'purchase'): GstRateRow[] => {
     const byRate = new Map<number, GstRateRow>();
     for (const r of rows) {
-      // A sale return belongs in the sales slab it reverses, with the sign
-      // flipped — that is what makes the slab table add up to the summary.
-      const isReturn = type === 'sale' && r.type === 'saleReturn';
+      // A return belongs in the slab it reverses, with the sign flipped — that
+      // is what makes the slab table add up to the summary.
+      const isReturn =
+        (type === 'sale' && r.type === 'saleReturn') ||
+        (type === 'purchase' && r.type === 'purchaseReturn');
       if (r.type !== type && !isReturn) continue;
       const sign = isReturn ? -1 : 1;
       const entry = byRate.get(r.taxRate) ?? {

@@ -6,18 +6,20 @@
 
 import type { Invoice } from '@/db/schema';
 
-export type InvoiceType = Invoice['type']; // sale | purchase | quotation | challan | saleReturn
+export type InvoiceType = Invoice['type']; // sale | purchase | quotation | challan | saleReturn | purchaseReturn
 
 // Default prefixes; a user-set prefix (Phase 8 business profile) overrides the
 // sale prefix only — the others stay stable so document types never collide.
-// A sale return is numbered as a credit note, in its own series: it must never
-// share a number with the sale it reverses.
+// A return is numbered as a credit note (customer) or a debit note (supplier),
+// each in its own series: neither may ever share a number with the document it
+// reverses.
 const DEFAULT_PREFIX: Record<InvoiceType, string> = {
   sale: 'INV',
   purchase: 'PUR',
   quotation: 'QTN',
   challan: 'DC',
   saleReturn: 'CN',
+  purchaseReturn: 'DN',
 };
 
 export function prefixFor(type: InvoiceType, saleOverride?: string | null): string {

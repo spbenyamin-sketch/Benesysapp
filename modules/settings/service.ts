@@ -38,6 +38,13 @@ export interface BusinessProfile {
   phone?: string;
   /** The shop's state — one half of the CGST+SGST vs IGST decision. */
   state?: string;
+  /** file:// uris inside the app's own storage — see modules/settings/brandImages. */
+  logoUri?: string;
+  signatureUri?: string;
+  /** Free text printed at the foot of every bill: warranty, return policy. */
+  terms?: string;
+  /** UPI id ("shop@okaxis"), which becomes a scan-to-pay code on the bill. */
+  upiId?: string;
 }
 
 export async function getBusinessProfile(): Promise<BusinessProfile> {
@@ -49,6 +56,10 @@ export async function getBusinessProfile(): Promise<BusinessProfile> {
     address: map.get('business_address') || undefined,
     phone: map.get('business_phone') || undefined,
     state: map.get('business_state') || undefined,
+    logoUri: map.get('business_logo') || undefined,
+    signatureUri: map.get('business_signature') || undefined,
+    terms: map.get('invoice_terms') || undefined,
+    upiId: map.get('business_upi') || undefined,
   };
 }
 

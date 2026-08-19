@@ -51,6 +51,13 @@ export default function PurchaseReportScreen() {
             <Stat label="Total spent" value={formatMoney(report?.grandTotal ?? 0)} strong />
           </View>
 
+          {report?.returnCount ? (
+            <Text style={styles.returnNote}>
+              Less {report.returnCount} purchase return(s) worth {formatMoney(report.returnTotal)} —
+              already taken off the totals above.
+            </Text>
+          ) : null}
+
           {report?.suppliers.length ? (
             <View style={styles.block}>
               <Text style={styles.blockTitle}>Where it went</Text>
@@ -136,6 +143,7 @@ const styles = StyleSheet.create({
   supplierShare: { fontSize: 12, color: '#999', width: 46, textAlign: 'right' },
   supplierTotal: { fontSize: 14, fontWeight: '600', color: '#111' },
   more: { fontSize: 12, color: '#999' },
+  returnNote: { fontSize: 13, color: '#b8860b', lineHeight: 18 },
   sectionTitle: { fontSize: 16, fontWeight: '700', color: '#111' },
   row: {
     flexDirection: 'row',

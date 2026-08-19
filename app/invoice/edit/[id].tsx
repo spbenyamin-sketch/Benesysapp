@@ -11,6 +11,7 @@ const TITLES: Record<InvoiceType, string> = {
   quotation: 'Edit Quotation',
   challan: 'Edit Challan',
   saleReturn: 'Edit Sale Return',
+  purchaseReturn: 'Edit Purchase Return',
 };
 
 /**

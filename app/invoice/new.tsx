@@ -8,9 +8,17 @@ const TITLES: Record<InvoiceType, string> = {
   quotation: 'New Quotation',
   challan: 'New Challan',
   saleReturn: 'Sale Return',
+  purchaseReturn: 'Purchase Return',
 };
 
-const VALID: InvoiceType[] = ['sale', 'purchase', 'quotation', 'challan', 'saleReturn'];
+const VALID: InvoiceType[] = [
+  'sale',
+  'purchase',
+  'quotation',
+  'challan',
+  'saleReturn',
+  'purchaseReturn',
+];
 
 export default function NewInvoiceScreen() {
   // `partyId` is optional — it arrives when the bill was started from a party's

@@ -55,10 +55,14 @@ export const items = sqliteTable('items', {
 
 export const invoices = sqliteTable('invoices', {
   id: integer('id').primaryKey({ autoIncrement: true }),
-  // 'saleReturn' is the credit note: goods coming back from a customer. It is an
-  // invoice in every other respect — same numbering, same lines, same PDF — but
-  // its money and its stock run the opposite way to a sale.
-  type: text('type', { enum: ['sale', 'purchase', 'quotation', 'challan', 'saleReturn'] }).notNull(),
+  // 'saleReturn' is the credit note: goods coming back from a customer.
+  // 'purchaseReturn' is the debit note: goods going back to a supplier.
+  // Both are invoices in every other respect — same numbering, same lines, same
+  // PDF — but their money and their stock run the opposite way to the document
+  // they reverse.
+  type: text('type', {
+    enum: ['sale', 'purchase', 'quotation', 'challan', 'saleReturn', 'purchaseReturn'],
+  }).notNull(),
   invoiceNo: text('invoice_no').notNull(), // generated per financial year, not user-editable
   partyId: integer('party_id')
     .notNull()

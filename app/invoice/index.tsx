@@ -14,7 +14,8 @@ const FILTERS: { key: TypeFilter; label: string }[] = [
   { key: 'all', label: 'All' },
   { key: 'sale', label: 'Sale' },
   { key: 'purchase', label: 'Purchase' },
-  { key: 'saleReturn', label: 'Return' },
+  { key: 'saleReturn', label: 'Sale ret.' },
+  { key: 'purchaseReturn', label: 'Pur. ret.' },
   { key: 'quotation', label: 'Quotation' },
   { key: 'challan', label: 'Challan' },
 ];
@@ -24,7 +25,8 @@ const TYPE_TAG: Record<InvoiceType, string> = {
   purchase: 'Purchase',
   quotation: 'Quote',
   challan: 'Challan',
-  saleReturn: 'Return',
+  saleReturn: 'Sale return',
+  purchaseReturn: 'Purchase return',
 };
 
 const STATUS_LABEL: Record<InvoiceWithParty['paymentStatus'], string> = {
@@ -45,9 +47,14 @@ function statusTone(row: InvoiceWithParty): string {
   return STATUS_TONE[row.paymentStatus];
 }
 
-/** Goods walking back in count the other way in the net total. */
+/** Goods walking back out of the deal count the other way in the net total. */
 function signedTotal(row: InvoiceWithParty): number {
-  return row.type === 'saleReturn' ? -row.grandTotal : row.grandTotal;
+  return isReturnType(row.type) ? -row.grandTotal : row.grandTotal;
+}
+
+/** Either kind of return — a credit note to a customer, a debit note to a supplier. */
+function isReturnType(type: InvoiceType): boolean {
+  return type === 'saleReturn' || type === 'purchaseReturn';
 }
 
 export default function InvoiceListScreen() {
@@ -159,7 +166,7 @@ export default function InvoiceListScreen() {
         </View>
       }
       renderItem={({ item }) => {
-        const isReturn = item.type === 'saleReturn';
+        const isReturn = isReturnType(item.type);
         const late = isOverdue(item, today);
         return (
           <Pressable

@@ -14,6 +14,7 @@ export type DayBookKind =
   | 'sale'
   | 'saleReturn'
   | 'purchase'
+  | 'purchaseReturn'
   | 'paymentIn'
   | 'paymentOut'
   | 'expense';
@@ -23,6 +24,7 @@ const KIND_ORDER: DayBookKind[] = [
   'sale',
   'saleReturn',
   'purchase',
+  'purchaseReturn',
   'paymentIn',
   'paymentOut',
   'expense',
@@ -32,6 +34,7 @@ export const DAY_BOOK_LABEL: Record<DayBookKind, string> = {
   sale: 'Sale',
   saleReturn: 'Sale return',
   purchase: 'Purchase',
+  purchaseReturn: 'Purchase return',
   paymentIn: 'Received',
   paymentOut: 'Paid',
   expense: 'Expense',
@@ -56,6 +59,7 @@ export interface DayBookSummary {
   salesBilled: number;
   returnsBilled: number;
   purchasesBilled: number;
+  purchaseReturnsBilled: number;
   expenses: number;
 }
 
@@ -85,6 +89,7 @@ export function summariseDayBook(entries: DayBookEntry[]): DayBookSummary {
     salesBilled: total('sale'),
     returnsBilled: total('saleReturn'),
     purchasesBilled: total('purchase'),
+    purchaseReturnsBilled: total('purchaseReturn'),
     expenses: total('expense'),
   };
 }
@@ -101,6 +106,7 @@ const INVOICE_KIND: Record<string, DayBookKind | undefined> = {
   sale: 'sale',
   saleReturn: 'saleReturn',
   purchase: 'purchase',
+  purchaseReturn: 'purchaseReturn',
 };
 
 /** Everything that happened on one day. */
