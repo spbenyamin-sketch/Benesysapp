@@ -1,8 +1,10 @@
 import {
+  cappedLineDiscount,
   computeLine,
   computeTotals,
   lineAmount,
   lineTax,
+  roundToRupee,
   splitInclusive,
 } from '@/utils/gst';
 
@@ -80,7 +82,8 @@ describe('computeTotals', () => {
     const { totals } = computeTotals([{ qty: 3000, rate: 9990, taxRate: 1800 }]);
     expect(totals.subtotal).toBe(29970); // ₹299.70
     expect(totals.taxTotal).toBe(5395); // ₹53.95 (5394.6 rounded)
-    expect(totals.grandTotal).toBe(35365); // ₹353.65
+    expect(totals.roundOff).toBe(35); // ₹353.65 → ₹354.00
+    expect(totals.grandTotal).toBe(35400);
     expect(Number.isInteger(totals.grandTotal)).toBe(true);
   });
 
@@ -113,7 +116,7 @@ describe('computeTotals', () => {
 
   it('returns zero totals for an empty invoice', () => {
     const { totals } = computeTotals([]);
-    expect(totals).toEqual({ subtotal: 0, taxTotal: 0, discount: 0, grandTotal: 0 });
+    expect(totals).toEqual({ subtotal: 0, taxTotal: 0, discount: 0, roundOff: 0, grandTotal: 0 });
   });
 
   it('rounds each line independently, so lines and totals reconcile', () => {
@@ -124,5 +127,115 @@ describe('computeTotals', () => {
     const { lines: computed, totals } = computeTotals(lines);
     expect(totals.subtotal).toBe(computed.reduce((s, l) => s + l.amount, 0));
     expect(totals.taxTotal).toBe(computed.reduce((s, l) => s + l.tax, 0));
+  });
+});
+
+// ── Round off ────────────────────────────────────────────────────────────────
+// Nobody at a counter hands over 65 paise. The bill is landed on a whole rupee
+// and the difference is carried openly, so the printed rows still add up.
+
+describe('roundToRupee', () => {
+  it('goes to the nearest rupee, half a rupee upwards', () => {
+    expect(roundToRupee(35365)).toBe(35400);
+    expect(roundToRupee(11020)).toBe(11000);
+    expect(roundToRupee(10050)).toBe(10100);
+    expect(roundToRupee(10000)).toBe(10000);
+  });
+});
+
+describe('computeTotals round off', () => {
+  it('always reconciles: subtotal + tax − discount + roundOff === grand total', () => {
+    const cases: Array<[Parameters<typeof computeTotals>[0], number]> = [
+      [[{ qty: 3000, rate: 9990, taxRate: 1800 }], 0],
+      [[{ qty: 1000, rate: 4999, taxRate: 500 }], 137],
+      [[{ qty: 777, rate: 333, taxRate: 1200 }], 0],
+      [[{ qty: 2500, rate: 12345, taxRate: 2800 }], 5000],
+    ];
+    for (const [lines, discount] of cases) {
+      const { totals } = computeTotals(lines, discount);
+      expect(totals.subtotal + totals.taxTotal - totals.discount + totals.roundOff).toBe(
+        totals.grandTotal,
+      );
+      expect(totals.grandTotal % 100).toBe(0); // a whole number of rupees
+      expect(Math.abs(totals.roundOff)).toBeLessThanOrEqual(50);
+    }
+  });
+
+  it('leaves an already-whole total alone', () => {
+    const { totals } = computeTotals([{ qty: 1000, rate: 10000, taxRate: 1800 }]);
+    expect(totals.grandTotal).toBe(11800);
+    expect(totals.roundOff).toBe(0);
+  });
+
+  it('does not round a bill that a discount wiped out', () => {
+    const { totals } = computeTotals([{ qty: 1000, rate: 10000, taxRate: 1800 }], 99999);
+    expect(totals.grandTotal).toBe(0);
+    expect(totals.roundOff).toBe(0);
+  });
+});
+
+// ── Line-level discount ──────────────────────────────────────────────────────
+// Money taken off ONE item. It comes off before the tax, because GST is charged
+// on what actually changed hands, not on the price that was crossed out.
+
+describe('cappedLineDiscount', () => {
+  it('never goes negative and never exceeds the line', () => {
+    expect(cappedLineDiscount(500, 10000)).toBe(500);
+    expect(cappedLineDiscount(-500, 10000)).toBe(0);
+    expect(cappedLineDiscount(99999, 10000)).toBe(10000);
+    expect(cappedLineDiscount(undefined, 10000)).toBe(0);
+  });
+});
+
+describe('computeLine with a discount', () => {
+  it('taxes what is left after the discount, not the full rate', () => {
+    // ₹100 line, ₹20 off, 18% → tax on ₹80.
+    const line = computeLine({ qty: 1000, rate: 10000, taxRate: 1800, discount: 2000 });
+    expect(line).toMatchObject({ discount: 2000, amount: 8000, tax: 1440, gross: 9440 });
+  });
+
+  it('carves the tax out of the discounted price in inclusive mode', () => {
+    // ₹118 counter price, ₹18 off → ₹100 changed hands, ₹15.25 of it is tax.
+    const line = computeLine({ qty: 1000, rate: 11800, taxRate: 1800, discount: 1800 }, 'inclusive');
+    expect(line.discount).toBe(1800);
+    expect(line.amount + line.tax).toBe(10000);
+    expect(line.gross).toBe(10000);
+  });
+
+  it('cannot be discounted past free', () => {
+    const line = computeLine({ qty: 1000, rate: 10000, taxRate: 1800, discount: 50000 });
+    expect(line).toMatchObject({ discount: 10000, amount: 0, tax: 0, gross: 0 });
+  });
+
+  it('leaves an undiscounted line exactly as before', () => {
+    expect(computeLine({ qty: 1000, rate: 10000, taxRate: 1800 })).toMatchObject({
+      discount: 0,
+      amount: 10000,
+      tax: 1800,
+    });
+  });
+});
+
+describe('computeTotals with line discounts', () => {
+  it('rolls the discounted amounts into the subtotal', () => {
+    const { lines: computed, totals } = computeTotals([
+      { qty: 1000, rate: 10000, taxRate: 1800, discount: 2000 }, // ₹80 + ₹14.40
+      { qty: 1000, rate: 5000, taxRate: 0, discount: 500 }, // ₹45, untaxed
+    ]);
+    expect(computed[0].amount).toBe(8000);
+    expect(computed[1].amount).toBe(4500);
+    expect(totals.subtotal).toBe(12500);
+    expect(totals.taxTotal).toBe(1440);
+    expect(totals.grandTotal).toBe(13900); // ₹139.40 → ₹139.00
+    expect(totals.roundOff).toBe(-40);
+  });
+
+  it('stacks with the bill-level discount, which comes off after tax', () => {
+    const { totals } = computeTotals(
+      [{ qty: 1000, rate: 10000, taxRate: 1800, discount: 2000 }],
+      440,
+    );
+    expect(totals.discount).toBe(440);
+    expect(totals.grandTotal).toBe(9000); // 8000 + 1440 − 440 = 9000 exactly
   });
 });

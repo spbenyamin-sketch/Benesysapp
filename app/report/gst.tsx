@@ -3,7 +3,12 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import DateRange, { defaultRange } from '@/components/DateRange';
 import ExcelExportButton from '@/components/ExcelExportButton';
 import { exportGstExcel } from '@/modules/reports/excel';
-import { gstSummary, type GstSummary } from '@/modules/reports/service';
+import {
+  gstRateBreakup,
+  gstSummary,
+  type GstRateRow,
+  type GstSummary,
+} from '@/modules/reports/service';
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
 import { formatMoney } from '@/utils/format';
 
@@ -13,11 +18,16 @@ export default function GstReportScreen() {
   const [from, setFrom] = useState(init.from);
   const [to, setTo] = useState(init.to);
   const [data, setData] = useState<GstSummary | null>(null);
+  // The same slab rows the Excel export carries — the summary header only holds
+  // one rolled-up tax figure, and CGST/SGST/IGST is a per-line question.
+  const [rates, setRates] = useState<{ sales: GstRateRow[]; purchases: GstRateRow[] } | null>(null);
 
   useEffect(() => {
     let active = true;
-    gstSummary(from, to).then((d) => {
-      if (active) setData(d);
+    Promise.all([gstSummary(from, to), gstRateBreakup(from, to)]).then(([d, r]) => {
+      if (!active) return;
+      setData(d);
+      setRates(r);
     });
     return () => {
       active = false;
@@ -25,6 +35,8 @@ export default function GstReportScreen() {
   }, [from, to]);
 
   const netPayable = data?.netPayable ?? 0;
+  const output = headTotals(rates?.sales, data?.outputTax ?? 0);
+  const input = headTotals(rates?.purchases, data?.inputTax ?? 0);
 
   // "மொத்தம்" → the one number the shopkeeper actually wants: net GST to pay.
   useVoiceCommands((intent) => {
@@ -46,12 +58,14 @@ export default function GstReportScreen() {
       <View style={styles.block}>
         <Text style={styles.blockTitle}>Output tax (on sales)</Text>
         <Line label="Taxable sales" value={formatMoney(data?.taxableSales ?? 0)} />
+        <TaxHeads totals={output} />
         <Line label="GST collected" value={formatMoney(data?.outputTax ?? 0)} strong />
       </View>
 
       <View style={styles.block}>
         <Text style={styles.blockTitle}>Input tax (on purchases)</Text>
         <Line label="Taxable purchases" value={formatMoney(data?.taxablePurchases ?? 0)} />
+        <TaxHeads totals={input} />
         <Line label="GST paid (input credit)" value={formatMoney(data?.inputTax ?? 0)} strong />
       </View>
 
@@ -69,6 +83,47 @@ export default function GstReportScreen() {
         invoice lists. Summary figures for reference only — not a filed GSTR return.
       </Text>
     </ScrollView>
+  );
+}
+
+/**
+ * CGST/SGST/IGST rolled up out of the slab rows, forced to add back to the tax
+ * figure printed beside them. Re-deriving line by line can land a paise away
+ * from the invoice headers (a tax-inclusive bill carves its tax out of the
+ * gross); a stray paise is given to the head already carrying the most rather
+ * than shown as three numbers that don't sum to the fourth.
+ */
+function headTotals(
+  rows: GstRateRow[] | undefined,
+  total: number,
+): { cgst: number; sgst: number; igst: number } {
+  const heads = {
+    cgst: (rows ?? []).reduce((s, r) => s + r.cgst, 0),
+    sgst: (rows ?? []).reduce((s, r) => s + r.sgst, 0),
+    igst: (rows ?? []).reduce((s, r) => s + r.igst, 0),
+  };
+  const residual = total - (heads.cgst + heads.sgst + heads.igst);
+  if (residual !== 0) {
+    const biggest = (['cgst', 'sgst', 'igst'] as const).reduce((a, b) =>
+      Math.abs(heads[b]) > Math.abs(heads[a]) ? b : a,
+    );
+    if (heads[biggest] !== 0) heads[biggest] += residual;
+  }
+  return heads;
+}
+
+/**
+ * The three heads, each shown only when there is something under it — a shop
+ * that never sells out of state never sees an IGST row, and one that only ever
+ * does never sees CGST/SGST.
+ */
+function TaxHeads({ totals }: { totals: { cgst: number; sgst: number; igst: number } }) {
+  return (
+    <>
+      {totals.cgst !== 0 ? <Line label="CGST" value={formatMoney(totals.cgst)} /> : null}
+      {totals.sgst !== 0 ? <Line label="SGST" value={formatMoney(totals.sgst)} /> : null}
+      {totals.igst !== 0 ? <Line label="IGST" value={formatMoney(totals.igst)} /> : null}
+    </>
   );
 }
 

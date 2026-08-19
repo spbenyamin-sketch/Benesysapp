@@ -112,6 +112,9 @@ function rateSheet(name: string, rows: Awaited<ReturnType<typeof gstRateBreakup>
       { header: 'Taxable value', width: 16, money: true },
       { header: 'CGST', width: 13, money: true },
       { header: 'SGST', width: 13, money: true },
+      // Zero for a shop that only ever sells locally, but the accountant's
+      // sheet keeps the same shape either way.
+      { header: 'IGST', width: 13, money: true },
       { header: 'Total GST', width: 14, money: true },
     ],
     rows: rows.map((r) => [
@@ -120,6 +123,7 @@ function rateSheet(name: string, rows: Awaited<ReturnType<typeof gstRateBreakup>
       money(r.taxable),
       money(r.cgst),
       money(r.sgst),
+      money(r.igst),
       money(r.tax),
     ]),
     totals: [
@@ -128,6 +132,7 @@ function rateSheet(name: string, rows: Awaited<ReturnType<typeof gstRateBreakup>
       money(rows.reduce((s, r) => s + r.taxable, 0)),
       money(rows.reduce((s, r) => s + r.cgst, 0)),
       money(rows.reduce((s, r) => s + r.sgst, 0)),
+      money(rows.reduce((s, r) => s + r.igst, 0)),
       money(rows.reduce((s, r) => s + r.tax, 0)),
     ],
   };

@@ -25,19 +25,27 @@ export interface LineInput {
   qty: number; // thousandths
   rate: number; // paise per unit
   taxRate: number; // basis points
+  /** Money knocked off THIS line, paise, before tax — the "₹5 off the tea" a
+   *  counter gives on one item rather than on the whole bill. */
+  discount?: number;
 }
 
 export interface LineComputed extends LineInput {
-  amount: number; // paise, ALWAYS pre-tax (taxable value) — this is what we store
+  /** The line discount actually applied: never negative, never more than the
+   *  line is worth (a bigger one would turn the line into a refund). */
+  discount: number; // paise
+  amount: number; // paise, ALWAYS pre-tax (taxable value) AND already net of `discount` — this is what we store
   tax: number; // paise
   gross: number; // paise, amount + tax (what the customer pays for this line)
 }
 
 export interface InvoiceTotals {
-  subtotal: number; // paise, pre-tax
+  subtotal: number; // paise, pre-tax, net of line discounts
   taxTotal: number; // paise
-  discount: number; // paise
-  grandTotal: number; // paise
+  discount: number; // paise, the bill-level discount
+  /** Paise added or taken off to land the bill on a whole rupee. */
+  roundOff: number;
+  grandTotal: number; // paise, a whole number of rupees
 }
 
 /** Pre-tax line total in paise: (qty thousandths ÷ 1000) × rate paise. */
@@ -61,30 +69,61 @@ export function splitInclusive(gross: number, taxRate: number): { amount: number
   return { amount, tax: gross - amount };
 }
 
-export function computeLine(line: LineInput, taxMode: TaxMode = 'exclusive'): LineComputed {
-  const raw = lineAmount(line.qty, line.rate);
-  if (taxMode === 'inclusive') {
-    const { amount, tax } = splitInclusive(raw, line.taxRate);
-    return { ...line, amount, tax, gross: raw };
-  }
-  const tax = lineTax(raw, line.taxRate);
-  return { ...line, amount: raw, tax, gross: raw + tax };
+/**
+ * A line's discount, clamped to something that can actually be given away: never
+ * negative, never more than the line is worth. A discount larger than the line
+ * would otherwise make the shop pay the customer for taking the goods.
+ */
+export function cappedLineDiscount(discount: number | undefined, base: number): number {
+  return Math.min(Math.max(0, discount ?? 0), Math.max(0, base));
 }
 
 /**
- * Roll up line items into invoice totals. Discount is a flat paise amount
- * applied after tax; grandTotal is floored at 0 so an over-large discount can't
- * make a negative bill.
+ * Round a paise figure to the nearest whole rupee. Half a rupee goes up, which
+ * is what a counter does with a ₹0.50 — and what the customer expects to see.
+ */
+export function roundToRupee(paise: number): number {
+  return Math.round(paise / 100) * 100;
+}
+
+/**
+ * One line, discount taken off FIRST and tax charged on what is left — the only
+ * order GST allows: a discount given at the time of the sale reduces the taxable
+ * value, so the tax follows the money that actually changed hands.
+ */
+export function computeLine(line: LineInput, taxMode: TaxMode = 'exclusive'): LineComputed {
+  const base = lineAmount(line.qty, line.rate);
+  const discount = cappedLineDiscount(line.discount, base);
+  const raw = base - discount;
+  if (taxMode === 'inclusive') {
+    const { amount, tax } = splitInclusive(raw, line.taxRate);
+    return { ...line, discount, amount, tax, gross: raw };
+  }
+  const tax = lineTax(raw, line.taxRate);
+  return { ...line, discount, amount: raw, tax, gross: raw + tax };
+}
+
+/**
+ * Roll up line items into invoice totals. `discount` here is the BILL-level one,
+ * a flat paise amount applied after tax (line discounts are already inside each
+ * line's amount); the total is floored at 0 so an over-large discount can't make
+ * a negative bill, then landed on a whole rupee.
+ *
+ * The rounding is deliberately invisible: nobody at a counter hands over 65
+ * paise, so the bill is rounded for them and the difference is carried in
+ * `roundOff` — which means subtotal + tax − discount + roundOff === grandTotal,
+ * exactly, on every printed bill.
  *
  * Sanity (repeating-decimal 18% GST, per the plan's "No Error" checklist):
  *   line 3 units (qty=3000) @ ₹99.90 (rate=9990), 18% (taxRate=1800)
  *   amount = round(3000*9990/1000) = 29970 paise (₹299.70)
  *   tax    = round(29970*1800/10000) = round(5394.6) = 5395 paise (₹53.95)
- *   grand  = 29970 + 5395 = 35365 paise (₹353.65) — no float drift.
+ *   net    = 29970 + 5395 = 35365 paise (₹353.65) — no float drift
+ *   grand  = 35400 (₹354.00), roundOff = +35 paise.
  *
  * Inclusive mode, same line entered as a ₹353.65-ish counter price:
  *   gross = round(3000*11790/1000) = 35370; taxable = round(35370*10000/11800)
- *         = 29975; tax = 35370 − 29975 = 5395 → grand back to 35370 exactly.
+ *         = 29975; tax = 35370 − 29975 = 5395 → net back to 35370 exactly.
  */
 export function computeTotals(
   lines: LineInput[],
@@ -97,8 +136,9 @@ export function computeTotals(
   const computed = lines.map((l) => computeLine(l, taxMode));
   const subtotal = computed.reduce((s, l) => s + l.amount, 0);
   const taxTotal = computed.reduce((s, l) => s + l.tax, 0);
-  const grandTotal = Math.max(0, subtotal + taxTotal - discount);
-  return { lines: computed, totals: { subtotal, taxTotal, discount, grandTotal } };
+  const net = Math.max(0, subtotal + taxTotal - discount);
+  const grandTotal = roundToRupee(net);
+  return { lines: computed, totals: { subtotal, taxTotal, discount, roundOff: grandTotal - net, grandTotal } };
 }
 
 // ── CGST / SGST / IGST presentation split ─────────────────────────────────────

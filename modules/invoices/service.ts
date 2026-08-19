@@ -71,6 +71,9 @@ export interface InvoiceLineInput {
   /** What the goods cost us, paise per unit. Defaults to the item's purchase
    *  price on a sale, and to the pre-tax rate being paid on a purchase. */
   costPrice?: number;
+  /** Money knocked off this line alone, paise. Taken off before tax — see
+   *  utils/gst computeLine — so the stored `amount` is already net of it. */
+  discount?: number;
 }
 
 /**
@@ -166,8 +169,10 @@ export async function createInvoiceWithItems(
         subtotal: totals.subtotal,
         taxTotal: totals.taxTotal,
         discount: totals.discount,
+        roundOff: totals.roundOff,
         grandTotal: totals.grandTotal,
         paymentStatus: header.paymentStatus ?? 'unpaid',
+
         taxMode,
         dueDate: header.dueDate ?? null,
         placeOfSupply,
@@ -191,7 +196,8 @@ function writeLines(
   tx: Tx,
   invoiceId: number,
   lines: InvoiceLineInput[],
-  computed: { amount: number }[],
+  computed: { amount: number; discount: number }[],
+
   ctx: {
     sign: -1 | 0 | 1;
     isPurchase: boolean;
@@ -210,7 +216,11 @@ function writeLines(
         taxRate: l.taxRate,
         amount: computed[i].amount,
         costPrice: cost,
+        // The capped discount, not what was typed: the line can never be given
+        // away for less than nothing.
+        discount: computed[i].discount,
         hsnCode: ctx.hsnOf.get(l.itemId) ?? null,
+
       })
       .run();
     if (ctx.sign === 0) return;
@@ -337,8 +347,10 @@ export async function updateInvoiceWithItems(
         subtotal: totals.subtotal,
         taxTotal: totals.taxTotal,
         discount: totals.discount,
+        roundOff: totals.roundOff,
         grandTotal: totals.grandTotal,
         taxMode,
+
         dueDate,
         placeOfSupply,
       })

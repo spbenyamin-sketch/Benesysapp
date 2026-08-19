@@ -4,7 +4,7 @@
 
 import { and, eq, gte, inArray, lte } from 'drizzle-orm';
 import { db } from '@/db/client';
-import { invoiceItems, invoices, items as itemsTable, type Item } from '@/db/schema';
+import { invoiceItems, invoices, items as itemsTable, parties, type Item } from '@/db/schema';
 import {
   filterExpensesByRange,
   listExpenses,
@@ -14,7 +14,8 @@ import {
 import { listItems } from '@/modules/items/service';
 import { listInvoicesWithParty, type InvoiceWithParty } from '@/modules/invoices/service';
 import { listPartiesWithBalance, type PartyWithBalance } from '@/modules/parties/ledger';
-import { lineTax } from '@/utils/gst';
+import { getSetting } from '@/modules/settings/service';
+import { lineTax, splitTax, supplyType } from '@/utils/gst';
 
 const inRange = (date: string, from: string, to: string) => date >= from && date <= to;
 
@@ -311,8 +312,9 @@ export interface GstRateRow {
   taxRate: number; // basis points
   taxable: number; // paise
   tax: number; // paise
-  cgst: number; // paise (intra-state split — half of tax)
-  sgst: number; // paise
+  cgst: number; // paise (intra-state half)
+  sgst: number; // paise (intra-state half)
+  igst: number; // paise (the whole tax, when the goods crossed a state line)
   lines: number;
 }
 
@@ -321,20 +323,33 @@ export interface GstRateRow {
  * Reads invoice_items directly (the invoice header only carries a single rolled-up
  * tax figure) and re-derives each line's tax from its stored pre-tax amount, so
  * the slab totals always reconcile with the invoice totals.
+ *
+ * Each line is split into CGST+SGST or IGST by the invoice it belongs to — the
+ * place of supply frozen on that bill, against the shop's own state — so a slab
+ * that holds both local and out-of-state sales reports each under the right head.
+ * That is the split a return asks for; `tax` stays the sum either way.
  */
 export async function gstRateBreakup(
   from: string,
   to: string,
 ): Promise<{ sales: GstRateRow[]; purchases: GstRateRow[] }> {
-  const rows = await db
-    .select({
-      type: invoices.type,
-      taxRate: invoiceItems.taxRate,
-      amount: invoiceItems.amount,
-    })
-    .from(invoiceItems)
-    .innerJoin(invoices, eq(invoiceItems.invoiceId, invoices.id))
-    .where(and(gte(invoices.date, from), lte(invoices.date, to)));
+  const [rows, bizState] = await Promise.all([
+    db
+      .select({
+        type: invoices.type,
+        taxRate: invoiceItems.taxRate,
+        amount: invoiceItems.amount,
+        placeOfSupply: invoices.placeOfSupply,
+        // Bills made before the place of supply was frozen fall back to where
+        // the party lives today — the same fallback the printed invoice uses.
+        partyState: parties.state,
+      })
+      .from(invoiceItems)
+      .innerJoin(invoices, eq(invoiceItems.invoiceId, invoices.id))
+      .innerJoin(parties, eq(invoices.partyId, parties.id))
+      .where(and(gte(invoices.date, from), lte(invoices.date, to))),
+    getSetting('business_state'),
+  ]);
 
   const group = (type: 'sale' | 'purchase'): GstRateRow[] => {
     const byRate = new Map<number, GstRateRow>();
@@ -350,16 +365,20 @@ export async function gstRateBreakup(
         tax: 0,
         cgst: 0,
         sgst: 0,
+        igst: 0,
         lines: 0,
       };
+      const tax = sign * lineTax(r.amount, r.taxRate);
+      const split = splitTax(tax, supplyType(bizState, r.placeOfSupply || r.partyState));
       entry.taxable += sign * r.amount;
-      entry.tax += sign * lineTax(r.amount, r.taxRate);
+      entry.tax += tax;
+      entry.cgst += split.cgst;
+      entry.sgst += split.sgst;
+      entry.igst += split.igst;
       entry.lines += 1;
       byRate.set(r.taxRate, entry);
     }
-    return [...byRate.values()]
-      .map((e) => ({ ...e, cgst: Math.round(e.tax / 2), sgst: e.tax - Math.round(e.tax / 2) }))
-      .sort((a, b) => a.taxRate - b.taxRate);
+    return [...byRate.values()].sort((a, b) => a.taxRate - b.taxRate);
   };
 
   return { sales: group('sale'), purchases: group('purchase') };

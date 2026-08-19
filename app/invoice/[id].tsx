@@ -9,9 +9,11 @@ import {
 } from '@/modules/invoices/service';
 import { printInvoice, shareInvoicePdf } from '@/modules/invoices/pdf';
 import { defaultDirectionForInvoice } from '@/modules/payments/service';
+import { getSetting } from '@/modules/settings/service';
 import { t, totalLine } from '@/modules/voice/phrases';
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
 import { formatDate, formatMoney, formatQty, formatTaxRate } from '@/utils/format';
+import { splitTaxForStates } from '@/utils/gst';
 import type { InvoiceType } from '@/utils/invoiceNumber';
 
 const TYPE_LABEL: Record<InvoiceType, string> = {
@@ -36,13 +38,20 @@ export default function InvoiceDetailScreen() {
   const [detail, setDetail] = useState<InvoiceDetail | null | undefined>(undefined);
   const [sharing, setSharing] = useState(false);
   const [printing, setPrinting] = useState(false);
+  // The shop's own state, against which this bill's place of supply decides
+  // whether the tax shown is CGST + SGST or IGST — the same call the PDF makes.
+  const [bizState, setBizState] = useState<string | undefined>(undefined);
 
   useFocusEffect(
     useCallback(() => {
       let active = true;
-      getInvoiceWithItems(invoiceId).then((d) => {
-        if (active) setDetail(d);
-      });
+      Promise.all([getInvoiceWithItems(invoiceId), getSetting('business_state')]).then(
+        ([d, state]) => {
+          if (!active) return;
+          setDetail(d);
+          setBizState(state);
+        },
+      );
       return () => {
         active = false;
       };
@@ -160,6 +169,11 @@ export default function InvoiceDetailScreen() {
 
   const { invoice, party, lines } = detail;
   const statusTone = STATUS_TONE[invoice.paymentStatus] ?? '#666';
+  // Frozen on the bill when it was made; older bills fall back to wherever the
+  // party lives today, exactly as the printed copy does.
+  const placeOfSupply = invoice.placeOfSupply || party?.state || '';
+  const tax = splitTaxForStates(invoice.taxTotal, bizState, placeOfSupply);
+  const inRate = invoice.taxMode === 'inclusive' ? ' (in rate)' : '';
 
   return (
     <>
@@ -174,6 +188,11 @@ export default function InvoiceDetailScreen() {
           </View>
           <Text style={styles.invoiceNo}>{invoice.invoiceNo}</Text>
           <Text style={styles.date}>{formatDate(invoice.date)}</Text>
+          {/* Only worth saying when it changes the tax: a local bill's place of
+              supply is the shop's own state and tells the counter nothing. */}
+          {tax.supply === 'inter' && placeOfSupply ? (
+            <Text style={styles.date}>Place of supply: {placeOfSupply}</Text>
+          ) : null}
           {party ? (
             <Pressable
               onPress={() => router.push({ pathname: '/party/[id]', params: { id: party.id } })}
@@ -191,6 +210,7 @@ export default function InvoiceDetailScreen() {
                 <Text style={styles.lineMeta}>
                   {formatQty(l.qty)} {l.itemUnit} × {formatMoney(l.rate)}
                   {l.taxRate > 0 ? ` · ${formatTaxRate(l.taxRate)}` : ''}
+                  {l.discount > 0 ? ` · less ${formatMoney(l.discount)}` : ''}
                 </Text>
               </View>
               <Text style={styles.lineAmount}>{formatMoney(l.amount)}</Text>
@@ -203,12 +223,24 @@ export default function InvoiceDetailScreen() {
             label={invoice.taxMode === 'inclusive' ? 'Taxable value' : 'Subtotal'}
             value={formatMoney(invoice.subtotal)}
           />
-          <TotalRow
-            label={invoice.taxMode === 'inclusive' ? 'Tax (included in rate)' : 'Tax'}
-            value={formatMoney(invoice.taxTotal)}
-          />
+          {/* Nothing to split on a bill of exempt goods — a shop selling only
+              untaxed items should not be shown two rows of zero. */}
+          {invoice.taxTotal === 0 ? null : tax.supply === 'inter' ? (
+            <TotalRow label={`IGST${inRate}`} value={formatMoney(tax.igst)} />
+          ) : (
+            <>
+              <TotalRow label={`CGST${inRate}`} value={formatMoney(tax.cgst)} />
+              <TotalRow label={`SGST${inRate}`} value={formatMoney(tax.sgst)} />
+            </>
+          )}
           {invoice.discount > 0 ? (
             <TotalRow label="Discount" value={`- ${formatMoney(invoice.discount)}`} />
+          ) : null}
+          {invoice.roundOff !== 0 ? (
+            <TotalRow
+              label="Round off"
+              value={`${invoice.roundOff > 0 ? '+ ' : '- '}${formatMoney(Math.abs(invoice.roundOff))}`}
+            />
           ) : null}
           <TotalRow label="Grand total" value={formatMoney(invoice.grandTotal)} strong />
         </View>

@@ -66,9 +66,12 @@ interface RateRow extends TaxSplit {
  *   exclusive → tax was added on top of the stored (pre-tax) amount
  *   inclusive → the stored amount was carved out of the entered gross, and the
  *               remainder IS the tax (that is how splitInclusive works)
+ * Either way any line discount came off BEFORE the tax was worked out, so it has
+ * to come off the gross here too — otherwise the money given away would be
+ * printed as tax the customer was charged.
  */
 function taxOfLine(l: InvoiceDetail['lines'][number], taxMode: TaxMode): number {
-  if (taxMode === 'inclusive') return lineAmount(l.qty, l.rate) - l.amount;
+  if (taxMode === 'inclusive') return lineAmount(l.qty, l.rate) - l.discount - l.amount;
   return lineTax(l.amount, l.taxRate);
 }
 
@@ -121,6 +124,10 @@ function buildHtml(detail: InvoiceDetail, biz: BusinessProfile): string {
   const halfLabel = single != null ? ` (${formatTaxRate(single / 2)})` : '';
   const fullLabel = single != null ? ` (${formatTaxRate(single)})` : '';
 
+  // The discount column only appears on a bill that actually gave one — a column
+  // of dashes would tell the customer nothing and cost the item name its width.
+  const anyLineDiscount = lines.some((l) => l.discount > 0);
+
   const rows = lines
     .map(
       (l, i) => `
@@ -130,6 +137,7 @@ function buildHtml(detail: InvoiceDetail, biz: BusinessProfile): string {
         <td>${l.hsnCode ? esc(l.hsnCode) : ''}</td>
         <td class="num">${formatQty(l.qty)} ${esc(l.itemUnit)}</td>
         <td class="num">${money(l.rate)}</td>
+        ${anyLineDiscount ? `<td class="num">${l.discount > 0 ? `- ${money(l.discount)}` : '-'}</td>` : ''}
         <td class="num">${l.taxRate > 0 ? formatTaxRate(l.taxRate) : '-'}</td>
         <td class="num">${money(l.amount)}</td>
       </tr>`,
@@ -228,7 +236,9 @@ function buildHtml(detail: InvoiceDetail, biz: BusinessProfile): string {
     </div>
 
     <table>
-      <thead><tr><th>#</th><th>Item</th><th>HSN/SAC</th><th class="num">Qty</th><th class="num">Rate</th><th class="num">Tax</th><th class="num">Amount</th></tr></thead>
+      <thead><tr><th>#</th><th>Item</th><th>HSN/SAC</th><th class="num">Qty</th><th class="num">Rate</th>${
+        anyLineDiscount ? '<th class="num">Discount</th>' : ''
+      }<th class="num">Tax</th><th class="num">Amount</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
 

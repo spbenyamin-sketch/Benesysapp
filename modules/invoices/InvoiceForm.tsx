@@ -22,11 +22,11 @@ import {
 import { netPaidForInvoice } from '@/modules/payments/service';
 import { listItems } from '@/modules/items/service';
 import { listParties } from '@/modules/parties/service';
-import { getDefaultTaxMode } from '@/modules/settings/service';
+import { getDefaultTaxMode, getSetting } from '@/modules/settings/service';
 import { bestMatch, spokenNames } from '@/modules/voice/match';
 import { addedLine, removedLine, t, totalLine } from '@/modules/voice/phrases';
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
-import { computeTotals, TAX_MODE_LABEL, type TaxMode } from '@/utils/gst';
+import { computeTotals, supplyType, TAX_MODE_LABEL, type TaxMode } from '@/utils/gst';
 import {
   formatMoney,
   formatTaxRate,
@@ -63,6 +63,9 @@ interface LineDraft {
   taxRate: number; // basis points
   qtyStr: string;
   rateStr: string;
+  /** Money off this line alone, rupees as typed. Empty on almost every line —
+   *  the boxes only appear once the shopkeeper asks for them. */
+  discountStr: string;
   /** Carried over from the invoice being returned, so the profit report unwinds
    *  exactly what that sale earned rather than today's cost. */
   costPrice?: number;
@@ -123,14 +126,28 @@ export default function InvoiceForm({
   const [saving, setSaving] = useState(false);
   const [lineSeq, setLineSeq] = useState(0);
   const [taxMode, setTaxMode] = useState<TaxMode>('exclusive');
+  // Per-line discount boxes stay hidden until asked for: most bills never give
+  // one, and an extra box on every row is exactly the clutter this app avoids.
+  const [showLineDiscount, setShowLineDiscount] = useState(false);
+  // The shop's own state — half of the CGST+SGST vs IGST decision.
+  const [bizState, setBizState] = useState<string | undefined>(undefined);
+  // Where the document being returned was supplied to. A credit note has to
+  // carry the tax of the bill it reverses, even if the customer has since moved.
+  const [sourcePlace, setSourcePlace] = useState<string | null | undefined>(undefined);
 
   useFocusEffect(
     useCallback(() => {
       let active = true;
-      Promise.all([listParties(), listItems(), getDefaultTaxMode()]).then(([p, i, mode]) => {
+      Promise.all([
+        listParties(),
+        listItems(),
+        getDefaultTaxMode(),
+        getSetting('business_state'),
+      ]).then(([p, i, mode, state]) => {
         if (!active) return;
         setParties(p);
         setItems(i);
+        setBizState(state);
         // A document raised against (or being) another one inherits ITS tax
         // basis — see the prefill below — so the app-wide default must not
         // overwrite it.
@@ -153,6 +170,7 @@ export default function InvoiceForm({
       setPartyId(source.invoice.partyId);
       setTaxMode(source.invoice.taxMode);
       if (isEdit) setDate(source.invoice.date);
+      else setSourcePlace(source.invoice.placeOfSupply);
       setDiscountStr(source.invoice.discount ? paiseToRupeeInput(source.invoice.discount) : '');
       setLines(
         source.lines.map((l, i) => ({
@@ -163,9 +181,13 @@ export default function InvoiceForm({
           taxRate: l.taxRate,
           qtyStr: qtyToInput(l.qty),
           rateStr: paiseToRupeeInput(l.rate),
+          discountStr: l.discount ? paiseToRupeeInput(l.discount) : '',
           costPrice: l.costPrice ?? undefined,
         })),
       );
+      // A bill that already carries line discounts opens with them on show —
+      // otherwise correcting one would silently drop it.
+      if (source.lines.some((l) => l.discount > 0)) setShowLineDiscount(true);
       setLineSeq(source.lines.length);
     });
     return () => {
@@ -220,6 +242,7 @@ export default function InvoiceForm({
           taxRate: it.taxRate,
           qtyStr: String(qty),
           rateStr: String(rate ?? (isPurchase ? it.purchasePrice : it.salePrice) / 100),
+          discountStr: '',
         },
       ];
     });
@@ -260,15 +283,27 @@ export default function InvoiceForm({
         qty: parseQtyToThousandths(l.qtyStr),
         rate: parseRupeesToPaise(l.rateStr),
         taxRate: l.taxRate,
+        // A hidden box is a box that was never filled in: turning the row of
+        // discounts off takes them off the bill too, so what is on screen is
+        // always what gets saved.
+        discount: showLineDiscount ? parseRupeesToPaise(l.discountStr) : 0,
         costPrice: l.costPrice,
       })),
-    [lines],
+    [lines, showLineDiscount],
   );
   const discount = parseRupeesToPaise(discountStr);
   const { lines: computed, totals } = useMemo(
     () => computeTotals(parsedLines, discount, taxMode),
     [parsedLines, discount, taxMode],
   );
+
+  // Which pair of taxes this bill attracts, worked out rather than asked for:
+  // the shop's state against the customer's. Nothing to fill in — the totals
+  // just name the right tax, and the printed bill follows.
+  const party = useMemo(() => parties.find((p) => p.id === partyId), [parties, partyId]);
+  const supply = supplyType(bizState, party?.state);
+  const taxLabel =
+    supply === 'inter' ? 'IGST' : taxMode === 'inclusive' ? 'CGST + SGST (in rate)' : 'CGST + SGST';
 
   const save = async () => {
     if (!partyId) {
@@ -299,7 +334,16 @@ export default function InvoiceForm({
       const inv = isEdit
         ? await updateInvoiceWithItems(editInvoiceId, { partyId, date, discount, taxMode }, parsedLines)
         : await createInvoiceWithItems(
-            { type, partyId, date, discount, paymentStatus: 'unpaid', taxMode },
+            {
+              type,
+              partyId,
+              date,
+              discount,
+              paymentStatus: 'unpaid',
+              taxMode,
+              // A credit note is taxed where the sale it reverses was taxed.
+              placeOfSupply: sourcePlace,
+            },
             parsedLines,
           );
       router.replace({ pathname: '/invoice/[id]', params: { id: inv.id } });
@@ -415,7 +459,16 @@ export default function InvoiceForm({
           />
         </View>
 
-        <Text style={styles.sectionTitle}>Items</Text>
+        <View style={styles.sectionRow}>
+          <Text style={styles.sectionTitle}>Items</Text>
+          {lines.length > 0 ? (
+            <Pressable onPress={() => setShowLineDiscount((v) => !v)} hitSlop={8}>
+              <Text style={styles.toggleLink}>
+                {showLineDiscount ? 'Hide item discount' : 'Discount per item'}
+              </Text>
+            </Pressable>
+          ) : null}
+        </View>
         {lines.map((l, i) => (
           <View key={l.key} style={styles.lineCard}>
             <View style={styles.lineHeader}>
@@ -488,6 +541,19 @@ export default function InvoiceForm({
                   placeholderTextColor="#aaa"
                 />
               </View>
+              {showLineDiscount ? (
+                <View style={styles.lineCol}>
+                  <Text style={styles.miniLabel}>Discount (₹)</Text>
+                  <TextInput
+                    style={styles.miniInput}
+                    value={l.discountStr}
+                    onChangeText={(v) => updateLine(l.key, { discountStr: v })}
+                    keyboardType="decimal-pad"
+                    placeholder="0"
+                    placeholderTextColor="#aaa"
+                  />
+                </View>
+              ) : null}
               <View style={styles.lineAmount}>
                 <Text style={styles.miniLabel}>Amount</Text>
                 <Text style={styles.amountVal}>{formatMoney(computed[i]?.amount ?? 0)}</Text>
@@ -533,11 +599,23 @@ export default function InvoiceForm({
 
         <View style={styles.totals}>
           <TotalRow label={taxMode === 'inclusive' ? 'Taxable value' : 'Subtotal'} value={formatMoney(totals.subtotal)} />
-          <TotalRow label="Tax" value={formatMoney(totals.taxTotal)} />
+          <TotalRow label={taxLabel} value={formatMoney(totals.taxTotal)} />
           {totals.discount > 0 ? (
             <TotalRow label="Discount" value={`- ${formatMoney(totals.discount)}`} />
           ) : null}
+          {totals.roundOff !== 0 ? (
+            <TotalRow
+              label="Round off"
+              value={`${totals.roundOff > 0 ? '+ ' : '- '}${formatMoney(Math.abs(totals.roundOff))}`}
+            />
+          ) : null}
           <TotalRow label="Grand total" value={formatMoney(totals.grandTotal)} strong />
+          {supply === 'inter' ? (
+            <Text style={styles.supplyNote}>
+              Interstate supply{party?.state ? ` to ${party.state}` : ''} — IGST is charged instead
+              of CGST + SGST.
+            </Text>
+          ) : null}
         </View>
 
         <Button
@@ -586,7 +664,16 @@ const styles = StyleSheet.create({
     color: '#111',
     backgroundColor: '#fff',
   },
-  sectionTitle: { fontSize: 16, fontWeight: '700', color: '#111', marginTop: 4 },
+  sectionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 4,
+    gap: 8,
+  },
+  sectionTitle: { fontSize: 16, fontWeight: '700', color: '#111' },
+  toggleLink: { fontSize: 13, fontWeight: '600', color: '#208AEF' },
+  supplyNote: { fontSize: 12, color: '#888', marginTop: 2 },
   lineCard: { borderWidth: 1, borderColor: '#eee', borderRadius: 12, padding: 12, gap: 10, backgroundColor: '#fafafa' },
   lineHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   lineName: { fontSize: 15, fontWeight: '600', color: '#111', flex: 1 },
