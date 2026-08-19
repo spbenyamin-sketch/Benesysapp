@@ -9,6 +9,8 @@
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { getSetting } from '@/modules/settings/service';
+import { accountBook } from '@/modules/bankAccounts/ledger';
+import { STOCK_LABEL } from '@/modules/items/stockLevel';
 import { agingReport, AGING_BUCKETS } from '@/modules/reports/aging';
 import { dayBook, DAY_BOOK_LABEL } from '@/modules/reports/daybook';
 import {
@@ -342,6 +344,51 @@ export async function exportOutstandingExcel(): Promise<string> {
   return shareWorkbook(sheets, 'outstanding-report.xlsx');
 }
 
+/**
+ * One account's cash book. The balance column is carried through, so the sheet
+ * can be reconciled against a passbook line by line rather than only in total.
+ */
+export async function exportCashBookExcel(accountId: number | null): Promise<string> {
+  const book = await accountBook(accountId);
+  if (!book) throw new Error('That account no longer exists.');
+  const name = book.account?.name ?? 'Not assigned';
+  const preamble = await preambleFor(`Cash Book — ${name}`);
+
+  return shareWorkbook(
+    [
+      {
+        name: 'Cash book',
+        preamble,
+        columns: [
+          { header: 'Date', width: 12 },
+          { header: 'Particulars', width: 26 },
+          { header: 'Details', width: 26 },
+          { header: 'In', width: 14, money: true },
+          { header: 'Out', width: 14, money: true },
+          { header: 'Balance', width: 15, money: true },
+        ],
+        rows: book.entries.map((e) => [
+          e.date,
+          e.label,
+          e.sub,
+          e.delta > 0 ? money(e.delta) : '',
+          e.delta < 0 ? money(-e.delta) : '',
+          money(e.balance),
+        ]),
+        totals: [
+          'CLOSING BALANCE',
+          '',
+          '',
+          money(book.entries.reduce((s, e) => s + (e.delta > 0 ? e.delta : 0), 0)),
+          money(book.entries.reduce((s, e) => s + (e.delta < 0 ? -e.delta : 0), 0)),
+          money(book.balance),
+        ],
+      },
+    ],
+    `cash-book-${name.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.xlsx`,
+  );
+}
+
 export async function exportStockExcel(): Promise<string> {
   const data = await stockSummary();
   const preamble = await preambleFor('Stock Summary');
@@ -354,17 +401,21 @@ export async function exportStockExcel(): Promise<string> {
       { header: 'HSN', width: 12 },
       { header: 'Unit', width: 10 },
       { header: 'Stock', width: 12 },
+      { header: 'Alert at', width: 10 },
+      { header: 'Status', width: 14 },
       { header: 'Purchase price', width: 15, money: true },
       { header: 'Sale price', width: 14, money: true },
       { header: 'GST %', width: 10 },
       { header: 'Stock value', width: 15, money: true },
     ],
-    rows: data.rows.map(({ item, stockValue }) => [
+    rows: data.rows.map(({ item, stockValue, level }) => [
       item.name,
       item.category ?? '',
       item.hsnCode ?? '',
       item.unit,
       qty(item.currentStock),
+      item.minStock > 0 ? qty(item.minStock) : '',
+      STOCK_LABEL[level],
       money(item.purchasePrice),
       money(item.salePrice),
       formatTaxRate(item.taxRate),
@@ -376,6 +427,8 @@ export async function exportStockExcel(): Promise<string> {
       '',
       '',
       '',
+      '',
+      `${data.reorderCount} to reorder`,
       '',
       '',
       '',

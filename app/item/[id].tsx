@@ -5,6 +5,7 @@ import Button from '@/components/Button';
 import ItemPhoto from '@/components/ItemPhoto';
 import { deleteItemPhoto } from '@/modules/items/images';
 import { deleteItem, getItem } from '@/modules/items/service';
+import { stockLevel, STOCK_LABEL, STOCK_TONE } from '@/modules/items/stockLevel';
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
 import { formatMoney, formatQty, formatTaxRate } from '@/utils/format';
 import type { Item } from '@/db/schema';
@@ -96,7 +97,7 @@ export default function ItemDetailScreen() {
     );
   }
 
-  const lowStock = item.currentStock <= 0;
+  const level = stockLevel(item);
 
   return (
     <>
@@ -120,10 +121,15 @@ export default function ItemDetailScreen() {
 
         <View style={styles.stockCard}>
           <Text style={styles.stockLabel}>In stock</Text>
-          <Text style={[styles.stockValue, lowStock && styles.stockLow]}>
+          <Text style={[styles.stockValue, level !== 'ok' && { color: STOCK_TONE[level] }]}>
             {formatQty(item.currentStock)} {item.unit}
           </Text>
-          {lowStock ? <Text style={styles.stockWarn}>Out of stock</Text> : null}
+          {level !== 'ok' ? (
+            <Text style={[styles.stockWarn, { color: STOCK_TONE[level] }]}>
+              {STOCK_LABEL[level]}
+              {level === 'low' ? ` — reorder at ${formatQty(item.minStock)} ${item.unit}` : ''}
+            </Text>
+          ) : null}
         </View>
 
         <View style={styles.details}>
@@ -134,6 +140,9 @@ export default function ItemDetailScreen() {
           <Detail label="Tax rate" value={formatTaxRate(item.taxRate)} />
           <Detail label="Unit" value={item.unit} />
           <Detail label="Opening stock" value={`${formatQty(item.openingStock)} ${item.unit}`} />
+          {item.minStock > 0 ? (
+            <Detail label="Alert at" value={`${formatQty(item.minStock)} ${item.unit}`} />
+          ) : null}
         </View>
 
         <Button
@@ -174,7 +183,6 @@ const styles = StyleSheet.create({
   },
   stockLabel: { fontSize: 13, color: '#666', fontWeight: '600' },
   stockValue: { fontSize: 28, fontWeight: '700', color: '#111' },
-  stockLow: { color: '#c0392b' },
   stockWarn: { fontSize: 12, color: '#c0392b', fontWeight: '600' },
   details: { gap: 10 },
   detailRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 16 },

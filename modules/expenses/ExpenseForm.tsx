@@ -13,6 +13,7 @@ import {
 import Button from '@/components/Button';
 import SelectField from '@/components/SelectField';
 import TextField from '@/components/TextField';
+import AccountPicker from '@/modules/bankAccounts/AccountPicker';
 import { createExpense, deleteExpense, expenseTax, updateExpense } from '@/modules/expenses/service';
 import { matchOption } from '@/modules/voice/match';
 import { t } from '@/modules/voice/phrases';
@@ -50,6 +51,8 @@ export default function ExpenseForm({ expense }: { expense?: Expense }) {
   const [taxRate, setTaxRate] = useState(expense ? expense.taxRate : 0);
   const [date, setDate] = useState(expense?.date ?? todayISO());
   const [notes, setNotes] = useState(expense?.notes ?? '');
+  // Which account the money left. Hidden until the shop has any — see AccountPicker.
+  const [accountId, setAccountId] = useState<number | null>(expense?.accountId ?? null);
   const [saving, setSaving] = useState(false);
 
   const paise = parseRupeesToPaise(amount);
@@ -71,6 +74,7 @@ export default function ExpenseForm({ expense }: { expense?: Expense }) {
         category: trimmedCategory,
         amount: paise,
         taxRate,
+        accountId,
         date,
         notes: notes.trim() || null,
       };
@@ -196,6 +200,8 @@ export default function ExpenseForm({ expense }: { expense?: Expense }) {
             </Text>
           ) : null}
         </View>
+
+        <AccountPicker value={accountId} onChange={setAccountId} label="Paid from" />
 
         <TextField
           label="Date"

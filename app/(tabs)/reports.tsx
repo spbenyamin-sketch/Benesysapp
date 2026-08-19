@@ -42,6 +42,12 @@ const REPORTS: { href: Href; emoji: string; title: string; sub: string }[] = [
   { href: '/report/stock', emoji: '📦', title: 'Stock Summary', sub: 'On-hand quantity and value' },
   { href: '/report/gst', emoji: '🧮', title: 'GST Summary', sub: 'Output vs input tax' },
   {
+    href: '/account',
+    emoji: '🏦',
+    title: 'Cash & Bank',
+    sub: 'What each cash box and account holds',
+  },
+  {
     href: '/payment',
     emoji: '💵',
     title: 'Payment History',

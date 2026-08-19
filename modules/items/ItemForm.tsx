@@ -46,6 +46,9 @@ export default function ItemForm({ item }: { item?: Item }) {
   );
   const [taxRate, setTaxRate] = useState(item ? taxRateToInput(item.taxRate) : '');
   const [openingStock, setOpeningStock] = useState(item ? qtyToInput(item.openingStock) : '');
+  // Reorder level. Blank means 0, which is what every item meant before this
+  // existed: only an empty shelf counts as needing buying.
+  const [minStock, setMinStock] = useState(item ? qtyToInput(item.minStock) : '');
   const [voiceAlias, setVoiceAlias] = useState(item?.voiceAlias ?? '');
   const [imageUri, setImageUri] = useState<string | null>(item?.imageUri ?? null);
   const [saving, setSaving] = useState(false);
@@ -89,6 +92,7 @@ export default function ItemForm({ item }: { item?: Item }) {
         purchasePrice: parseRupeesToPaise(purchasePrice),
         taxRate: parseTaxRateToBasisPoints(taxRate),
         openingStock: stock,
+        minStock: parseQtyToThousandths(minStock),
         voiceAlias: voiceAlias.trim() || null,
         imageUri,
       };
@@ -248,6 +252,17 @@ export default function ItemForm({ item }: { item?: Item }) {
             />
           </View>
         </View>
+        <TextField
+          label="Alert when stock reaches"
+          value={minStock}
+          onChangeText={setMinStock}
+          placeholder="0"
+          keyboardType="numeric"
+        />
+        <Text style={styles.hint}>
+          The item is flagged as running low at this quantity, so it can be reordered before the
+          shelf is empty. Leave blank if only an empty shelf should count.
+        </Text>
         <TextField
           label="Voice name (தமிழ்)"
           value={voiceAlias}

@@ -13,6 +13,7 @@ import {
 import Button from '@/components/Button';
 import PickerField, { type PickerOption } from '@/components/PickerField';
 import TextField from '@/components/TextField';
+import AccountPicker from '@/modules/bankAccounts/AccountPicker';
 import { listInvoicesByParty } from '@/modules/invoices/service';
 import { listParties } from '@/modules/parties/service';
 import { recordPayment, type Direction } from '@/modules/payments/service';
@@ -61,6 +62,9 @@ export default function PaymentForm({
   const [invoiceId, setInvoiceId] = useState<number | null>(presetInvoiceId ?? null);
   const [amount, setAmount] = useState('');
   const [mode, setMode] = useState<Payment['mode']>('cash');
+  // Which cash box or bank account the money moved through. Stays null — and
+  // the field stays hidden — until the shop has set accounts up.
+  const [accountId, setAccountId] = useState<number | null>(null);
   const [date, setDate] = useState(todayISO());
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
@@ -200,6 +204,7 @@ export default function PaymentForm({
         amount: paise,
         mode,
         direction: dir,
+        accountId,
         date,
         notes: notes.trim() || null,
       });
@@ -282,6 +287,14 @@ export default function PaymentForm({
             })}
           </View>
         </View>
+
+        {/* Renders nothing until the shop has set up a cash box or bank
+            account — see AccountPicker. */}
+        <AccountPicker
+          value={accountId}
+          onChange={setAccountId}
+          label={dir === 'in' ? 'Received into' : 'Paid from'}
+        />
 
         {invoiceOptions.length > 0 ? (
           <View>

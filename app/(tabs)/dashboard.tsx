@@ -3,6 +3,7 @@ import { useCallback, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { listInvoicesWithParty, type InvoiceWithParty } from '@/modules/invoices/service';
 import { listPartiesWithBalance } from '@/modules/parties/ledger';
+import { stockSummary } from '@/modules/reports/service';
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
 import { formatDate, formatMoney } from '@/utils/format';
 
@@ -25,6 +26,9 @@ export default function DashboardScreen() {
   const [receivable, setReceivable] = useState(0);
   const [payable, setPayable] = useState(0);
   const [todaySales, setTodaySales] = useState(0);
+  // Only ever shown when there IS something to buy — a shop with a full shelf
+  // should see no more than it saw before this existed.
+  const [reorderCount, setReorderCount] = useState(0);
 
   useFocusEffect(
     useCallback(() => {
@@ -55,6 +59,9 @@ export default function DashboardScreen() {
             0,
           );
         setTodaySales(sum);
+      });
+      stockSummary().then((s) => {
+        if (active) setReorderCount(s.reorderCount);
       });
       return () => {
         active = false;
@@ -146,6 +153,14 @@ export default function DashboardScreen() {
             <Kpi label="To pay" value={formatMoney(payable)} tone="#c0392b" />
           </View>
 
+          {reorderCount > 0 ? (
+            <Pressable style={styles.reorderBanner} onPress={() => router.push('/report/stock')}>
+              <Text style={styles.reorderText}>
+                {reorderCount} item{reorderCount === 1 ? '' : 's'} to reorder ›
+              </Text>
+            </Pressable>
+          ) : null}
+
           <View style={styles.sectionHead}>
             <Text style={styles.sectionTitle}>Recent</Text>
             <Pressable onPress={() => router.push('/invoice')} hitSlop={8}>
@@ -222,6 +237,15 @@ const styles = StyleSheet.create({
   kpi: { flex: 1, backgroundColor: '#f7f7f9', borderRadius: 12, padding: 12, gap: 4 },
   kpiLabel: { fontSize: 12, color: '#888' },
   kpiValue: { fontSize: 16, fontWeight: '700' },
+  reorderBanner: {
+    borderWidth: 1,
+    borderColor: '#f0c36d',
+    backgroundColor: '#fdf6e6',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+  },
+  reorderText: { fontSize: 14, fontWeight: '600', color: '#8a6d1f' },
   sectionHead: {
     flexDirection: 'row',
     justifyContent: 'space-between',

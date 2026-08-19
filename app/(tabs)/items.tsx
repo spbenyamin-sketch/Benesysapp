@@ -5,6 +5,7 @@ import ItemPhoto from '@/components/ItemPhoto';
 import { listItems } from '@/modules/items/service';
 import { bestMatch, spokenNames } from '@/modules/voice/match';
 import { t } from '@/modules/voice/phrases';
+import { stockLevel, STOCK_LABEL, STOCK_TONE } from '@/modules/items/stockLevel';
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
 import { formatMoney, formatQty, formatTaxRate } from '@/utils/format';
 import type { Item } from '@/db/schema';
@@ -90,7 +91,7 @@ export default function ItemsScreen() {
           </Text>
         }
         renderItem={({ item }) => {
-          const lowStock = item.currentStock <= 0;
+          const level = stockLevel(item);
           return (
             <Pressable
               style={styles.row}
@@ -105,10 +106,12 @@ export default function ItemsScreen() {
                 </Text>
               </View>
               <View style={styles.rowRight}>
-                <Text style={[styles.stock, lowStock && styles.stockLow]}>
+                <Text style={[styles.stock, { color: STOCK_TONE[level] }]}>
                   {formatQty(item.currentStock)} {item.unit}
                 </Text>
-                <Text style={styles.stockLabel}>{lowStock ? 'Out of stock' : 'in stock'}</Text>
+                <Text style={[styles.stockLabel, level !== 'ok' && { color: STOCK_TONE[level] }]}>
+                  {STOCK_LABEL[level]}
+                </Text>
               </View>
             </Pressable>
           );
@@ -155,7 +158,6 @@ const styles = StyleSheet.create({
   sub: { fontSize: 13, color: '#888' },
   rowRight: { alignItems: 'flex-end', gap: 2 },
   stock: { fontSize: 15, fontWeight: '600', color: '#111' },
-  stockLow: { color: '#c0392b' },
   stockLabel: { fontSize: 11, color: '#999' },
   fab: {
     position: 'absolute',

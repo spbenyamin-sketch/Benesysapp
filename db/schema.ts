@@ -142,6 +142,10 @@ export const expenses = sqliteTable('expenses', {
   category: text('category').notNull(),
   amount: integer('amount').notNull(), // paise
   taxRate: integer('tax_rate').notNull().default(0), // basis points
+  // Which cash box or bank account the money left. NULL = not recorded, which
+  // is every row written before accounts existed — the cash book shows those
+  // together under "Not assigned" rather than guessing which account paid.
+  accountId: integer('account_id').references(() => bankAccounts.id),
   date: text('date').notNull(), // ISO 'YYYY-MM-DD'
   notes: text('notes'),
   createdAt: createdAt(),

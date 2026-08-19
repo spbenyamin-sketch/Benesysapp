@@ -13,6 +13,7 @@ function expense(over: Partial<Expense> = {}): Expense {
     category: 'Rent',
     amount: 100000,
     taxRate: 0,
+    accountId: null,
     date: '2026-08-01',
     notes: null,
     createdAt: '2026-08-01T00:00:00.000Z',

@@ -1,0 +1,1 @@
+ALTER TABLE `expenses` ADD `account_id` integer REFERENCES bank_accounts(id);

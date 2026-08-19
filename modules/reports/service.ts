@@ -12,6 +12,7 @@ import {
   type CategoryTotal,
 } from '@/modules/expenses/service';
 import { listItems } from '@/modules/items/service';
+import { stockLevel, type StockLevel } from '@/modules/items/stockLevel';
 import { listInvoicesWithParty, type InvoiceWithParty } from '@/modules/invoices/service';
 import { listPartiesWithBalance, type PartyWithBalance } from '@/modules/parties/ledger';
 import { getSetting } from '@/modules/settings/service';
@@ -145,12 +146,16 @@ export async function partyOutstanding(): Promise<Outstanding> {
 export interface StockRow {
   item: Item;
   stockValue: number; // paise, valued at purchase price
+  level: StockLevel;
 }
 export interface StockSummary {
   rows: StockRow[];
   totalValue: number;
   totalItems: number;
-  lowStockCount: number; // items at or below zero stock
+  outOfStockCount: number; // empty shelves
+  lowStockCount: number; // still has some, but at or under its reorder level
+  /** Everything that wants buying — empty and low together. */
+  reorderCount: number;
 }
 
 export async function stockSummary(): Promise<StockSummary> {
@@ -159,12 +164,17 @@ export async function stockSummary(): Promise<StockSummary> {
     item,
     // currentStock is thousandths, purchasePrice is paise/unit.
     stockValue: Math.round((item.currentStock * item.purchasePrice) / 1000),
+    level: stockLevel(item),
   }));
+  const outOfStockCount = rows.filter((r) => r.level === 'out').length;
+  const lowStockCount = rows.filter((r) => r.level === 'low').length;
   return {
     rows,
     totalValue: rows.reduce((s, r) => s + r.stockValue, 0),
     totalItems: items.length,
-    lowStockCount: items.filter((i) => i.currentStock <= 0).length,
+    outOfStockCount,
+    lowStockCount,
+    reorderCount: outOfStockCount + lowStockCount,
   };
 }
 
