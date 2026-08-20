@@ -3,9 +3,13 @@ import { useCallback, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Button from '@/components/Button';
 import {
+  convertToInvoice,
+  convertedFrom,
   deleteInvoiceWithItems,
+  deletionImpact,
   getInvoice,
   getInvoiceWithItems,
+  isConvertible,
   returnsAgainst,
   type InvoiceDetail,
 } from '@/modules/invoices/service';
@@ -18,6 +22,7 @@ import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
 import { formatDate, formatMoney, formatQty, formatTaxRate } from '@/utils/format';
 import { splitTaxForStates } from '@/utils/gst';
 import type { InvoiceType } from '@/utils/invoiceNumber';
+import type { Invoice } from '@/db/schema';
 
 const TYPE_LABEL: Record<InvoiceType, string> = {
   sale: 'Sale invoice',
@@ -42,15 +47,21 @@ export default function InvoiceDetailScreen() {
   const [detail, setDetail] = useState<InvoiceDetail | null | undefined>(undefined);
   const [sharing, setSharing] = useState(false);
   const [printing, setPrinting] = useState(false);
+  const [converting, setConverting] = useState(false);
   // The shop's own state, against which this bill's place of supply decides
   // whether the tax shown is CGST + SGST or IGST — the same call the PDF makes.
   const [bizState, setBizState] = useState<string | undefined>(undefined);
   // Credit notes already raised against this bill, and — on a credit note — the
   // bill it gives back. Both come from the same link, read in both directions.
+  // That same link also joins a quotation to the sale it became, which is why
+  // `source` is kept whole: its TYPE is what says which of the two it is.
   const [returns, setReturns] = useState<{ id: number; invoiceNo: string; grandTotal: number }[]>(
     [],
   );
-  const [source, setSource] = useState<{ id: number; invoiceNo: string } | null>(null);
+  const [source, setSource] = useState<Invoice | null>(null);
+  // On a quotation or challan: the bill it has already been turned into. Set
+  // means the convert button is gone — a promise is only ever billed once.
+  const [became, setBecame] = useState<Invoice | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -66,7 +77,14 @@ export default function InvoiceDetailScreen() {
         setReturns(back);
         const from = d?.invoice.sourceInvoiceId;
         const original = from ? await getInvoice(from) : undefined;
-        if (active) setSource(original ?? null);
+        // Only a promise can have been turned into a bill — nothing else is
+        // worth asking about.
+        const billed =
+          d && isConvertible(d.invoice.type) ? await convertedFrom(d.invoice.id) : undefined;
+        if (active) {
+          setSource(original ?? null);
+          setBecame(billed ?? null);
+        }
       });
       return () => {
         active = false;
@@ -98,8 +116,43 @@ export default function InvoiceDetailScreen() {
     }
   };
 
+  /**
+   * Turn this quotation/challan into a sale. Asked first, because unlike every
+   * other button here it moves goods off the shelf — the shop should know that
+   * before it happens, not find out from the stock report.
+   */
+  const confirmConvert = () => {
+    if (!detail) return;
+    const quote = detail.invoice.type === 'quotation';
+    Alert.alert(
+      lang === 'ta-IN' ? 'பில் ஆக்கலாமா?' : 'Convert to bill?',
+      lang === 'ta-IN'
+        ? `இந்த ${quote ? 'கோட்டேஷன்' : 'சலான்'}ல இருந்து புது விற்பனை பில் உருவாகும். ஸ்டாக் குறையும்.`
+        : `A new sale bill will be created from this ${quote ? 'quotation' : 'challan'}. Stock will move.`,
+      [
+        { text: lang === 'ta-IN' ? 'வேண்டாம்' : 'Cancel', style: 'cancel' },
+        { text: lang === 'ta-IN' ? 'பில் ஆக்கு' : 'Convert', onPress: () => void convert() },
+      ],
+    );
+  };
+
+  const convert = async () => {
+    setConverting(true);
+    try {
+      const bill = await convertToInvoice(invoiceId);
+      // Pushed, not replaced: the quotation stays behind in the stack, and it
+      // now shows the bill it became.
+      router.push({ pathname: '/invoice/[id]', params: { id: bill.id } });
+    } catch (e) {
+      Alert.alert('Could not convert', (e as Error)?.message ?? String(e));
+    } finally {
+      setConverting(false);
+    }
+  };
+
   // Voice: "பிரிண்ட்" / "ஷேர்" / "மொத்தம்" / "பணம் பெறு" (→ payment screen) /
-  // "டெலிட்" (→ the delete confirmation).
+  // "டெலிட்" (→ the delete confirmation) / "பில் போடு" on a quotation (→ the
+  // convert confirmation).
   useVoiceCommands((intent) => {
     if (!detail) return false;
     switch (intent.kind) {
@@ -111,6 +164,12 @@ export default function InvoiceDetailScreen() {
         return t('sharing', lang);
       case 'total':
         return totalLine(formatMoney(detail.invoice.grandTotal), lang);
+      case 'submit':
+        // "பில் போடு" — the word for making a bill. On a promise that is exactly
+        // what convert does; on a real bill there is nothing left to submit.
+        if (!isConvertible(detail.invoice.type) || became) return false;
+        confirmConvert();
+        return true;
       case 'navigate':
         // "ரிட்டர்ன்" opens the note that gives this document back — a credit
         // note on a sale, a debit note on a purchase.
@@ -154,12 +213,31 @@ export default function InvoiceDetailScreen() {
     }
   });
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (!detail) return;
     const isStock = detail.invoice.type !== 'quotation' && detail.invoice.type !== 'challan';
+    // A paid bill takes its receipt with it, and any credit note against it is
+    // left without the bill it names. Say both before asking, not after.
+    const impact = await deletionImpact(invoiceId);
+    const extras: string[] = [];
+    if (impact.paymentCount > 0) {
+      extras.push(
+        impact.paymentCount === 1
+          ? `The ${formatMoney(impact.paymentTotal)} payment recorded on it will also be deleted.`
+          : `${impact.paymentCount} payments totalling ${formatMoney(impact.paymentTotal)} recorded on it will also be deleted.`,
+      );
+    }
+    if (impact.returnCount > 0) {
+      extras.push(
+        `${impact.returnCount} return note${impact.returnCount === 1 ? '' : 's'} raised against it will stay, but will no longer name this bill.`,
+      );
+    }
     Alert.alert(
       'Delete this document?',
-      `${detail.invoice.invoiceNo} will be permanently removed${isStock ? ' and its stock movement reversed' : ''}.`,
+      [
+        `${detail.invoice.invoiceNo} will be permanently removed${isStock ? ' and its stock movement reversed' : ''}.`,
+        ...extras,
+      ].join('\n\n'),
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -169,8 +247,14 @@ export default function InvoiceDetailScreen() {
             try {
               await deleteInvoiceWithItems(invoiceId);
               router.back();
-            } catch (e) {
-              Alert.alert('Could not delete', (e as Error)?.message ?? String(e));
+            } catch {
+              // Nothing links to a bill any more once its payments go with it,
+              // so anything landing here is a storage failure, not a rule the
+              // shop broke. Raw SQLite text helps nobody standing at a counter.
+              Alert.alert(
+                'Could not delete',
+                'The bill could not be removed. Please try again.',
+              );
             }
           },
         },
@@ -237,13 +321,17 @@ export default function InvoiceDetailScreen() {
               <Text style={styles.partyName}>{party.name} ›</Text>
             </Pressable>
           ) : null}
-          {/* A credit note names the bill it gives back, so the two are one tap
-              apart in either direction. */}
+          {/* A credit note names the bill it gives back, and a converted sale
+              names the quotation it came from — the same link, so the two are
+              one tap apart in either direction. Which wording is right is
+              decided by the type of the document at the other end. */}
           {source ? (
             <Pressable
               onPress={() => router.push({ pathname: '/invoice/[id]', params: { id: source.id } })}
             >
-              <Text style={styles.linkLine}>Against {source.invoiceNo} ›</Text>
+              <Text style={styles.linkLine}>
+                {isConvertible(source.type) ? 'From' : 'Against'} {source.invoiceNo} ›
+              </Text>
             </Pressable>
           ) : null}
         </View>
@@ -310,6 +398,31 @@ export default function InvoiceDetailScreen() {
           </View>
         ) : null}
 
+        {/* The whole point of a quotation: the customer said yes, so make it a
+            bill instead of typing it all again. Once billed the button is gone
+            and the bill is named in its place — the same goods must never leave
+            the shelf twice. */}
+        {isConvertible(invoice.type) ? (
+          became ? (
+            <Pressable
+              style={styles.becameRow}
+              onPress={() => router.push({ pathname: '/invoice/[id]', params: { id: became.id } })}
+            >
+              <Text style={styles.linkLine}>
+                {lang === 'ta-IN'
+                  ? `${became.invoiceNo} பில் ஆயிடுச்சு ›`
+                  : `Became bill ${became.invoiceNo} ›`}
+              </Text>
+            </Pressable>
+          ) : (
+            <Button
+              label={lang === 'ta-IN' ? 'பில் ஆக்கு' : 'Convert to bill'}
+              onPress={confirmConvert}
+              loading={converting}
+              style={styles.action}
+            />
+          )
+        ) : null}
         {invoice.type !== 'quotation' && invoice.type !== 'challan' && invoice.paymentStatus !== 'paid' ? (
           <Button
             label="Record payment"
@@ -422,6 +535,7 @@ const styles = StyleSheet.create({
   totalValue: { fontSize: 15, color: '#111' },
   totalStrong: { fontSize: 18, fontWeight: '700', color: '#111' },
   action: { marginTop: 4 },
+  becameRow: { alignItems: 'center', paddingVertical: 8 },
   deleteBtn: { alignItems: 'center', padding: 12 },
   deleteText: { color: '#c0392b', fontWeight: '600', fontSize: 15 },
 });

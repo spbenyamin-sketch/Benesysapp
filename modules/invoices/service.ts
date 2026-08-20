@@ -1,10 +1,11 @@
-import { desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '@/db/client';
 import {
   invoiceItems,
   invoices,
   items,
   parties,
+  payments,
   type Invoice,
   type InvoiceItem,
   type NewInvoice,
@@ -96,7 +97,11 @@ export interface InvoiceHeaderInput {
   taxMode?: TaxMode; // default 'exclusive' — see utils/gst
   dueDate?: string | null; // ISO day; null = due immediately
   placeOfSupply?: string | null; // Indian state; null = fall back to the party's
-  /** The document this one reverses — the sale a credit note gives back. */
+  /**
+   * The document this one comes off: the sale a credit note gives back, or the
+   * quotation a sale was converted from. Which of the two it means is told by
+   * the type of the row that holds it — see RETURN_TYPES/BILL_TYPES below.
+   */
   sourceInvoiceId?: number | null;
 }
 
@@ -107,6 +112,22 @@ export function stockSign(type: InvoiceType): -1 | 0 | 1 {
   if (type === 'purchase' || type === 'saleReturn') return 1;
   return 0;
 }
+
+/**
+ * The two documents that only promise goods. Neither moves stock nor money, so
+ * neither is worth anything to the books until it is turned into a real bill.
+ */
+export function isConvertible(type: InvoiceType): boolean {
+  return type === 'quotation' || type === 'challan';
+}
+
+// `source_invoice_id` carries two different meanings, and they are told apart by
+// the TYPE of the row holding it, never by guessing: a credit/debit note names
+// the bill it reverses, a sale/purchase names the quotation or challan it was
+// converted from. Reading the column without the type would make a converted
+// sale look like a return raised against its own quotation.
+const RETURN_TYPES: InvoiceType[] = ['saleReturn', 'purchaseReturn'];
+const BILL_TYPES: InvoiceType[] = ['sale', 'purchase'];
 
 /**
  * Create an invoice with its line items in a single transaction: totals are
@@ -383,8 +404,86 @@ export async function returnsAgainst(invoiceId: number): Promise<Invoice[]> {
   return db
     .select()
     .from(invoices)
-    .where(eq(invoices.sourceInvoiceId, invoiceId))
+    .where(and(eq(invoices.sourceInvoiceId, invoiceId), inArray(invoices.type, RETURN_TYPES)))
     .orderBy(invoices.date, invoices.id);
+}
+
+/**
+ * The bill a quotation or challan became, if it has already been converted.
+ *
+ * A promise can only be billed once: a second sale for the same promised goods
+ * would take the same stock off the shelf twice and ask the customer to pay for
+ * it twice, so this is what the convert path checks before writing anything.
+ */
+export async function convertedFrom(sourceId: number): Promise<Invoice | undefined> {
+  const [row] = await db
+    .select()
+    .from(invoices)
+    .where(and(eq(invoices.sourceInvoiceId, sourceId), inArray(invoices.type, BILL_TYPES)));
+  return row;
+}
+
+/**
+ * The quotation or challan a bill was converted from — the same link read the
+ * other way, so a sale can name where it came from. Undefined for a bill typed
+ * in from scratch, and for a credit note, where the column means the sale being
+ * given back rather than a promise being kept.
+ */
+export async function sourceDocument(invoice: Invoice): Promise<Invoice | undefined> {
+  if (invoice.sourceInvoiceId == null) return undefined;
+  const source = await getInvoice(invoice.sourceInvoiceId);
+  return source && isConvertible(source.type) ? source : undefined;
+}
+
+/**
+ * Turn a quotation or a delivery challan into a real sale.
+ *
+ * The promise itself is left alone — it stays as the record of what was offered
+ * — and a brand new sale is written through the ordinary create path, so it
+ * gets its own sale number, its own stock movement and, above all, TODAY's cost
+ * frozen on every line. A quotation given last month must not carry last
+ * month's cost: the goods leave the shelf now, and that is what this sale
+ * earned. Only what was agreed with the customer is copied across — the party,
+ * the rates, the tax basis and the discounts.
+ */
+export async function convertToInvoice(id: number): Promise<Invoice> {
+  const source = await getInvoice(id);
+  if (!source) throw new Error('That document no longer exists.');
+  if (!isConvertible(source.type)) {
+    throw new Error('Only a quotation or a delivery challan can be turned into a bill.');
+  }
+  const already = await convertedFrom(id);
+  if (already) {
+    throw new Error(`${source.invoiceNo} has already become bill ${already.invoiceNo}.`);
+  }
+  const lines = await listInvoiceItems(id);
+
+  return createInvoiceWithItems(
+    {
+      type: 'sale',
+      partyId: source.partyId,
+      // The goods move today, whatever day the quotation was written.
+      date: new Date().toISOString().slice(0, 10),
+      discount: source.discount,
+      taxMode: source.taxMode,
+      // Nothing is owed on any particular day yet; credit is given, if at all,
+      // once the bill exists.
+      dueDate: null,
+      // A quotation was priced for a place of supply; the tax must not change
+      // just because the customer has since moved.
+      placeOfSupply: source.placeOfSupply,
+      sourceInvoiceId: source.id,
+    },
+    // No costPrice is passed on purpose: the create path takes a fresh snapshot
+    // from the item, which is what the goods cost the shop today.
+    lines.map((l) => ({
+      itemId: l.itemId,
+      qty: l.qty,
+      rate: l.rate,
+      taxRate: l.taxRate,
+      discount: l.discount,
+    })),
+  );
 }
 
 /** Paise already returned against a document. */
@@ -446,8 +545,38 @@ export async function deleteInvoiceWithItems(id: number): Promise<void> {
           .run();
       }
     }
+    // Payments carry a real FK to the invoice with no cascade, so a paid bill
+    // cannot be deleted while its receipt still points at it. Take the receipt
+    // with the bill: that money was only ever recorded because of this
+    // document, and leaving it behind as an on-account credit would put an
+    // advance on the party's ledger that nobody ever handed them.
+    tx.delete(payments).where(eq(payments.invoiceId, id)).run();
     tx.delete(invoices).where(eq(invoices.id, id)).run(); // invoice_items cascade
   });
+}
+
+/**
+ * What else goes when this document is deleted — so the confirmation can say it
+ * out loud instead of the shop finding out afterwards. `returns` are the credit
+ * or debit notes raised against this bill; they are NOT deleted (each holds its
+ * own stock and money), they simply stop naming the bill they reverse.
+ */
+export interface DeletionImpact {
+  paymentCount: number;
+  paymentTotal: number; // paise
+  returnCount: number;
+}
+
+export async function deletionImpact(id: number): Promise<DeletionImpact> {
+  const [linked, notes] = await Promise.all([
+    db.select().from(payments).where(eq(payments.invoiceId, id)),
+    returnsAgainst(id),
+  ]);
+  return {
+    paymentCount: linked.length,
+    paymentTotal: linked.reduce((sum, p) => sum + p.amount, 0),
+    returnCount: notes.length,
+  };
 }
 
 export interface InvoiceWithParty extends Invoice {
