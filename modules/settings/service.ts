@@ -78,6 +78,30 @@ export async function setDefaultTaxMode(mode: TaxMode): Promise<void> {
   await setSetting(TAX_MODE_KEY, mode);
 }
 
+/**
+ * The paper the shop's bills come out on:
+ *   'a4'        → the full tax invoice sheet (modules/invoices/pdf)
+ *   'thermal58' → a 58mm counter receipt (modules/invoices/thermal)
+ * Set once and read by every print/share in the app, so a counter with one
+ * thermal printer is never asked which paper it wants.
+ */
+export type PrintFormat = 'a4' | 'thermal58';
+
+export const PRINT_FORMAT_LABEL: Record<PrintFormat, string> = {
+  a4: 'A4 sheet',
+  thermal58: '58mm thermal',
+};
+
+export const PRINT_FORMAT_KEY = 'print_format';
+
+export async function getPrintFormat(): Promise<PrintFormat> {
+  return (await getSetting(PRINT_FORMAT_KEY)) === 'thermal58' ? 'thermal58' : 'a4';
+}
+
+export async function setPrintFormat(format: PrintFormat): Promise<void> {
+  await setSetting(PRINT_FORMAT_KEY, format);
+}
+
 /** Recognition language for voice commands ('ta-IN' Tamil / 'en-IN' English). */
 export const VOICE_LANG_KEY = 'voice_lang';
 export const VOICE_SPEAK_KEY = 'voice_speak'; // '1' = speak confirmations back

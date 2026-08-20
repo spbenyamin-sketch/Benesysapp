@@ -48,9 +48,13 @@ import { getLockCapability, isLockEnabled, promptUnlock, setLockEnabled } from '
 import LicenseCard from '@/modules/license/LicenseCard';
 import {
   getDefaultTaxMode,
+  getPrintFormat,
   listSettings,
+  PRINT_FORMAT_LABEL,
   setDefaultTaxMode,
+  setPrintFormat,
   setSetting,
+  type PrintFormat,
 } from '@/modules/settings/service';
 import { matchOption } from '@/modules/voice/match';
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
@@ -92,6 +96,7 @@ export default function SettingsScreen() {
   const [exporting, setExporting] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [taxMode, setTaxMode] = useState<TaxMode>('exclusive');
+  const [paper, setPaper] = useState<PrintFormat>('a4');
   const [account, setAccount] = useState<Account | null>(null);
   const [lockOn, setLockOn] = useState(false);
   const [lockLabel, setLockLabel] = useState('Screen lock');
@@ -173,6 +178,9 @@ export default function SettingsScreen() {
       let active = true;
       getDefaultTaxMode().then((m) => {
         if (active) setTaxMode(m);
+      });
+      getPrintFormat().then((f) => {
+        if (active) setPaper(f);
       });
       Promise.all([
         getAccount(),
@@ -264,6 +272,11 @@ export default function SettingsScreen() {
   const pickTaxMode = (mode: TaxMode) => {
     setTaxMode(mode);
     void setDefaultTaxMode(mode);
+  };
+
+  const pickPaper = (format: PrintFormat) => {
+    setPaper(format);
+    void setPrintFormat(format);
   };
 
   // Turning the lock ON asks for the phone's unlock first — otherwise a stranger
@@ -527,6 +540,27 @@ export default function SettingsScreen() {
           {taxMode === 'inclusive'
             ? 'Example: ₹118 rate at 18% → taxable ₹100 + GST ₹18. Customer pays ₹118.'
             : 'Example: ₹100 rate at 18% → GST ₹18. Customer pays ₹118.'}
+        </Text>
+
+        <View style={styles.divider} />
+
+        <Text style={styles.sectionTitle}>Paper size</Text>
+        <View style={styles.optionRow}>
+          {(['a4', 'thermal58'] as PrintFormat[]).map((format) => (
+            <Pressable
+              key={format}
+              style={[styles.option, paper === format && styles.optionOn]}
+              onPress={() => pickPaper(format)}
+            >
+              <Text style={[styles.optionText, paper === format && styles.optionTextOn]}>
+                {PRINT_FORMAT_LABEL[format]}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+        <Text style={styles.sectionHint}>
+          Choose 58mm for the small roll printer at the counter. Every Print and Share button then
+          uses it — A4 stays the full tax invoice sheet.
         </Text>
 
         <View style={styles.divider} />

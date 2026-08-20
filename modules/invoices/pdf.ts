@@ -1,10 +1,14 @@
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { imageDataUri } from '@/modules/settings/brandImages';
-import { getBusinessProfile, type BusinessProfile } from '@/modules/settings/service';
+import {
+  getBusinessProfile,
+  getPrintFormat,
+  type BusinessProfile,
+} from '@/modules/settings/service';
+import { printThermal, shareThermalPdf, upiPayment } from '@/modules/invoices/thermal';
 import { formatDate, formatQty, formatTaxRate } from '@/utils/format';
 import { escapeHtml, htmlMoney } from '@/utils/html';
-import { qrSvg, upiPayload } from '@/utils/qr';
 import {
   lineAmount,
   lineTax,
@@ -98,41 +102,18 @@ async function loadAssets(biz: BusinessProfile): Promise<PrintAssets> {
 }
 
 /**
- * The scan-to-pay block, or nothing at all.
- *
- * Only on a document the shop is owed money on. A bill already settled gets no
- * code — a QR on a paid bill is an invitation to pay it twice. A part-paid one
- * gets a code with NO amount in it, because the page does not know what is left
- * and a wrong figure is worse than none.
+ * The scan-to-pay block, or nothing at all. WHEN a code is printed is decided in
+ * modules/invoices/thermal (see `upiPayment`) so that the sheet and the counter
+ * receipt can never disagree about it; only the markup around it is A4's own.
  */
 function payBlock(detail: InvoiceDetail, biz: BusinessProfile): string {
-  const { invoice } = detail;
-  if (!biz.upiId || invoice.type !== 'sale') return '';
-  if (invoice.paymentStatus === 'paid' || invoice.grandTotal <= 0) return '';
-  const partial = invoice.paymentStatus === 'partial';
-  try {
-    const svg = qrSvg(
-      upiPayload({
-        vpa: biz.upiId,
-        name: biz.name,
-        amount: partial ? undefined : invoice.grandTotal,
-        note: invoice.invoiceNo,
-      }),
-      110,
-    );
-    return `<div class="pay">
-      ${svg}
-      <div class="pay-label">${
-        partial
-          ? 'Scan to pay the balance'
-          : `Scan to pay ${esc(money(invoice.grandTotal))}`
-      }</div>
-      <div class="pay-upi">${esc(biz.upiId)}</div>
+  const pay = upiPayment(detail, biz);
+  if (!pay) return '';
+  return `<div class="pay">
+      ${pay.svg}
+      <div class="pay-label">${esc(pay.label)}</div>
+      <div class="pay-upi">${esc(pay.upiId)}</div>
     </div>`;
-  } catch {
-    // A code that cannot be built is simply left off; the bill still prints.
-    return '';
-  }
 }
 
 function buildHtml(detail: InvoiceDetail, biz: BusinessProfile, assets: PrintAssets): string {
@@ -329,8 +310,15 @@ function buildHtml(detail: InvoiceDetail, biz: BusinessProfile, assets: PrintAss
   </body></html>`;
 }
 
+// ── Which paper ──────────────────────────────────────────────────────────────
+// The shop tells the app once what it prints on (Settings → Paper size) and
+// every Print/Share button in the app then does the right thing. That is why the
+// choice is read here rather than offered as a second button: a counter that
+// owns one printer should never be asked the same question twice a day.
+
 /** Render the invoice to a PDF and open the native share sheet. */
 export async function shareInvoicePdf(detail: InvoiceDetail): Promise<void> {
+  if ((await getPrintFormat()) === 'thermal58') return shareThermalPdf(detail);
   const biz = await getBusinessProfile();
   const assets = await loadAssets(biz);
   const { uri } = await Print.printToFileAsync({ html: buildHtml(detail, biz, assets) });
@@ -345,6 +333,7 @@ export async function shareInvoicePdf(detail: InvoiceDetail): Promise<void> {
  * works in Expo Go, no thermal-printer native module needed.
  */
 export async function printInvoice(detail: InvoiceDetail): Promise<void> {
+  if ((await getPrintFormat()) === 'thermal58') return printThermal(detail);
   const biz = await getBusinessProfile();
   const assets = await loadAssets(biz);
   await Print.printAsync({ html: buildHtml(detail, biz, assets) });
