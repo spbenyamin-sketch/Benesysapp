@@ -40,7 +40,12 @@ const REPORTS: { href: Href; emoji: string; title: string; sub: string }[] = [
     sub: 'How long the money has been owed, and who to remind',
   },
   { href: '/report/stock', emoji: '📦', title: 'Stock Summary', sub: 'On-hand quantity and value' },
-  { href: '/report/gst', emoji: '🧮', title: 'GST Summary', sub: 'Output vs input tax' },
+  {
+    href: '/report/gst',
+    emoji: '🧮',
+    title: 'GST Summary',
+    sub: 'Output vs input tax, and the GSTR-1 file for your CA',
+  },
   {
     href: '/account',
     emoji: '🏦',

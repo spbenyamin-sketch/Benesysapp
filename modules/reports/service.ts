@@ -12,6 +12,16 @@ import {
   type CategoryTotal,
 } from '@/modules/expenses/service';
 import { listItems } from '@/modules/items/service';
+import {
+  buildGstr1,
+  buildGstr3b,
+  filingPeriod,
+  monthRange,
+  type Gstr1,
+  type Gstr3bSummary,
+  type GstrInvoice,
+  type GstrLine,
+} from '@/modules/reports/gstr';
 import { stockLevel, type StockLevel } from '@/modules/items/stockLevel';
 import { listInvoicesWithParty, type InvoiceWithParty } from '@/modules/invoices/service';
 import { listPartiesWithBalance, type PartyWithBalance } from '@/modules/parties/ledger';
@@ -582,4 +592,123 @@ export async function gstRateBreakup(
   };
 
   return { sales: group('sale'), purchases: group('purchase') };
+}
+
+// ── GSTR-1 / GSTR-3B ──────────────────────────────────────────────────────────
+// The loaders only fetch and shape; every rule about what a return contains
+// lives in the pure builders in modules/reports/gstr.ts, so the arithmetic that
+// goes to the government is testable without a database.
+
+/**
+ * One month's outward documents with their lines and the party behind them.
+ *
+ * Purchases are deliberately not fetched: GSTR-1 is outward supply only — a
+ * purchase bill belongs to the SUPPLIER's return and reaches the shop as input
+ * credit through GSTR-2B. Challans come along because their numbers still have
+ * to be declared under doc_issued, even though they supply nothing.
+ */
+export async function loadGstrInvoices(from: string, to: string): Promise<GstrInvoice[]> {
+  const heads = await db
+    .select({
+      id: invoices.id,
+      type: invoices.type,
+      invoiceNo: invoices.invoiceNo,
+      date: invoices.date,
+      grandTotal: invoices.grandTotal,
+      placeOfSupply: invoices.placeOfSupply,
+      sourceInvoiceId: invoices.sourceInvoiceId,
+      partyName: parties.name,
+      partyGstin: parties.gstin,
+      partyState: parties.state,
+    })
+    .from(invoices)
+    .innerJoin(parties, eq(invoices.partyId, parties.id))
+    .where(
+      and(
+        inArray(invoices.type, ['sale', 'saleReturn', 'challan']),
+        gte(invoices.date, from),
+        lte(invoices.date, to),
+      ),
+    );
+  if (!heads.length) return [];
+
+  const ids = heads.map((h) => h.id);
+  const lines = await db
+    .select({
+      invoiceId: invoiceItems.invoiceId,
+      taxRate: invoiceItems.taxRate,
+      amount: invoiceItems.amount,
+      qty: invoiceItems.qty,
+      // The HSN frozen on the line, never the item's HSN of today.
+      hsnCode: invoiceItems.hsnCode,
+      itemName: itemsTable.name,
+      unit: itemsTable.unit,
+    })
+    .from(invoiceItems)
+    .innerJoin(itemsTable, eq(invoiceItems.itemId, itemsTable.id))
+    .where(inArray(invoiceItems.invoiceId, ids));
+
+  // A credit note names a bill that is very often in an earlier month, so the
+  // originals are fetched by id rather than looked for among the month's rows.
+  const sourceIds = [
+    ...new Set(heads.map((h) => h.sourceInvoiceId).filter((v): v is number => v != null)),
+  ];
+  const sources = sourceIds.length
+    ? await db
+        .select({ id: invoices.id, invoiceNo: invoices.invoiceNo, date: invoices.date })
+        .from(invoices)
+        .where(inArray(invoices.id, sourceIds))
+    : [];
+  const sourceById = new Map(sources.map((s) => [s.id, s]));
+
+  const linesByInvoice = new Map<number, GstrLine[]>();
+  for (const { invoiceId, ...line } of lines) {
+    linesByInvoice.set(invoiceId, [...(linesByInvoice.get(invoiceId) ?? []), line]);
+  }
+
+  return heads.map((h) => {
+    const source = h.sourceInvoiceId != null ? sourceById.get(h.sourceInvoiceId) : undefined;
+    return {
+      ...h,
+      type: h.type as GstrInvoice['type'],
+      sourceInvoiceNo: source?.invoiceNo ?? null,
+      sourceInvoiceDate: source?.date ?? null,
+      lines: linesByInvoice.get(h.id) ?? [],
+    };
+  });
+}
+
+/**
+ * The month's GSTR-1, ready to be written out for the offline utility. `month`
+ * is 'YYYY-MM' — a return is filed for a calendar month, not for whatever range
+ * the summary screen happens to be showing.
+ *
+ * The shop's GSTIN comes back as it is, blank included: a return without one is
+ * not a return, and the screen says so rather than writing a file that will be
+ * rejected on the other side.
+ */
+export async function gstr1Report(month: string): Promise<Gstr1> {
+  const { from, to } = monthRange(month);
+  const [rows, gstin, state] = await Promise.all([
+    loadGstrInvoices(from, to),
+    getSetting('business_gstin'),
+    getSetting('business_state'),
+  ]);
+  return buildGstr1(rows, {
+    gstin: gstin ?? '',
+    state: state ?? '',
+    fp: filingPeriod(month),
+  });
+}
+
+/**
+ * The 3B table for the same month, built from the SAME figures the GST summary
+ * screen shows — gstSummary for the taxable values and the tax, gstRateBreakup
+ * for the CGST/SGST/IGST split. Nothing is derived a second way, so the two can
+ * never drift apart.
+ */
+export async function gstr3bReport(month: string): Promise<Gstr3bSummary> {
+  const { from, to } = monthRange(month);
+  const [summary, rates] = await Promise.all([gstSummary(from, to), gstRateBreakup(from, to)]);
+  return buildGstr3b(filingPeriod(month), summary, rates);
 }

@@ -1,16 +1,27 @@
+import { File, Paths } from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 import { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import Button from '@/components/Button';
 import DateRange, { defaultRange } from '@/components/DateRange';
 import ExcelExportButton from '@/components/ExcelExportButton';
 import { exportGstExcel } from '@/modules/reports/excel';
 import {
+  gstr1Filename,
+  reconcileTaxHeads,
+  type Gstr3bSummary,
+  type TaxHeads,
+} from '@/modules/reports/gstr';
+import {
+  gstr1Report,
+  gstr3bReport,
   gstRateBreakup,
   gstSummary,
   type GstRateRow,
   type GstSummary,
 } from '@/modules/reports/service';
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
-import { formatMoney } from '@/utils/format';
+import { formatDate, formatMoney } from '@/utils/format';
 
 export default function GstReportScreen() {
   const { lang } = useVoice();
@@ -21,6 +32,12 @@ export default function GstReportScreen() {
   // The same slab rows the Excel export carries — the summary header only holds
   // one rolled-up tax figure, and CGST/SGST/IGST is a per-line question.
   const [rates, setRates] = useState<{ sales: GstRateRow[]; purchases: GstRateRow[] } | null>(null);
+  // A return is filed for a calendar MONTH, never for whatever range the summary
+  // above happens to be showing — so filing gets its own control rather than
+  // borrowing one that means something else.
+  const [month, setMonth] = useState(init.to.slice(0, 7));
+  const [filing, setFiling] = useState<Gstr3bSummary | null>(null);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -34,9 +51,28 @@ export default function GstReportScreen() {
     };
   }, [from, to]);
 
+  useEffect(() => {
+    let active = true;
+    setFiling(null);
+    gstr3bReport(month).then((f) => {
+      if (active) setFiling(f);
+    });
+    return () => {
+      active = false;
+    };
+  }, [month]);
+
   const netPayable = data?.netPayable ?? 0;
-  const output = headTotals(rates?.sales, data?.outputTax ?? 0);
-  const input = headTotals(rates?.purchases, data?.inputTax ?? 0);
+  const output = reconcileTaxHeads(rates?.sales, data?.outputTax ?? 0);
+  const input = reconcileTaxHeads(rates?.purchases, data?.inputTax ?? 0);
+
+  const exportJson = () => {
+    if (busy) return;
+    setBusy(true);
+    shareGstr1(month)
+      .catch((e: unknown) => Alert.alert('Export failed', (e as Error)?.message ?? String(e)))
+      .finally(() => setBusy(false));
+  };
 
   // "மொத்தம்" → the one number the shopkeeper actually wants: net GST to pay.
   useVoiceCommands((intent) => {
@@ -58,14 +94,14 @@ export default function GstReportScreen() {
       <View style={styles.block}>
         <Text style={styles.blockTitle}>Output tax (on sales)</Text>
         <Line label="Taxable sales" value={formatMoney(data?.taxableSales ?? 0)} />
-        <TaxHeads totals={output} />
+        <TaxHeadLines totals={output} />
         <Line label="GST collected" value={formatMoney(data?.outputTax ?? 0)} strong />
       </View>
 
       <View style={styles.block}>
         <Text style={styles.blockTitle}>Input tax (on purchases)</Text>
         <Line label="Taxable purchases" value={formatMoney(data?.taxablePurchases ?? 0)} />
-        <TaxHeads totals={input} />
+        <TaxHeadLines totals={input} />
         <Line label="GST paid (input credit)" value={formatMoney(data?.inputTax ?? 0)} strong />
       </View>
 
@@ -82,34 +118,95 @@ export default function GstReportScreen() {
         The Excel file has 5 sheets: summary, sales &amp; purchase rate-wise slabs, and the
         invoice lists. Summary figures for reference only — not a filed GSTR return.
       </Text>
+
+      {/* Filing is a separate job from reading the summary, so it gets its own
+          block with its own month — a return covers a calendar month. */}
+      <View style={styles.filing}>
+        <Text style={styles.blockTitle}>File for this month</Text>
+        <View style={styles.monthRow}>
+          <Step label="‹" onPress={() => setMonth(shiftMonth(month, -1))} />
+          <Text style={styles.monthLabel}>{monthLabel(month)}</Text>
+          <Step label="›" onPress={() => setMonth(shiftMonth(month, 1))} />
+        </View>
+
+        <Line label="Outward taxable supplies (3.1a)" value={rupees(filing?.outward.txval)} />
+        <Line label="Tax on them" value={rupees(taxOf(filing?.outward))} />
+        <Line label="Eligible input tax (4A5)" value={rupees(taxOf(filing?.itc))} />
+        <Line
+          label={(filing?.netPayable ?? 0) >= 0 ? 'To pay' : 'Credit carried forward'}
+          value={rupees(Math.abs(filing?.netPayable ?? 0))}
+          strong
+        />
+
+        <Button label="⬇  Export GSTR-1 JSON" tone="ghost" onPress={exportJson} loading={busy} />
+        <Text style={styles.disclaimer}>
+          The JSON the government&apos;s offline utility reads — sales, counter trade, credit
+          notes, HSN and the numbers issued. Give it to your CA: it is a statement of the month,
+          not a filed return, and purchases are not in it (those come from your suppliers&apos;
+          returns).
+        </Text>
+      </View>
     </ScrollView>
   );
 }
 
 /**
- * CGST/SGST/IGST rolled up out of the slab rows, forced to add back to the tax
- * figure printed beside them. Re-deriving line by line can land a paise away
- * from the invoice headers (a tax-inclusive bill carves its tax out of the
- * gross); a stray paise is given to the head already carrying the most rather
- * than shown as three numbers that don't sum to the fourth.
+ * Build the month's return, write it beside the Excel exports and hand it to the
+ * OS share sheet — the same route every other export takes, so it reaches the CA
+ * over WhatsApp, Drive or mail with no server and no internet.
+ *
+ * A shop with no GSTIN is stopped here rather than handed a file: the utility
+ * rejects a return without one, and finding that out at the CA's desk is worse
+ * than finding it out now.
  */
-function headTotals(
-  rows: GstRateRow[] | undefined,
-  total: number,
-): { cgst: number; sgst: number; igst: number } {
-  const heads = {
-    cgst: (rows ?? []).reduce((s, r) => s + r.cgst, 0),
-    sgst: (rows ?? []).reduce((s, r) => s + r.sgst, 0),
-    igst: (rows ?? []).reduce((s, r) => s + r.igst, 0),
-  };
-  const residual = total - (heads.cgst + heads.sgst + heads.igst);
-  if (residual !== 0) {
-    const biggest = (['cgst', 'sgst', 'igst'] as const).reduce((a, b) =>
-      Math.abs(heads[b]) > Math.abs(heads[a]) ? b : a,
+async function shareGstr1(month: string): Promise<string> {
+  const data = await gstr1Report(month);
+  if (!data.gstin) {
+    throw new Error(
+      'This shop has no GSTIN saved. Add it under Settings → Business — a GSTR-1 without one is rejected.',
     );
-    if (heads[biggest] !== 0) heads[biggest] += residual;
   }
-  return heads;
+  const filename = gstr1Filename(data.gstin, data.fp);
+  const file = new File(Paths.cache, filename);
+  if (file.exists) file.delete();
+  file.create();
+  file.write(JSON.stringify(data));
+
+  if (await Sharing.isAvailableAsync()) {
+    await Sharing.shareAsync(file.uri, {
+      mimeType: 'application/json',
+      dialogTitle: filename,
+      UTI: 'public.json',
+    });
+  }
+  return file.uri;
+}
+
+/** 'YYYY-MM' shifted by whole months, staying in UTC so a timezone can't slip a day. */
+function shiftMonth(month: string, by: number): string {
+  const [y, m] = month.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1 + by, 1)).toISOString().slice(0, 7);
+}
+
+/** 'YYYY-MM' → 'Jul 2026', reusing the month names formatDate already knows. */
+const monthLabel = (month: string): string => formatDate(`${month}-01`).replace(/^1 /, '');
+
+/**
+ * The 3B rows come out in rupees because that is what the table is written in;
+ * the screen's formatter speaks paise, so they go back through the same door.
+ */
+const rupees = (value: number | undefined): string => formatMoney(Math.round((value ?? 0) * 100));
+
+/** The whole tax on a 3B row, whichever heads it landed under. */
+const taxOf = (row?: Gstr3bSummary['outward']): number =>
+  row ? row.iamt + row.camt + row.samt + row.csamt : 0;
+
+function Step({ label, onPress }: { label: string; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.step, pressed && styles.pressed]}>
+      <Text style={styles.stepText}>{label}</Text>
+    </Pressable>
+  );
 }
 
 /**
@@ -117,7 +214,7 @@ function headTotals(
  * that never sells out of state never sees an IGST row, and one that only ever
  * does never sees CGST/SGST.
  */
-function TaxHeads({ totals }: { totals: { cgst: number; sgst: number; igst: number } }) {
+function TaxHeadLines({ totals }: { totals: TaxHeads }) {
   return (
     <>
       {totals.cgst !== 0 ? <Line label="CGST" value={formatMoney(totals.cgst)} /> : null}
@@ -140,9 +237,9 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#fff' },
   content: { padding: 16, gap: 16, paddingBottom: 40 },
   block: { borderWidth: 1, borderColor: '#eee', borderRadius: 12, padding: 14, gap: 8 },
-  blockTitle: { fontSize: 14, fontWeight: '700', color: '#555' },
   line: { flexDirection: 'row', justifyContent: 'space-between' },
-  lineLabel: { fontSize: 15, color: '#666' },
+  blockTitle: { fontSize: 14, fontWeight: '700', color: '#555' },
+  lineLabel: { fontSize: 15, color: '#666', flex: 1 },
   lineValue: { fontSize: 15, color: '#111' },
   lineStrong: { fontWeight: '700', color: '#111' },
   netCard: { backgroundColor: '#f4f8fe', borderRadius: 14, padding: 18, alignItems: 'center', gap: 4 },
@@ -150,4 +247,26 @@ const styles = StyleSheet.create({
   netValue: { fontSize: 28, fontWeight: '700' },
   netHint: { fontSize: 12, color: '#999' },
   disclaimer: { fontSize: 12, color: '#999', textAlign: 'center' },
+  filing: {
+    borderWidth: 1,
+    borderColor: '#dce7f5',
+    backgroundColor: '#fbfdff',
+    borderRadius: 12,
+    padding: 14,
+    gap: 10,
+  },
+  monthRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  monthLabel: { fontSize: 17, fontWeight: '700', color: '#111' },
+  step: {
+    minWidth: 48,
+    minHeight: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#dce7f5',
+    backgroundColor: '#fff',
+  },
+  stepText: { fontSize: 22, color: '#208AEF', lineHeight: 26 },
+  pressed: { opacity: 0.6 },
 });
