@@ -10,12 +10,14 @@ import {
   Text,
   View,
 } from 'react-native';
+import BarcodeScanner from '@/components/BarcodeScanner';
 import Button from '@/components/Button';
 import ItemPhoto from '@/components/ItemPhoto';
 import SelectField from '@/components/SelectField';
 import TextField from '@/components/TextField';
+import { normaliseBarcode } from '@/modules/items/barcode';
 import { captureItemPhoto, deleteItemPhoto, pickItemPhoto } from '@/modules/items/images';
-import { createItem, updateItem } from '@/modules/items/service';
+import { createItem, findItemByBarcode, updateItem } from '@/modules/items/service';
 import { matchOption } from '@/modules/voice/match';
 import { useVoiceCommands } from '@/modules/voice/VoiceProvider';
 import { ITEM_CATEGORIES, ITEM_UNITS } from '@/utils/constants';
@@ -32,12 +34,25 @@ import type { Item } from '@/db/schema';
 // Shared by the "new" and "edit" item routes. On create, currentStock is seeded
 // from openingStock; on edit, currentStock is left untouched (the Adjust-stock
 // screen owns it). Navigates back on success.
-export default function ItemForm({ item }: { item?: Item }) {
+export default function ItemForm({
+  item,
+  /** A code scanned somewhere that matched no item, pre-filled on a new one. */
+  initialBarcode,
+}: {
+  item?: Item;
+  initialBarcode?: string;
+}) {
   const router = useRouter();
   const editing = !!item;
 
   const [name, setName] = useState(item?.name ?? '');
   const [hsnCode, setHsnCode] = useState(item?.hsnCode ?? '');
+  const [barcode, setBarcode] = useState(item?.barcode ?? initialBarcode ?? '');
+  const [scanning, setScanning] = useState(false);
+  // The name of the OTHER item already carrying this barcode, if there is one.
+  // Shown, never enforced — two packets really can share a code (a refill and
+  // its bottle), and the shop knows its own shelves better than the app does.
+  const [duplicateOf, setDuplicateOf] = useState<string | null>(null);
   const [category, setCategory] = useState(item?.category ?? '');
   const [unit, setUnit] = useState(item?.unit ?? 'pcs');
   const [salePrice, setSalePrice] = useState(item ? paiseToRupeeInput(item.salePrice) : '');
@@ -69,6 +84,11 @@ export default function ItemForm({ item }: { item?: Item }) {
     }
   };
 
+  const checkBarcode = async (code: string) => {
+    const other = await findItemByBarcode(code);
+    setDuplicateOf(other && other.id !== item?.id ? other.name : null);
+  };
+
   const removePhoto = () => {
     if (imageUri && imageUri !== originalImage) deleteItemPhoto(imageUri);
     setImageUri(null);
@@ -86,6 +106,7 @@ export default function ItemForm({ item }: { item?: Item }) {
       const data = {
         name: trimmedName,
         hsnCode: hsnCode.trim() || null,
+        barcode: normaliseBarcode(barcode) || null,
         category: category.trim() || null,
         unit: unit.trim() || 'pcs',
         salePrice: parseRupeesToPaise(salePrice),
@@ -204,6 +225,27 @@ export default function ItemForm({ item }: { item?: Item }) {
             />
           </View>
         </View>
+        <View style={styles.barcodeRow}>
+          <View style={styles.col}>
+            <TextField
+              label="Barcode"
+              value={barcode}
+              onChangeText={setBarcode}
+              placeholder="Scan or type"
+              autoCapitalize="characters"
+              onBlur={() => void checkBarcode(barcode)}
+            />
+          </View>
+          <Pressable style={styles.scanBtn} onPress={() => setScanning(true)}>
+            <Text style={styles.scanBtnText}>▥  Scan</Text>
+          </Pressable>
+        </View>
+        {duplicateOf ? (
+          <Text style={styles.warn}>
+            "{duplicateOf}" already has this barcode. Scanning it will open that item instead.
+          </Text>
+        ) : null}
+
         <SelectField
           label="Category"
           value={category}
@@ -287,6 +329,16 @@ export default function ItemForm({ item }: { item?: Item }) {
           style={styles.save}
         />
       </ScrollView>
+
+      <BarcodeScanner
+        visible={scanning}
+        onScan={(code) => {
+          setScanning(false);
+          setBarcode(code);
+          void checkBarcode(code);
+        }}
+        onClose={() => setScanning(false)}
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -297,7 +349,18 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', gap: 12 },
   col: { flex: 1 },
   hint: { fontSize: 12, color: '#888', marginTop: -6 },
+  warn: { fontSize: 12, color: '#d68910', marginTop: -6 },
   save: { marginTop: 8 },
+  // The button sits on the input's baseline, below the field's own label.
+  barcodeRow: { flexDirection: 'row', gap: 12, alignItems: 'flex-end' },
+  scanBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 11,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+  scanBtnText: { fontSize: 14, fontWeight: '600', color: '#208AEF' },
   photoRow: { flexDirection: 'row', gap: 14, alignItems: 'flex-start' },
   photoButtons: { flex: 1, gap: 8 },
   photoLabel: { fontSize: 13, fontWeight: '600', color: '#444' },

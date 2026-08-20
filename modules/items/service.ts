@@ -1,5 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { db } from '@/db/client';
+import { normaliseBarcode } from '@/modules/items/barcode';
 import { items, type Item, type NewItem } from '@/db/schema';
 
 export type ItemInput = Omit<NewItem, 'id' | 'createdAt'>;
@@ -15,6 +16,16 @@ export async function listItems(): Promise<Item[]> {
 
 export async function getItem(id: number): Promise<Item | undefined> {
   const [row] = await db.select().from(items).where(eq(items.id, id));
+  return row;
+}
+
+// What a scan resolves to. A blank code matches nothing on purpose: almost every
+// item in a small shop has no barcode at all, so a misread must never be allowed
+// to open whichever of those rows the database happens to hand back first.
+export async function findItemByBarcode(code: string): Promise<Item | undefined> {
+  const barcode = normaliseBarcode(code);
+  if (!barcode) return undefined;
+  const [row] = await db.select().from(items).where(eq(items.barcode, barcode));
   return row;
 }
 

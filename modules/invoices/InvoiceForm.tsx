@@ -11,6 +11,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import BarcodeScanner from '@/components/BarcodeScanner';
 import Button from '@/components/Button';
 import PickerField, { type PickerOption } from '@/components/PickerField';
 import {
@@ -21,7 +22,7 @@ import {
   type InvoiceLineInput,
 } from '@/modules/invoices/service';
 import { netPaidForInvoice } from '@/modules/payments/service';
-import { listItems } from '@/modules/items/service';
+import { findItemByBarcode, listItems } from '@/modules/items/service';
 import { listParties } from '@/modules/parties/service';
 import { getDefaultTaxMode, getSetting } from '@/modules/settings/service';
 import { bestMatch, spokenNames } from '@/modules/voice/match';
@@ -166,6 +167,11 @@ export default function InvoiceForm({
   const [saving, setSaving] = useState(false);
   const [lineSeq, setLineSeq] = useState(0);
   const [taxMode, setTaxMode] = useState<TaxMode>('exclusive');
+  const [scanning, setScanning] = useState(false);
+  // Bumped to re-arm the scanner after a code that matched nothing. It locks
+  // itself on its first read — a packet held in front of the lens would
+  // otherwise add fifty lines — and this is what tells it to listen again.
+  const [scanAttempt, setScanAttempt] = useState(0);
   // Per-line discount boxes stay hidden until asked for: most bills never give
   // one, and an extra box on every row is exactly the clutter this app avoids.
   const [showLineDiscount, setShowLineDiscount] = useState(false);
@@ -303,6 +309,22 @@ export default function InvoiceForm({
       ];
     });
     setLineSeq((n) => n + 1);
+  };
+
+  /**
+   * A scanned barcode is the same event as tapping the item in the list: one
+   * unit, at the item's own rate. An unknown code leaves the scanner open — a
+   * mis-read is fixed by scanning again, not by starting the whole thing over.
+   */
+  const scanned = async (code: string) => {
+    const hit = await findItemByBarcode(code);
+    if (!hit) {
+      Alert.alert('No item with that barcode');
+      setScanAttempt((n) => n + 1);
+      return;
+    }
+    addLine(hit.id);
+    setScanning(false);
   };
 
   const updateLine = (key: string, patch: Partial<LineDraft>) =>
@@ -682,13 +704,29 @@ export default function InvoiceForm({
           </View>
         ))}
 
-        <PickerField
-          label="Add item"
-          value={null}
-          onSelect={addLine}
-          options={itemOptions}
-          placeholder="Tap to add an item"
-          emptyText="No items yet — add one from the Items tab."
+        {/* The picker and the scanner are two ways into the same list: find the
+            item by name, or let the packet say which one it is. */}
+        <View style={styles.addItemRow}>
+          <View style={styles.addItemPicker}>
+            <PickerField
+              label="Add item"
+              value={null}
+              onSelect={addLine}
+              options={itemOptions}
+              placeholder="Tap to add an item"
+              emptyText="No items yet — add one from the Items tab."
+            />
+          </View>
+          <Pressable style={styles.scanBtn} onPress={() => setScanning(true)} hitSlop={6}>
+            <Text style={styles.scanIcon}>▥</Text>
+            <Text style={styles.scanLabel}>Scan</Text>
+          </Pressable>
+        </View>
+        <BarcodeScanner
+          rearmKey={scanAttempt}
+          visible={scanning}
+          onScan={scanned}
+          onClose={() => setScanning(false)}
         />
 
         <View style={styles.field}>
@@ -803,6 +841,21 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 16, fontWeight: '700', color: '#111' },
   toggleLink: { fontSize: 13, fontWeight: '600', color: '#208AEF' },
   supplyNote: { fontSize: 12, color: '#888', marginTop: 2 },
+  addItemRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 10 },
+  addItemPicker: { flex: 1 },
+  scanBtn: {
+    minWidth: 64,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#cfe3fb',
+    backgroundColor: '#eaf3fe',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scanIcon: { fontSize: 18, lineHeight: 22, color: '#208AEF' },
+  scanLabel: { fontSize: 12, fontWeight: '600', color: '#208AEF' },
   lineCard: { borderWidth: 1, borderColor: '#eee', borderRadius: 12, padding: 12, gap: 10, backgroundColor: '#fafafa' },
   lineHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   lineName: { fontSize: 15, fontWeight: '600', color: '#111', flex: 1 },

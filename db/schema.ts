@@ -35,6 +35,11 @@ export const items = sqliteTable('items', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   name: text('name').notNull(),
   hsnCode: text('hsn_code'), // HSN/SAC code for GST classification
+  // What a scanner reads off the packet, so the counter can find an item by
+  // pointing at it instead of hunting the list. Nullable because most of what a
+  // small shop sells is never printed with one — loose rice, sweets, anything
+  // weighed — and a shop without a scanner must never be asked to fill it in.
+  barcode: text('barcode'),
   category: text('category'), // free text; presets in utils/constants ITEM_CATEGORIES
   unit: text('unit').notNull().default('pcs'),
   salePrice: integer('sale_price').notNull().default(0), // paise

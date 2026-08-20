@@ -1,8 +1,9 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import BarcodeScanner from '@/components/BarcodeScanner';
 import ItemPhoto from '@/components/ItemPhoto';
-import { listItems } from '@/modules/items/service';
+import { findItemByBarcode, listItems } from '@/modules/items/service';
 import { bestMatch, spokenNames } from '@/modules/voice/match';
 import { t } from '@/modules/voice/phrases';
 import { stockLevel, STOCK_LABEL, STOCK_TONE } from '@/modules/items/stockLevel';
@@ -15,6 +16,7 @@ export default function ItemsScreen() {
   const { lang } = useVoice();
   const [items, setItems] = useState<Item[]>([]);
   const [query, setQuery] = useState('');
+  const [scanning, setScanning] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -33,9 +35,30 @@ export default function ItemsScreen() {
     if (!q) return items;
     return items.filter(
       (it) =>
-        it.name.toLowerCase().includes(q) || (it.voiceAlias ?? '').toLowerCase().includes(q),
+        it.name.toLowerCase().includes(q) ||
+        (it.voiceAlias ?? '').toLowerCase().includes(q) ||
+        (it.barcode ?? '').toLowerCase().includes(q),
     );
   }, [items, query]);
+
+  // A scan is the shop saying "this packet, now", so a hit goes straight to the
+  // item — no list, no tap. A miss is nearly always a packet nobody has entered
+  // yet, so the offer is to enter it with the number already filled in.
+  const handleScan = async (code: string) => {
+    setScanning(false);
+    const hit = await findItemByBarcode(code);
+    if (hit) {
+      router.push({ pathname: '/item/[id]', params: { id: hit.id } });
+      return;
+    }
+    Alert.alert('No item has this barcode', `Add a new item for ${code}?`, [
+      { text: 'Not now', style: 'cancel' },
+      {
+        text: 'Add item',
+        onPress: () => router.push({ pathname: '/item/new', params: { barcode: code } }),
+      },
+    ]);
+  };
 
   // Voice: "சர்க்கரை தேடு" filters the list; naming an item outright opens it;
   // "புது பொருள்" (a nav intent) is handled globally.
@@ -76,6 +99,13 @@ export default function ItemsScreen() {
           autoCapitalize="none"
           clearButtonMode="while-editing"
         />
+        <Pressable
+          style={styles.scanBtn}
+          onPress={() => setScanning(true)}
+          accessibilityLabel="Scan barcode"
+        >
+          <Text style={styles.scanBtnText}>▥  Scan</Text>
+        </Pressable>
       </View>
 
       <FlatList
@@ -125,14 +155,28 @@ export default function ItemsScreen() {
       >
         <Text style={styles.fabPlus}>+</Text>
       </Pressable>
+
+      <BarcodeScanner
+        visible={scanning}
+        onScan={(code) => void handleScan(code)}
+        onClose={() => setScanning(false)}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
-  searchWrap: { padding: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#eee' },
+  searchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#eee',
+  },
   search: {
+    flex: 1,
     backgroundColor: '#f2f2f4',
     borderRadius: 10,
     paddingHorizontal: 12,
@@ -140,6 +184,8 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#111',
   },
+  scanBtn: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10, backgroundColor: '#f2f2f4' },
+  scanBtnText: { fontSize: 14, fontWeight: '600', color: '#208AEF' },
   listContent: { paddingBottom: 96 },
   emptyWrap: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
   empty: { color: '#999', textAlign: 'center', lineHeight: 22 },
