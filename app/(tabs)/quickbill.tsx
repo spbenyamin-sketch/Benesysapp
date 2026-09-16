@@ -21,7 +21,7 @@ import { bestMatch, spokenNames } from '@/modules/voice/match';
 import { addedLine, removedLine, setQtyLine, t, totalLine } from '@/modules/voice/phrases';
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
 import { computeTotals, TAX_MODE_LABEL, type TaxMode } from '@/utils/gst';
-import { formatMoney } from '@/utils/format';
+import { formatMoney, parseRupeesToPaise, parseTaxRateToBasisPoints } from '@/utils/format';
 import { formatQtyValue, stepQty } from '@/utils/units';
 import type { Item } from '@/db/schema';
 
@@ -44,6 +44,10 @@ export default function QuickBillScreen() {
   const [cartOpen, setCartOpen] = useState(false);
   const [billing, setBilling] = useState(false);
   const [taxMode, setTaxMode] = useState<TaxMode>('exclusive');
+  // The bill discount lives in the cart sheet, not on the counter screen: most
+  // bills never get one, and the grid has to stay a wall of items to tap.
+  const [discountStr, setDiscountStr] = useState('');
+  const [discountPct, setDiscountPct] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -122,7 +126,12 @@ export default function QuickBillScreen() {
       delete copy[id];
       return copy;
     });
-  const clear = () => setCart({});
+  // Emptying the bill empties the discount with it — a ₹50 off left behind from
+  // the last customer would come off the next one silently.
+  const clear = () => {
+    setCart({});
+    setDiscountStr('');
+  };
 
   // Emptying a half-built bill by mistake is the one un-undoable tap here.
   const confirmClear = () => {
@@ -141,21 +150,27 @@ export default function QuickBillScreen() {
   );
 
   const lineCount = cartLines.length;
+  const discount = discountPct ? 0 : parseRupeesToPaise(discountStr);
+  const discountPercent = discountPct ? parseTaxRateToBasisPoints(discountStr) || null : null;
   const { totals } = useMemo(
     () =>
       computeTotals(
         cartLines.map((l) => ({ qty: l.qty * 1000, rate: l.item.salePrice, taxRate: l.item.taxRate })),
-        0,
+        discount,
         taxMode,
+        discountPercent,
       ),
-    [cartLines, taxMode],
+    [cartLines, discount, discountPercent, taxMode],
   );
 
   const bill = useCallback(async () => {
     if (cartLines.length === 0) return false;
     setBilling(true);
     try {
-      const detail = await createQuickBill(cartLines, 'cash', taxMode);
+      const detail = await createQuickBill(cartLines, 'cash', taxMode, {
+        amount: discount,
+        percent: discountPercent,
+      });
       clear();
       setCartOpen(false);
       router.push({ pathname: '/invoice/[id]', params: { id: detail.invoice.id } });
@@ -166,7 +181,7 @@ export default function QuickBillScreen() {
     }
     setBilling(false);
     return true;
-  }, [cartLines, router, taxMode]);
+  }, [cartLines, discount, discountPercent, router, taxMode]);
 
   // ── Voice: the whole counter flow, hands-free ───────────────────────────────
   // "ரெண்டு டீ" → +2 tea · "டீ நீக்கு" → drop the line · "மொத்தம்" → speak the
@@ -383,6 +398,28 @@ export default function QuickBillScreen() {
                 </View>
               )}
             />
+            <View style={styles.discountRow}>
+              <Text style={styles.discountLabel}>Discount</Text>
+              <Pressable
+                style={styles.discountUnit}
+                onPress={() => setDiscountPct((on) => !on)}
+                hitSlop={6}
+              >
+                <Text style={styles.discountUnitText}>{discountPct ? '%' : '₹'}</Text>
+              </Pressable>
+              <TextInput
+                style={styles.discountInput}
+                value={discountStr}
+                onChangeText={setDiscountStr}
+                keyboardType="decimal-pad"
+                placeholder="0"
+                placeholderTextColor="#aaa"
+              />
+              {totals.discount > 0 ? (
+                <Text style={styles.discountOff}>- {formatMoney(totals.discount)}</Text>
+              ) : null}
+            </View>
+
             <View style={styles.sheetTotals}>
               <Text style={styles.sheetSubtotal}>
                 Subtotal {formatMoney(totals.subtotal)} · Tax {formatMoney(totals.taxTotal)}
@@ -574,6 +611,31 @@ const styles = StyleSheet.create({
   },
   stepText: { fontSize: 20, color: '#111', lineHeight: 22 },
   stepQty: { fontSize: 16, fontWeight: '700', color: '#111', minWidth: 20, textAlign: 'center' },
+  discountRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  discountLabel: { fontSize: 14, color: '#666', flex: 1 },
+  discountUnit: {
+    width: 34,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#cfe3fb',
+    backgroundColor: '#eef6ff',
+    alignItems: 'center',
+  },
+  discountUnitText: { fontSize: 14, fontWeight: '700', color: '#208AEF' },
+  discountInput: {
+    width: 84,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    fontSize: 15,
+    textAlign: 'right',
+    color: '#111',
+    backgroundColor: '#fff',
+  },
+  discountOff: { fontSize: 13, fontWeight: '600', color: '#c0392b', minWidth: 70, textAlign: 'right' },
   sheetTotals: {
     flexDirection: 'row',
     justifyContent: 'space-between',

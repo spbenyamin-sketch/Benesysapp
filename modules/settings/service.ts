@@ -82,20 +82,23 @@ export async function setDefaultTaxMode(mode: TaxMode): Promise<void> {
  * The paper the shop's bills come out on:
  *   'a4'        → the full tax invoice sheet (modules/invoices/pdf)
  *   'thermal58' → a 58mm counter receipt (modules/invoices/thermal)
+ *   'thermal80' → the same receipt on the wider 80mm roll
  * Set once and read by every print/share in the app, so a counter with one
  * thermal printer is never asked which paper it wants.
  */
-export type PrintFormat = 'a4' | 'thermal58';
+export type PrintFormat = 'a4' | 'thermal58' | 'thermal80';
 
 export const PRINT_FORMAT_LABEL: Record<PrintFormat, string> = {
   a4: 'A4 sheet',
   thermal58: '58mm thermal',
+  thermal80: '80mm thermal',
 };
 
 export const PRINT_FORMAT_KEY = 'print_format';
 
 export async function getPrintFormat(): Promise<PrintFormat> {
-  return (await getSetting(PRINT_FORMAT_KEY)) === 'thermal58' ? 'thermal58' : 'a4';
+  const stored = await getSetting(PRINT_FORMAT_KEY);
+  return stored === 'thermal58' || stored === 'thermal80' ? stored : 'a4';
 }
 
 export async function setPrintFormat(format: PrintFormat): Promise<void> {

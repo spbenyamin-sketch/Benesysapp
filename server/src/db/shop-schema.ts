@@ -77,6 +77,7 @@ export const invoices = pgTable('invoices', {
   subtotal: money('subtotal').notNull().default(0),
   taxTotal: money('tax_total').notNull().default(0),
   discount: money('discount').notNull().default(0),
+  discountPercent: integer('discount_percent'),
   grandTotal: money('grand_total').notNull().default(0),
   paymentStatus: text('payment_status', { enum: ['unpaid', 'partial', 'paid'] })
     .notNull()
@@ -105,6 +106,7 @@ export const invoiceItems = pgTable('invoice_items', {
   amount: money('amount').notNull(),
   costPrice: money('cost_price'),
   discount: money('discount').notNull().default(0),
+  discountPercent: integer('discount_percent'),
   hsnCode: text('hsn_code'),
 });
 

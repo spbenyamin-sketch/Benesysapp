@@ -11,6 +11,7 @@ import { formatDate, formatQty, formatTaxRate } from '@/utils/format';
 import { escapeHtml, htmlMoney } from '@/utils/html';
 import { isWeb, printHtml } from '@/utils/webFile';
 import {
+  discountLabel,
   lineAmount,
   lineTax,
   splitTax,
@@ -154,7 +155,15 @@ function buildHtml(detail: InvoiceDetail, biz: BusinessProfile, assets: PrintAss
         <td>${l.hsnCode ? esc(l.hsnCode) : ''}</td>
         <td class="num">${formatQty(l.qty)} ${esc(l.itemUnit)}</td>
         <td class="num">${money(l.rate)}</td>
-        ${anyLineDiscount ? `<td class="num">${l.discount > 0 ? `- ${money(l.discount)}` : '-'}</td>` : ''}
+        ${
+          anyLineDiscount
+            ? `<td class="num">${
+                l.discount > 0
+                  ? `- ${money(l.discount)}${l.discountPercent ? ` (${formatTaxRate(l.discountPercent)})` : ''}`
+                  : '-'
+              }</td>`
+            : ''
+        }
         <td class="num">${l.taxRate > 0 ? formatTaxRate(l.taxRate) : '-'}</td>
         <td class="num">${money(l.amount)}</td>
       </tr>`,
@@ -282,7 +291,7 @@ function buildHtml(detail: InvoiceDetail, biz: BusinessProfile, assets: PrintAss
     <div class="totals">
       <div><span>${invoice.taxMode === 'inclusive' ? 'Taxable value' : 'Subtotal'}</span><span>${money(invoice.subtotal)}</span></div>
       ${taxRows}
-      ${invoice.discount > 0 ? `<div><span>Discount</span><span>- ${money(invoice.discount)}</span></div>` : ''}
+      ${invoice.discount > 0 ? `<div><span>${discountLabel(invoice.discountPercent)}</span><span>- ${money(invoice.discount)}</span></div>` : ''}
       ${roundOff !== 0 ? `<div><span>Round off</span><span>${roundOff > 0 ? '+ ' : '- '}${money(Math.abs(roundOff))}</span></div>` : ''}
       <div class="grand"><span>Grand total</span><span>${money(Math.max(0, invoice.grandTotal))}</span></div>
     </div>
@@ -319,7 +328,9 @@ function buildHtml(detail: InvoiceDetail, biz: BusinessProfile, assets: PrintAss
 
 /** Render the invoice to a PDF and open the native share sheet. */
 export async function shareInvoicePdf(detail: InvoiceDetail): Promise<void> {
-  if ((await getPrintFormat()) === 'thermal58') return shareThermalPdf(detail);
+  // Anything that is not the A4 sheet is a roll, and the format names which one.
+  const format = await getPrintFormat();
+  if (format !== 'a4') return shareThermalPdf(detail, format);
   const biz = await getBusinessProfile();
   const assets = await loadAssets(biz);
   // A browser has no share sheet; its print dialog saves the PDF instead.
@@ -336,7 +347,8 @@ export async function shareInvoicePdf(detail: InvoiceDetail): Promise<void> {
  * works in Expo Go, no thermal-printer native module needed.
  */
 export async function printInvoice(detail: InvoiceDetail): Promise<void> {
-  if ((await getPrintFormat()) === 'thermal58') return printThermal(detail);
+  const format = await getPrintFormat();
+  if (format !== 'a4') return printThermal(detail, format);
   const biz = await getBusinessProfile();
   const assets = await loadAssets(biz);
   if (isWeb) return printHtml(buildHtml(detail, biz, assets));

@@ -28,7 +28,13 @@ import { getDefaultTaxMode, getSetting } from '@/modules/settings/service';
 import { bestMatch, spokenNames } from '@/modules/voice/match';
 import { addedLine, removedLine, t, totalLine } from '@/modules/voice/phrases';
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
-import { computeTotals, supplyType, TAX_MODE_LABEL, type TaxMode } from '@/utils/gst';
+import {
+  computeTotals,
+  discountLabel,
+  supplyType,
+  TAX_MODE_LABEL,
+  type TaxMode,
+} from '@/utils/gst';
 import {
   addDays,
   formatMoney,
@@ -36,7 +42,9 @@ import {
   paiseToRupeeInput,
   parseQtyToThousandths,
   parseRupeesToPaise,
+  parseTaxRateToBasisPoints,
   qtyToInput,
+  taxRateToInput,
 } from '@/utils/format';
 import {
   formatQtyValue,
@@ -57,6 +65,16 @@ const TITLES: Record<InvoiceType, { noun: string; cta: string }> = {
   purchaseReturn: { noun: 'Purchase return', cta: 'Create purchase return' },
 };
 
+/**
+ * How the number in a discount box is meant: rupees off, or a percentage of what
+ * the discount is being given on. The shop says "ten percent" as readily as
+ * "fifty rupees", and a counter that can only take one of the two ends up doing
+ * the arithmetic on paper.
+ */
+type DiscountMode = 'amount' | 'percent';
+
+const DISCOUNT_UNIT: Record<DiscountMode, string> = { amount: '₹', percent: '%' };
+
 // One row in the editable line-items list. qty/rate are kept as strings while
 // editing and parsed to integers (thousandths / paise) on the fly.
 interface LineDraft {
@@ -67,8 +85,9 @@ interface LineDraft {
   taxRate: number; // basis points
   qtyStr: string;
   rateStr: string;
-  /** Money off this line alone, rupees as typed. Empty on almost every line —
-   *  the boxes only appear once the shopkeeper asks for them. */
+  /** What is off this line alone, as typed — rupees or a percentage, depending
+   *  on the column's own ₹/% toggle. Empty on almost every line: the boxes only
+   *  appear once the shopkeeper asks for them. */
   discountStr: string;
   /** Carried over from the invoice being returned, so the profit report unwinds
    *  exactly what that sale earned rather than today's cost. */
@@ -163,6 +182,7 @@ export default function InvoiceForm({
   const [dueDate, setDueDate] = useState('');
   const [showDue, setShowDue] = useState(false);
   const [discountStr, setDiscountStr] = useState('');
+  const [discountMode, setDiscountMode] = useState<DiscountMode>('amount');
   const [lines, setLines] = useState<LineDraft[]>([]);
   const [saving, setSaving] = useState(false);
   const [lineSeq, setLineSeq] = useState(0);
@@ -175,6 +195,10 @@ export default function InvoiceForm({
   // Per-line discount boxes stay hidden until asked for: most bills never give
   // one, and an extra box on every row is exactly the clutter this app avoids.
   const [showLineDiscount, setShowLineDiscount] = useState(false);
+  // One ₹/% choice for the whole discount column rather than one per row: a
+  // counter gives its item discounts one way or the other, and a toggle on every
+  // line would cost more space than the boxes themselves.
+  const [lineDiscountMode, setLineDiscountMode] = useState<DiscountMode>('amount');
   // The shop's own state — half of the CGST+SGST vs IGST decision.
   const [bizState, setBizState] = useState<string | undefined>(undefined);
   // Where the document being returned was supplied to. A credit note has to
@@ -233,7 +257,19 @@ export default function InvoiceForm({
           if (active) setAlreadyReturned(sum);
         });
       }
-      setDiscountStr(source.invoice.discount ? paiseToRupeeInput(source.invoice.discount) : '');
+      // A bill given "10%" reopens saying 10%, not the rupees it worked out to —
+      // that is the whole point of storing the percentage.
+      const billPercent = source.invoice.discountPercent;
+      setDiscountMode(billPercent ? 'percent' : 'amount');
+      setDiscountStr(
+        billPercent
+          ? taxRateToInput(billPercent)
+          : source.invoice.discount
+            ? paiseToRupeeInput(source.invoice.discount)
+            : '',
+      );
+      const linesInPercent = source.lines.some((l) => l.discountPercent);
+      setLineDiscountMode(linesInPercent ? 'percent' : 'amount');
       setLines(
         source.lines.map((l, i) => ({
           key: `src${i}`,
@@ -243,7 +279,11 @@ export default function InvoiceForm({
           taxRate: l.taxRate,
           qtyStr: qtyToInput(l.qty),
           rateStr: paiseToRupeeInput(l.rate),
-          discountStr: l.discount ? paiseToRupeeInput(l.discount) : '',
+          discountStr: linesInPercent
+            ? taxRateToInput(l.discountPercent ?? 0)
+            : l.discount
+              ? paiseToRupeeInput(l.discount)
+              : '',
           costPrice: l.costPrice ?? undefined,
         })),
       );
@@ -354,6 +394,7 @@ export default function InvoiceForm({
   const removeLine = (key: string) => setLines((prev) => prev.filter((l) => l.key !== key));
 
   // Live totals from the current drafts.
+  const linePercent = lineDiscountMode === 'percent';
   const parsedLines: InvoiceLineInput[] = useMemo(
     () =>
       lines.map((l) => ({
@@ -364,15 +405,21 @@ export default function InvoiceForm({
         // A hidden box is a box that was never filled in: turning the row of
         // discounts off takes them off the bill too, so what is on screen is
         // always what gets saved.
-        discount: showLineDiscount ? parseRupeesToPaise(l.discountStr) : 0,
+        discount: showLineDiscount && !linePercent ? parseRupeesToPaise(l.discountStr) : 0,
+        discountPercent:
+          showLineDiscount && linePercent
+            ? parseTaxRateToBasisPoints(l.discountStr) || null
+            : null,
         costPrice: l.costPrice,
       })),
-    [lines, showLineDiscount],
+    [lines, showLineDiscount, linePercent],
   );
-  const discount = parseRupeesToPaise(discountStr);
+  const billPercent = discountMode === 'percent';
+  const discount = billPercent ? 0 : parseRupeesToPaise(discountStr);
+  const discountPercent = billPercent ? parseTaxRateToBasisPoints(discountStr) || null : null;
   const { lines: computed, totals } = useMemo(
-    () => computeTotals(parsedLines, discount, taxMode),
-    [parsedLines, discount, taxMode],
+    () => computeTotals(parsedLines, discount, taxMode, discountPercent),
+    [parsedLines, discount, discountPercent, taxMode],
   );
 
   // Which pair of taxes this bill attracts, worked out rather than asked for:
@@ -421,7 +468,7 @@ export default function InvoiceForm({
       const inv = isEdit
         ? await updateInvoiceWithItems(
             editInvoiceId,
-            { partyId, date, discount, taxMode, dueDate: due },
+            { partyId, date, discount, discountPercent, taxMode, dueDate: due },
             parsedLines,
           )
         : await createInvoiceWithItems(
@@ -430,6 +477,7 @@ export default function InvoiceForm({
               partyId,
               date,
               discount,
+              discountPercent,
               paymentStatus: 'unpaid',
               taxMode,
               dueDate: due,
@@ -498,6 +546,8 @@ export default function InvoiceForm({
       }
       case 'setField':
         if (intent.field === 'discount') {
+          // "தள்ளுபடி ஐம்பது" is fifty rupees off, never fifty percent.
+          setDiscountMode('amount');
           setDiscountStr(intent.value);
           return true;
         }
@@ -604,11 +654,16 @@ export default function InvoiceForm({
         <View style={styles.sectionRow}>
           <Text style={styles.sectionTitle}>Items</Text>
           {lines.length > 0 ? (
-            <Pressable onPress={() => setShowLineDiscount((v) => !v)} hitSlop={8}>
-              <Text style={styles.toggleLink}>
-                {showLineDiscount ? 'Hide item discount' : 'Discount per item'}
-              </Text>
-            </Pressable>
+            <View style={styles.sectionRight}>
+              {showLineDiscount ? (
+                <UnitToggle mode={lineDiscountMode} onChange={setLineDiscountMode} />
+              ) : null}
+              <Pressable onPress={() => setShowLineDiscount((v) => !v)} hitSlop={8}>
+                <Text style={styles.toggleLink}>
+                  {showLineDiscount ? 'Hide item discount' : 'Discount per item'}
+                </Text>
+              </Pressable>
+            </View>
           ) : null}
         </View>
         {lines.map((l, i) => (
@@ -685,7 +740,15 @@ export default function InvoiceForm({
               </View>
               {showLineDiscount ? (
                 <View style={styles.lineCol}>
-                  <Text style={styles.miniLabel}>Discount (₹)</Text>
+                  {/* A percentage says nothing about how much money that is, so
+                      the rupees it comes to sit beside the label — same row, no
+                      extra height to knock the columns out of line. */}
+                  <Text style={styles.miniLabel}>
+                    Discount ({DISCOUNT_UNIT[lineDiscountMode]})
+                    {linePercent && (computed[i]?.discount ?? 0) > 0 ? (
+                      <Text style={styles.miniHint}>  · {formatMoney(computed[i].discount)}</Text>
+                    ) : null}
+                  </Text>
                   <TextInput
                     style={styles.miniInput}
                     value={l.discountStr}
@@ -730,7 +793,10 @@ export default function InvoiceForm({
         />
 
         <View style={styles.field}>
-          <Text style={styles.label}>Discount (₹)</Text>
+          <View style={styles.sectionRow}>
+            <Text style={styles.label}>Discount ({DISCOUNT_UNIT[discountMode]})</Text>
+            <UnitToggle mode={discountMode} onChange={setDiscountMode} />
+          </View>
           <TextInput
             style={styles.dateInput}
             value={discountStr}
@@ -739,6 +805,9 @@ export default function InvoiceForm({
             placeholder="0"
             placeholderTextColor="#aaa"
           />
+          {billPercent && totals.discount > 0 ? (
+            <Text style={styles.miniHint}>= {formatMoney(totals.discount)} off this bill</Text>
+          ) : null}
         </View>
 
         <View style={styles.taxModeRow}>
@@ -759,7 +828,10 @@ export default function InvoiceForm({
           <TotalRow label={taxMode === 'inclusive' ? 'Taxable value' : 'Subtotal'} value={formatMoney(totals.subtotal)} />
           <TotalRow label={taxLabel} value={formatMoney(totals.taxTotal)} />
           {totals.discount > 0 ? (
-            <TotalRow label="Discount" value={`- ${formatMoney(totals.discount)}`} />
+            <TotalRow
+              label={discountLabel(discountPercent)}
+              value={`- ${formatMoney(totals.discount)}`}
+            />
           ) : null}
           {totals.roundOff !== 0 ? (
             <TotalRow
@@ -807,6 +879,32 @@ export default function InvoiceForm({
   );
 }
 
+/** The ₹/% switch that says how to read the discount box beside it. */
+function UnitToggle({
+  mode,
+  onChange,
+}: {
+  mode: DiscountMode;
+  onChange: (mode: DiscountMode) => void;
+}) {
+  return (
+    <View style={styles.unitToggle}>
+      {(['amount', 'percent'] as DiscountMode[]).map((m) => (
+        <Pressable
+          key={m}
+          style={[styles.unitBtn, mode === m && styles.unitBtnOn]}
+          onPress={() => onChange(m)}
+          hitSlop={4}
+        >
+          <Text style={[styles.unitText, mode === m && styles.unitTextOn]}>
+            {DISCOUNT_UNIT[m]}
+          </Text>
+        </Pressable>
+      ))}
+    </View>
+  );
+}
+
 function TotalRow({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
   return (
     <View style={styles.totalRow}>
@@ -839,7 +937,19 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   sectionTitle: { fontSize: 16, fontWeight: '700', color: '#111' },
+  sectionRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   toggleLink: { fontSize: 13, fontWeight: '600', color: '#208AEF' },
+  unitToggle: {
+    flexDirection: 'row',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  unitBtn: { minWidth: 34, paddingVertical: 4, alignItems: 'center', backgroundColor: '#fff' },
+  unitBtnOn: { backgroundColor: '#eef6ff' },
+  unitText: { fontSize: 14, fontWeight: '700', color: '#999' },
+  unitTextOn: { color: '#208AEF' },
   supplyNote: { fontSize: 12, color: '#888', marginTop: 2 },
   addItemRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 10 },
   addItemPicker: { flex: 1 },

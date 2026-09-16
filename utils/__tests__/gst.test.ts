@@ -2,6 +2,7 @@ import {
   cappedLineDiscount,
   computeLine,
   computeTotals,
+  discountFromPercent,
   lineAmount,
   lineTax,
   roundToRupee,
@@ -237,5 +238,110 @@ describe('computeTotals with line discounts', () => {
     );
     expect(totals.discount).toBe(440);
     expect(totals.grandTotal).toBe(9000); // 8000 + 1440 − 440 = 9000 exactly
+  });
+});
+
+// ── Percentage discounts ─────────────────────────────────────────────────────
+// A shop says "ten percent off" as readily as "fifty rupees off". The percentage
+// is what was agreed and what the bill has to print, but PAISE are what the bill
+// is made of — so what these pin down is the conversion, and that a percentage
+// can never do anything a rupee figure could not already do.
+
+describe('discountFromPercent', () => {
+  it('turns basis points into paise', () => {
+    expect(discountFromPercent(100000, 1000)).toBe(10000); // 10% of ₹1,000
+    expect(discountFromPercent(11800, 250)).toBe(295); // 2.5% of ₹118
+  });
+
+  it('lands on a whole paisa instead of carrying a fraction into the totals', () => {
+    expect(discountFromPercent(9999, 1000)).toBe(1000); // 10% of ₹99.99 = 999.9p
+    expect(discountFromPercent(105, 700)).toBe(7); // 7% of ₹1.05 = 7.35p
+  });
+
+  it('never hands money back', () => {
+    expect(discountFromPercent(10000, -500)).toBe(0);
+    expect(discountFromPercent(-10000, 1000)).toBe(0);
+  });
+});
+
+describe('a bill-level percentage', () => {
+  it('comes off the taxed total — what the customer would otherwise have paid', () => {
+    // ₹100 + 18% = ₹118; 10% of that is ₹11.80, leaving ₹106.20 → ₹106.
+    const { totals } = computeTotals([{ qty: 1000, rate: 10000, taxRate: 1800 }], 0, 'exclusive', 1000);
+    expect(totals.discount).toBe(1180);
+    expect(totals.grandTotal).toBe(10600);
+  });
+
+  it('decides the money, so a rupee figure handed in beside it is ignored', () => {
+    const { totals } = computeTotals(
+      [{ qty: 1000, rate: 10000, taxRate: 1800 }],
+      5000,
+      'exclusive',
+      1000,
+    );
+    expect(totals.discount).toBe(1180);
+  });
+
+  it('gives the whole bill away at 100%', () => {
+    const { totals } = computeTotals([{ qty: 1000, rate: 10000, taxRate: 1800 }], 0, 'exclusive', 10000);
+    expect(totals.discount).toBe(11800);
+    expect(totals.grandTotal).toBe(0);
+    expect(totals.roundOff).toBe(0);
+  });
+
+  it('still reconciles: subtotal + tax − discount + roundOff === grand total', () => {
+    const { totals } = computeTotals([{ qty: 3000, rate: 9990, taxRate: 1800 }], 0, 'exclusive', 733);
+    expect(totals.subtotal + totals.taxTotal - totals.discount + totals.roundOff).toBe(
+      totals.grandTotal,
+    );
+    expect(totals.grandTotal % 100).toBe(0);
+  });
+
+  it('leaves the rupee path untouched when no percentage was typed', () => {
+    const { totals } = computeTotals([{ qty: 1000, rate: 10000, taxRate: 1800 }], 800, 'exclusive', null);
+    expect(totals.discount).toBe(800);
+  });
+});
+
+describe('a line-level percentage', () => {
+  it('comes off before tax, so the tax follows the money that changed hands', () => {
+    // ₹100 line, 20% off → ₹80 taxable, 18% of that is ₹14.40.
+    const line = computeLine({ qty: 1000, rate: 10000, taxRate: 1800, discountPercent: 2000 });
+    expect(line).toMatchObject({ discount: 2000, amount: 8000, tax: 1440, gross: 9440 });
+  });
+
+  it('is capped by the line, exactly as a rupee figure is', () => {
+    const line = computeLine({ qty: 1000, rate: 10000, taxRate: 1800, discountPercent: 15000 });
+    expect(line).toMatchObject({ discount: 10000, amount: 0, tax: 0, gross: 0 });
+  });
+
+  it('gives the item away at 100%', () => {
+    const line = computeLine({ qty: 2000, rate: 5000, taxRate: 1800, discountPercent: 10000 });
+    expect(line).toMatchObject({ discount: 10000, amount: 0, tax: 0 });
+  });
+
+  it('carves the tax out of what is left, in inclusive mode', () => {
+    // ₹118 counter price, 10% off → ₹106.20 changed hands, tax carved out of it.
+    const line = computeLine(
+      { qty: 1000, rate: 11800, taxRate: 1800, discountPercent: 1000 },
+      'inclusive',
+    );
+    expect(line.discount).toBe(1180);
+    expect(line.gross).toBe(10620);
+    expect(line.amount + line.tax).toBe(10620);
+  });
+
+  it('decides the money; a null percentage leaves the rupee figure in charge', () => {
+    const base = { qty: 1000, rate: 10000, taxRate: 0, discount: 500 };
+    expect(computeLine({ ...base, discountPercent: 2000 }).discount).toBe(2000);
+    expect(computeLine({ ...base, discountPercent: null }).discount).toBe(500);
+  });
+
+  it('rolls into the subtotal alongside lines discounted in rupees', () => {
+    const { totals } = computeTotals([
+      { qty: 1000, rate: 10000, taxRate: 1800, discountPercent: 2000 }, // ₹80
+      { qty: 1000, rate: 5000, taxRate: 0, discount: 500 }, // ₹45
+    ]);
+    expect(totals.subtotal).toBe(12500);
   });
 });

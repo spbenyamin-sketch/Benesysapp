@@ -8,6 +8,13 @@
       "when": 1789469797012,
       "tag": "0000_dark_excalibur",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1789558629832,
+      "tag": "0001_thick_albert_cleary",
+      "breakpoints": true
     }
   ]
 }

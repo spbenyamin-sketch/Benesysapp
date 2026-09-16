@@ -76,6 +76,12 @@ export const invoices = sqliteTable('invoices', {
   subtotal: integer('subtotal').notNull().default(0), // paise (pre-tax)
   taxTotal: integer('tax_total').notNull().default(0), // paise
   discount: integer('discount').notNull().default(0), // paise
+  // How that discount was TYPED, when it was typed as a percentage — basis
+  // points, like every other rate here (10% = 1000). NULL means it was typed in
+  // rupees, which is every row written before this column existed. The paise in
+  // `discount` stay the figure every total and every report is built from; this
+  // is kept only so a reprint years later still says "Discount (10%)".
+  discountPercent: integer('discount_percent'), // basis points
   grandTotal: integer('grand_total').notNull().default(0), // paise
   paymentStatus: text('payment_status', { enum: ['unpaid', 'partial', 'paid'] })
     .notNull()
@@ -121,6 +127,9 @@ export const invoiceItems = sqliteTable('invoice_items', {
   costPrice: integer('cost_price'), // paise per unit
   // Discount on this line alone, paise, already taken off `amount`.
   discount: integer('discount').notNull().default(0),
+  // The same story as the invoice's own `discount_percent`: basis points when
+  // the line discount was typed as a percentage, NULL when it was rupees.
+  discountPercent: integer('discount_percent'), // basis points
   // The item's HSN/SAC as it stood when the bill was made — a tax invoice has to
   // reprint identically years later, even if the item is reclassified.
   hsnCode: text('hsn_code'),

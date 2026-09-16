@@ -1,3 +1,5 @@
+import { formatTaxRate } from '@/utils/format';
+
 // GST / invoice money math. Everything is integer — see db/schema.ts:
 //   qty     → thousandths  (2.5 units = 2500)
 //   rate    → paise/unit   (₹1.00 = 100)
@@ -21,6 +23,17 @@ export const TAX_MODE_LABEL: Record<TaxMode, string> = {
   inclusive: 'Tax included in rate',
 };
 
+/**
+ * What a discount calls itself: `Discount (10%)` when that is how the shop typed
+ * it, and the bare `Discount` a bill in rupees has always carried.
+ *
+ * One function for the screen, the A4 sheet and the counter slip alike, so none
+ * of the three can tell a customer something the others don't.
+ */
+export function discountLabel(percent?: number | null): string {
+  return percent ? `Discount (${formatTaxRate(percent)})` : 'Discount';
+}
+
 export interface LineInput {
   qty: number; // thousandths
   rate: number; // paise per unit
@@ -28,6 +41,10 @@ export interface LineInput {
   /** Money knocked off THIS line, paise, before tax — the "₹5 off the tea" a
    *  counter gives on one item rather than on the whole bill. */
   discount?: number;
+  /** Set when the discount was typed as a percentage instead: basis points
+   *  (10% = 1000), off the line's pre-tax value. It WINS over `discount`, which
+   *  is then the paise it works out to — see discountFromPercent. */
+  discountPercent?: number | null;
 }
 
 export interface LineComputed extends LineInput {
@@ -70,6 +87,19 @@ export function splitInclusive(gross: number, taxRate: number): { amount: number
 }
 
 /**
+ * What a percentage discount is worth, in paise, on a base of paise.
+ *
+ * Percentages are basis points like every other rate here (10% = 1000), and the
+ * paise this returns is what gets stored and totalled — the percent itself is
+ * only how the shopkeeper said it and what the bill prints. Rounded to the
+ * nearest paise, so "10% of ₹99.99" is ₹10.00 and not a third of a paisa that
+ * every total downstream would have to carry.
+ */
+export function discountFromPercent(base: number, percent: number): number {
+  return Math.round((Math.max(0, base) * Math.max(0, percent)) / 10000);
+}
+
+/**
  * A line's discount, clamped to something that can actually be given away: never
  * negative, never more than the line is worth. A discount larger than the line
  * would otherwise make the shop pay the customer for taking the goods.
@@ -93,7 +123,9 @@ export function roundToRupee(paise: number): number {
  */
 export function computeLine(line: LineInput, taxMode: TaxMode = 'exclusive'): LineComputed {
   const base = lineAmount(line.qty, line.rate);
-  const discount = cappedLineDiscount(line.discount, base);
+  const asked =
+    line.discountPercent != null ? discountFromPercent(base, line.discountPercent) : line.discount;
+  const discount = cappedLineDiscount(asked, base);
   const raw = base - discount;
   if (taxMode === 'inclusive') {
     const { amount, tax } = splitInclusive(raw, line.taxRate);
@@ -107,7 +139,8 @@ export function computeLine(line: LineInput, taxMode: TaxMode = 'exclusive'): Li
  * Roll up line items into invoice totals. `discount` here is the BILL-level one,
  * a flat paise amount applied after tax (line discounts are already inside each
  * line's amount); the total is floored at 0 so an over-large discount can't make
- * a negative bill, then landed on a whole rupee.
+ * a negative bill, then landed on a whole rupee. `discountPercent`, when given,
+ * says the shop typed a percentage instead and the paise are derived from it.
  *
  * The rounding is deliberately invisible: nobody at a counter hands over 65
  * paise, so the bill is rounded for them and the difference is carried in
@@ -129,6 +162,7 @@ export function computeTotals(
   lines: LineInput[],
   discount = 0,
   taxMode: TaxMode = 'exclusive',
+  discountPercent?: number | null,
 ): {
   lines: LineComputed[];
   totals: InvoiceTotals;
@@ -136,9 +170,18 @@ export function computeTotals(
   const computed = lines.map((l) => computeLine(l, taxMode));
   const subtotal = computed.reduce((s, l) => s + l.amount, 0);
   const taxTotal = computed.reduce((s, l) => s + l.tax, 0);
-  const net = Math.max(0, subtotal + taxTotal - discount);
+  // "10% off the bill" is 10% of what the customer would otherwise pay, so the
+  // base is the taxed total the discount is about to come off. The paise it
+  // works out to is what the rest of this function — and the stored invoice —
+  // then treats as the discount; the percentage is not money.
+  const given =
+    discountPercent != null ? discountFromPercent(subtotal + taxTotal, discountPercent) : discount;
+  const net = Math.max(0, subtotal + taxTotal - given);
   const grandTotal = roundToRupee(net);
-  return { lines: computed, totals: { subtotal, taxTotal, discount, roundOff: grandTotal - net, grandTotal } };
+  return {
+    lines: computed,
+    totals: { subtotal, taxTotal, discount: given, roundOff: grandTotal - net, grandTotal },
+  };
 }
 
 // ── CGST / SGST / IGST presentation split ─────────────────────────────────────

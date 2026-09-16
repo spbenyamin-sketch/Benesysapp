@@ -76,6 +76,9 @@ export interface InvoiceLineInput {
   /** Money knocked off this line alone, paise. Taken off before tax — see
    *  utils/gst computeLine — so the stored `amount` is already net of it. */
   discount?: number;
+  /** Basis points when the line discount was typed as "10%" rather than in
+   *  rupees; the paise are then derived from it and stored alongside. */
+  discountPercent?: number | null;
 }
 
 /**
@@ -94,6 +97,9 @@ export interface InvoiceHeaderInput {
   partyId: number;
   date: string; // ISO 'YYYY-MM-DD'
   discount?: number; // paise
+  /** Basis points when the bill discount was typed as a percentage. It decides
+   *  the paise above, and is stored so a reprint still names the percentage. */
+  discountPercent?: number | null;
   paymentStatus?: Invoice['paymentStatus'];
   taxMode?: TaxMode; // default 'exclusive' — see utils/gst
   dueDate?: string | null; // ISO day; null = due immediately
@@ -105,6 +111,15 @@ export interface InvoiceHeaderInput {
    */
   sourceInvoiceId?: number | null;
 }
+
+/**
+ * The percentage worth keeping on a row, or NULL. Nothing and 0% are the same
+ * thing here: the column means "this discount was typed as a percentage", and a
+ * zero never was one — storing it would make every undiscounted bill claim to
+ * have been given 0% off.
+ */
+const storedPercent = (percent?: number | null): number | null =>
+  percent != null && percent > 0 ? percent : null;
 
 // Stock direction: goods leave on a sale and on a purchase return (−), and come
 // in on a purchase and a sale return (+); quotations/challans don't move stock.
@@ -174,7 +189,12 @@ export async function createInvoiceWithItems(
   const placeOfSupply = header.placeOfSupply ?? buyer?.state ?? null;
 
   const taxMode: TaxMode = header.taxMode ?? 'exclusive';
-  const { lines: computed, totals } = computeTotals(lines, header.discount ?? 0, taxMode);
+  const { lines: computed, totals } = computeTotals(
+    lines,
+    header.discount ?? 0,
+    taxMode,
+    header.discountPercent,
+  );
   const sign = stockSign(header.type);
   const isPurchase = header.type === 'purchase';
   // On a purchase the rate paid IS the cost; on everything else it's what the
@@ -193,6 +213,7 @@ export async function createInvoiceWithItems(
         subtotal: totals.subtotal,
         taxTotal: totals.taxTotal,
         discount: totals.discount,
+        discountPercent: storedPercent(header.discountPercent),
         roundOff: totals.roundOff,
         grandTotal: totals.grandTotal,
         paymentStatus: header.paymentStatus ?? 'unpaid',
@@ -244,6 +265,7 @@ function* writeLines(
         // The capped discount, not what was typed: the line can never be given
         // away for less than nothing.
         discount: computed[i].discount,
+        discountPercent: storedPercent(l.discountPercent),
         hsnCode: ctx.hsnOf.get(l.itemId) ?? null,
 
       });
@@ -339,7 +361,12 @@ export async function updateInvoiceWithItems(
   const dueDate = header.dueDate !== undefined ? header.dueDate : existing.dueDate;
 
   const taxMode: TaxMode = header.taxMode ?? existing.taxMode;
-  const { lines: computed, totals } = computeTotals(lines, header.discount ?? 0, taxMode);
+  const { lines: computed, totals } = computeTotals(
+    lines,
+    header.discount ?? 0,
+    taxMode,
+    header.discountPercent,
+  );
   const sign = stockSign(existing.type);
   const isPurchase = existing.type === 'purchase';
   const costOf = (l: InvoiceLineInput, i: number): number =>
@@ -372,6 +399,7 @@ export async function updateInvoiceWithItems(
         subtotal: totals.subtotal,
         taxTotal: totals.taxTotal,
         discount: totals.discount,
+        discountPercent: storedPercent(header.discountPercent),
         roundOff: totals.roundOff,
         grandTotal: totals.grandTotal,
         taxMode,
@@ -463,6 +491,7 @@ export async function convertToInvoice(id: number): Promise<Invoice> {
       // The goods move today, whatever day the quotation was written.
       date: new Date().toISOString().slice(0, 10),
       discount: source.discount,
+      discountPercent: source.discountPercent,
       taxMode: source.taxMode,
       // Nothing is owed on any particular day yet; credit is given, if at all,
       // once the bill exists.
@@ -480,6 +509,7 @@ export async function convertToInvoice(id: number): Promise<Invoice> {
       rate: l.rate,
       taxRate: l.taxRate,
       discount: l.discount,
+      discountPercent: l.discountPercent,
     })),
   );
 }
@@ -516,6 +546,7 @@ export async function getInvoiceWithItems(id: number): Promise<InvoiceDetail | n
       amount: invoiceItems.amount,
       costPrice: invoiceItems.costPrice,
       discount: invoiceItems.discount,
+      discountPercent: invoiceItems.discountPercent,
       hsnCode: invoiceItems.hsnCode,
       itemName: items.name,
       itemUnit: items.unit,
@@ -593,6 +624,7 @@ export async function listInvoicesWithParty(limit?: number): Promise<InvoiceWith
       subtotal: invoices.subtotal,
       taxTotal: invoices.taxTotal,
       discount: invoices.discount,
+      discountPercent: invoices.discountPercent,
       grandTotal: invoices.grandTotal,
       paymentStatus: invoices.paymentStatus,
       taxMode: invoices.taxMode,

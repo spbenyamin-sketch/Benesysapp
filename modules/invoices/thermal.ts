@@ -1,4 +1,4 @@
-// The 58mm counter receipt.
+// The counter receipt, on a 58mm or an 80mm roll.
 //
 // The A4 tax invoice in pdf.ts is the document a customer files; this is the slip
 // the counter tears off and hands over. Same bill, same money — only the paper is
@@ -9,22 +9,45 @@
 // That is why there is no table anywhere in this file: a column layout that fits
 // an item name, a qty, a rate and an amount on one 32-character row does not
 // exist. Each line gets its name on its own row and its arithmetic underneath.
+//
+// The 80mm roll is the same slip on wider paper, and deliberately so: the layout
+// is flex rows that grow, so the wider roll simply gives the item names and the
+// shop's own Tamil more room to breathe before they wrap. Only the widths below
+// change between the two — one file, one receipt, one set of rules.
 
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { imageDataUri } from '@/modules/settings/brandImages';
 import { netPaidForInvoice } from '@/modules/payments/service';
-import { getBusinessProfile, type BusinessProfile } from '@/modules/settings/service';
+import {
+  getBusinessProfile,
+  type BusinessProfile,
+  type PrintFormat,
+} from '@/modules/settings/service';
 import { formatDate, formatQty, formatTaxRate } from '@/utils/format';
 import { escapeHtml, htmlMoney } from '@/utils/html';
 import { qrSvg, upiPayload } from '@/utils/qr';
 import { isWeb, printHtml } from '@/utils/webFile';
-import { splitTax, supplyType } from '@/utils/gst';
+import { discountLabel, splitTax, supplyType } from '@/utils/gst';
 import type { InvoiceType } from '@/utils/invoiceNumber';
 import type { InvoiceDetail } from '@/modules/invoices/service';
 
 const esc = escapeHtml;
 const money = htmlMoney;
+
+/** The rolls this file prints on. A4 is the other paper entirely — see pdf.ts. */
+export type RollFormat = Exclude<PrintFormat, 'a4'>;
+
+/**
+ * What differs between the two rolls, and nothing else does: the width the print
+ * service is told the paper is, and how wide the shop's logo may print on it.
+ * The logo cap is a figure rather than a fraction of the width so that the 58mm
+ * slip keeps printing exactly what it printed before the 80mm roll existed.
+ */
+const ROLLS: Record<RollFormat, { mm: number; logoMm: number }> = {
+  thermal58: { mm: 58, logoMm: 30 },
+  thermal80: { mm: 80, logoMm: 44 },
+};
 
 /**
  * What the slip calls itself. Shorter than the A4 titles on purpose — the roll
@@ -100,6 +123,9 @@ export interface ThermalBill {
   logo?: string | null;
   /** Paise already settled against this bill, so the slip can show a balance. */
   paid?: number;
+  /** Which roll it is going on. 58mm unless the shop said otherwise, which is
+   *  what every counter printed before the 80mm roll was an option. */
+  roll?: RollFormat;
 }
 
 /** One totals row: label on the left, figure hard against the right edge. */
@@ -113,8 +139,15 @@ const totalRow = (label: string, value: string, cls = ''): string =>
  * thermal head has to dither. `-webkit-print-color-adjust: exact` stops the print
  * pipeline from "helpfully" lightening the QR into something no phone can read.
  */
-export function thermalHtml({ detail, biz, logo = null, paid = 0 }: ThermalBill): string {
+export function thermalHtml({
+  detail,
+  biz,
+  logo = null,
+  paid = 0,
+  roll = 'thermal58',
+}: ThermalBill): string {
   const { invoice, party, lines } = detail;
+  const paper = ROLLS[roll];
 
   // Buyer's state, frozen on the invoice when it was made; older invoices fall
   // back to wherever the party lives today. Same rule as the A4 page — a reprint
@@ -137,7 +170,7 @@ export function thermalHtml({ detail, biz, logo = null, paid = 0 }: ThermalBill)
       <div class="row sub"><span>${formatQty(l.qty)} ${esc(l.itemUnit)} × ${money(l.rate)}</span><span>${money(l.amount)}</span></div>
       ${
         l.discount > 0
-          ? `<div class="row sub"><span>Discount</span><span>- ${money(l.discount)}</span></div>`
+          ? `<div class="row sub"><span>${discountLabel(l.discountPercent)}</span><span>- ${money(l.discount)}</span></div>`
           : ''
       }
     </div>`,
@@ -167,10 +200,10 @@ export function thermalHtml({ detail, biz, logo = null, paid = 0 }: ThermalBill)
   return `<!doctype html><html><head><meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    @page { size: 58mm auto; margin: 0; }
+    @page { size: ${paper.mm}mm auto; margin: 0; }
     * { -webkit-print-color-adjust: exact; print-color-adjust: exact; box-sizing: border-box; }
     body {
-      width: 58mm; margin: 0; padding: 2mm; color: #000; background: #fff;
+      width: ${paper.mm}mm; margin: 0; padding: 2mm; color: #000; background: #fff;
       font-family: 'Roboto Mono', 'Noto Sans Mono', 'Courier New', monospace;
       font-size: 10px; line-height: 1.35;
     }
@@ -191,7 +224,7 @@ export function thermalHtml({ detail, biz, logo = null, paid = 0 }: ThermalBill)
     .item-name { word-break: break-word; }
     .sub { padding-left: 8px; }
     .grand { font-size: 13px; font-weight: 700; margin-top: 2px; }
-    .logo { display: block; margin: 0 auto 2px; max-width: 30mm; max-height: 14mm; object-fit: contain; }
+    .logo { display: block; margin: 0 auto 2px; max-width: ${paper.logoMm}mm; max-height: 14mm; object-fit: contain; }
     .qr { text-align: center; margin-top: 4px; }
     .qr svg { width: 110px; height: 110px; }
     .qr-label { font-size: 9px; font-weight: 700; }
@@ -222,7 +255,7 @@ export function thermalHtml({ detail, biz, logo = null, paid = 0 }: ThermalBill)
 
     ${totalRow(invoice.taxMode === 'inclusive' ? 'Taxable value' : 'Subtotal', money(invoice.subtotal))}
     ${taxRows}
-    ${invoice.discount > 0 ? totalRow('Discount', `- ${money(invoice.discount)}`) : ''}
+    ${invoice.discount > 0 ? totalRow(discountLabel(invoice.discountPercent), `- ${money(invoice.discount)}`) : ''}
     ${
       roundOff !== 0
         ? totalRow('Round off', `${roundOff > 0 ? '+ ' : '- '}${money(Math.abs(roundOff))}`)
@@ -264,7 +297,7 @@ export function thermalHtml({ detail, biz, logo = null, paid = 0 }: ThermalBill)
  * what has been paid so far. The payments query is skipped on a settled bill
  * because its answer would not be printed.
  */
-async function loadForPrint(detail: InvoiceDetail): Promise<ThermalBill> {
+async function loadForPrint(detail: InvoiceDetail, roll: RollFormat): Promise<ThermalBill> {
   const biz = await getBusinessProfile();
   const wantsBalance =
     settlesMoney(detail.invoice.type) && detail.invoice.paymentStatus !== 'paid';
@@ -272,18 +305,21 @@ async function loadForPrint(detail: InvoiceDetail): Promise<ThermalBill> {
     imageDataUri(biz.logoUri),
     wantsBalance ? netPaidForInvoice(detail.invoice.id) : Promise.resolve(0),
   ]);
-  return { detail, biz, logo, paid };
+  return { detail, biz, logo, paid, roll };
 }
 
-/** 58mm in PostScript points (72 to the inch) — the page a shared PDF should be. */
-const ROLL_WIDTH_PT = Math.round((58 / 25.4) * 72);
+/** The roll in PostScript points (72 to the inch) — the page a shared PDF is. */
+const rollWidthPt = (roll: RollFormat): number => Math.round((ROLLS[roll].mm / 25.4) * 72);
 
 /** Render the receipt to a PDF the width of the roll and open the share sheet. */
-export async function shareThermalPdf(detail: InvoiceDetail): Promise<void> {
-  const html = thermalHtml(await loadForPrint(detail));
+export async function shareThermalPdf(
+  detail: InvoiceDetail,
+  roll: RollFormat = 'thermal58',
+): Promise<void> {
+  const html = thermalHtml(await loadForPrint(detail, roll));
   // A browser has no share sheet; its print dialog saves the PDF instead.
   if (isWeb) return printHtml(html);
-  const { uri } = await Print.printToFileAsync({ html, width: ROLL_WIDTH_PT });
+  const { uri } = await Print.printToFileAsync({ html, width: rollWidthPt(roll) });
   if (await Sharing.isAvailableAsync()) {
     await Sharing.shareAsync(uri, {
       mimeType: 'application/pdf',
@@ -294,10 +330,15 @@ export async function shareThermalPdf(detail: InvoiceDetail): Promise<void> {
 
 /**
  * Open the OS print dialog with the receipt. The @page rule in the HTML tells the
- * print service the paper is a 58mm roll of unbounded length, which is what a
- * counter printer advertises itself as — no native module, works in Expo Go.
+ * print service the paper is a roll of that width and of unbounded length, which
+ * is what a counter printer advertises itself as — no native module, works in
+ * Expo Go.
  */
-export async function printThermal(detail: InvoiceDetail): Promise<void> {
-  if (isWeb) return printHtml(thermalHtml(await loadForPrint(detail)));
-  await Print.printAsync({ html: thermalHtml(await loadForPrint(detail)) });
+export async function printThermal(
+  detail: InvoiceDetail,
+  roll: RollFormat = 'thermal58',
+): Promise<void> {
+  const bill = await loadForPrint(detail, roll);
+  if (isWeb) return printHtml(thermalHtml(bill));
+  await Print.printAsync({ html: thermalHtml(bill) });
 }

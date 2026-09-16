@@ -564,7 +564,7 @@ export default function SettingsScreen() {
 
         <Text style={styles.sectionTitle}>Paper size</Text>
         <View style={styles.optionRow}>
-          {(['a4', 'thermal58'] as PrintFormat[]).map((format) => (
+          {(['a4', 'thermal58', 'thermal80'] as PrintFormat[]).map((format) => (
             <Pressable
               key={format}
               style={[styles.option, paper === format && styles.optionOn]}
@@ -577,8 +577,8 @@ export default function SettingsScreen() {
           ))}
         </View>
         <Text style={styles.sectionHint}>
-          Choose 58mm for the small roll printer at the counter. Every Print and Share button then
-          uses it — A4 stays the full tax invoice sheet.
+          Choose the roll your counter printer takes — 58mm is the small one, 80mm the wider.
+          Every Print and Share button then uses it; A4 stays the full tax invoice sheet.
         </Text>
 
         <View style={styles.divider} />

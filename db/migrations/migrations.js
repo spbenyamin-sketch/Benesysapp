@@ -10,6 +10,7 @@ import m0005 from './0005_late_nico_minoru.sql';
 import m0006 from './0006_reflective_blur.sql';
 import m0007 from './0007_organic_the_twelve.sql';
 import m0008 from './0008_salty_donald_blake.sql';
+import m0009 from './0009_medical_tusk.sql';
 
   export default {
     journal,
@@ -22,7 +23,8 @@ m0004,
 m0005,
 m0006,
 m0007,
-m0008
+m0008,
+m0009
     }
   }
   

@@ -20,7 +20,7 @@ import { getSetting } from '@/modules/settings/service';
 import { t, totalLine } from '@/modules/voice/phrases';
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
 import { formatDate, formatMoney, formatQty, formatTaxRate } from '@/utils/format';
-import { splitTaxForStates } from '@/utils/gst';
+import { discountLabel, splitTaxForStates } from '@/utils/gst';
 import type { InvoiceType } from '@/utils/invoiceNumber';
 import type { Invoice } from '@/db/schema';
 
@@ -344,7 +344,11 @@ export default function InvoiceDetailScreen() {
                 <Text style={styles.lineMeta}>
                   {formatQty(l.qty)} {l.itemUnit} × {formatMoney(l.rate)}
                   {l.taxRate > 0 ? ` · ${formatTaxRate(l.taxRate)}` : ''}
-                  {l.discount > 0 ? ` · less ${formatMoney(l.discount)}` : ''}
+                  {l.discount > 0
+                    ? ` · less ${formatMoney(l.discount)}${
+                        l.discountPercent ? ` (${formatTaxRate(l.discountPercent)})` : ''
+                      }`
+                    : ''}
                 </Text>
               </View>
               <Text style={styles.lineAmount}>{formatMoney(l.amount)}</Text>
@@ -368,7 +372,10 @@ export default function InvoiceDetailScreen() {
             </>
           )}
           {invoice.discount > 0 ? (
-            <TotalRow label="Discount" value={`- ${formatMoney(invoice.discount)}`} />
+            <TotalRow
+              label={discountLabel(invoice.discountPercent)}
+              value={`- ${formatMoney(invoice.discount)}`}
+            />
           ) : null}
           {invoice.roundOff !== 0 ? (
             <TotalRow

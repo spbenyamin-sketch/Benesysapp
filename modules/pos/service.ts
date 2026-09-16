@@ -20,6 +20,16 @@ export interface QuickCartLine {
   qty: number; // whole/fractional units (converted to thousandths internally)
 }
 
+/**
+ * Money off the whole quick bill, however the counter typed it: paise, or a
+ * percentage in basis points (10% = 1000) which then decides the paise. Both are
+ * kept, so a reprint still says "Discount (10%)" — see db/schema.ts.
+ */
+export interface QuickBillDiscount {
+  amount: number; // paise
+  percent?: number | null; // basis points
+}
+
 function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -31,11 +41,15 @@ function todayISO(): string {
  * `taxMode` decides whether the shelf price already contains GST (the usual case
  * for a hotel/retail counter) — when omitted it follows the app-wide default set
  * in Settings, so the counter never has to think about it.
+ *
+ * A `discount` comes off the whole bill after tax, and the payment recorded is
+ * the discounted grand total: what the customer actually handed over.
  */
 export async function createQuickBill(
   lines: QuickCartLine[],
   mode: Payment['mode'] = 'cash',
   taxMode?: TaxMode,
+  discount?: QuickBillDiscount,
 ): Promise<InvoiceDetail> {
   if (lines.length === 0) throw new Error('Cart is empty.');
   const party = await getOrCreateWalkInParty();
@@ -50,7 +64,15 @@ export async function createQuickBill(
   }));
 
   const invoice = await createInvoiceWithItems(
-    { type: 'sale', partyId: party.id, date, paymentStatus: 'unpaid', taxMode: effectiveTaxMode },
+    {
+      type: 'sale',
+      partyId: party.id,
+      date,
+      paymentStatus: 'unpaid',
+      taxMode: effectiveTaxMode,
+      discount: discount?.amount ?? 0,
+      discountPercent: discount?.percent ?? null,
+    },
     invLines,
   );
   // Paid in full, immediately — recompute sets paymentStatus to 'paid'.

@@ -13,6 +13,7 @@ jest.mock('expo-file-system', () => ({}));
 jest.mock('expo-image-picker', () => ({}));
 
 import { thermalHtml, type ThermalBill } from '@/modules/invoices/thermal';
+import { discountLabel } from '@/utils/gst';
 import type { InvoiceDetail } from '@/modules/invoices/service';
 import type { BusinessProfile } from '@/modules/settings/service';
 
@@ -80,6 +81,25 @@ describe('the 58mm receipt', () => {
   });
 });
 
+// The wider roll is the same slip on bigger paper. Only the widths move, which
+// is the point: one file, so the two rolls can never print different money.
+describe('the 80mm roll', () => {
+  it('tells the print service the paper is 80mm wide', () => {
+    const html = build({ roll: 'thermal80' });
+    expect(html).toContain('@page { size: 80mm auto; margin: 0; }');
+    expect(html).toContain('width: 80mm;');
+    expect(html).not.toContain('58mm');
+  });
+
+  it('prints the same bill on it', () => {
+    const wide = build({ roll: 'thermal80' });
+    expect(wide).toContain('₹1,180.00');
+    expect(wide).toContain('CGST 9%');
+    // Everything but the paper is identical to the 58mm slip.
+    expect(wide.replace(/80mm/g, '58mm').replace('44mm', '30mm')).toBe(build());
+  });
+});
+
 describe('the tax heads follow the bill, not the shop', () => {
   it('splits an in-state bill into CGST and SGST', () => {
     const html = build();
@@ -133,6 +153,39 @@ describe('the scan-to-pay code', () => {
     expect(html).toContain('Scan to pay the balance');
     expect(html).toContain('Balance due');
     expect(html).toContain('₹1,000.00'); // 1,180 billed − 180 paid
+  });
+});
+
+// A discount given as "10%" has to still say 10% when the bill is reprinted in
+// two years' time — that is the only reason the percentage is stored at all. A
+// discount typed in rupees keeps the bare label it has always had.
+describe('a discount names its percentage where one was given', () => {
+  it('labels the bill discount with the percentage the shop typed', () => {
+    const html = thermalHtml({
+      detail: detail({ discount: 1180, discountPercent: 1000, grandTotal: 10600 }),
+      biz: biz(),
+    });
+    expect(html).toContain('Discount (10%)');
+    expect(html).toContain('- ₹11.80');
+  });
+
+  it('falls back to a plain Discount row when it was typed in rupees', () => {
+    const html = thermalHtml({ detail: detail({ discount: 1180 }), biz: biz() });
+    expect(html).toContain('Discount');
+    expect(html).not.toContain('Discount (');
+  });
+
+  it('labels a line discount the same way', () => {
+    const d = detail();
+    d.lines[0] = { ...d.lines[0], discount: 10000, discountPercent: 1000 };
+    expect(thermalHtml({ detail: d, biz: biz() })).toContain('Discount (10%)');
+  });
+
+  it('says nothing about a percentage that was never given', () => {
+    expect(discountLabel(null)).toBe('Discount');
+    expect(discountLabel(undefined)).toBe('Discount');
+    expect(discountLabel(0)).toBe('Discount');
+    expect(discountLabel(250)).toBe('Discount (2.5%)');
   });
 });
 
