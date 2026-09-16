@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import ItemPhoto from '@/components/ItemPhoto';
 import { listItems } from '@/modules/items/service';
+import { pickSearchHit } from '@/modules/pos/search';
 import { createQuickBill, type QuickCartLine } from '@/modules/pos/service';
 import { getDefaultTaxMode } from '@/modules/settings/service';
 import { bestMatch, spokenNames } from '@/modules/voice/match';
@@ -36,6 +37,9 @@ export default function QuickBillScreen() {
     Math.floor((width - GRID_PAD * 2 - TILE_GAP * (columns - 1)) / columns) - TILE_PAD * 2;
   const [items, setItems] = useState<Item[]>([]);
   const [query, setQuery] = useState('');
+  // What the last Enter did. Cleared by the next keystroke, so the line under
+  // the box always describes the search sitting in it.
+  const [notice, setNotice] = useState<string | null>(null);
   const [cart, setCart] = useState<Record<number, number>>({}); // itemId → qty (units)
   const [cartOpen, setCartOpen] = useState(false);
   const [billing, setBilling] = useState(false);
@@ -62,6 +66,25 @@ export default function QuickBillScreen() {
   }, [items, query]);
 
   const itemById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
+
+  /**
+   * Enter in the search box puts the item on the bill and empties the box, so a
+   * counter can type-enter-type-enter without ever reaching for the grid — and
+   * so a barcode scanner, which types the code and presses Enter itself, bills
+   * in one beep. Which item that is: modules/pos/search.
+   */
+  const submitSearch = () => {
+    const q = query.trim();
+    if (!q) return;
+    const hit = pickSearchHit(items, filtered, q);
+    if (!hit) {
+      setNotice(`Nothing matches “${q}”.`);
+      return;
+    }
+    bump(hit, 1);
+    setNotice(`Added ${hit.name}.`);
+    setQuery('');
+  };
 
   // `by` may be negative (voice "remove 2 tea"); dropping to zero clears the line.
   const add = (id: number, by = 1) =>
@@ -209,8 +232,14 @@ export default function QuickBillScreen() {
         <TextInput
           style={styles.search}
           value={query}
-          onChangeText={setQuery}
-          placeholder="Search items — or tap 🎙 and say “ரெண்டு டீ”"
+          onChangeText={(text) => {
+            setQuery(text);
+            setNotice(null);
+          }}
+          onSubmitEditing={submitSearch}
+          returnKeyType="done"
+          blurOnSubmit={false}
+          placeholder="Search and press Enter — or tap 🎙 and say “ரெண்டு டீ”"
           placeholderTextColor="#999"
           autoCapitalize="none"
           clearButtonMode="while-editing"
@@ -224,6 +253,8 @@ export default function QuickBillScreen() {
           </Text>
         </Pressable>
       </View>
+
+      {notice ? <Text style={styles.notice}>{notice}</Text> : null}
 
       <FlatList
         data={filtered}
@@ -405,6 +436,7 @@ const styles = StyleSheet.create({
     borderColor: '#208AEF',
   },
   taxChipText: { fontSize: 12, fontWeight: '700', color: '#208AEF' },
+  notice: { fontSize: 13, color: '#666', paddingHorizontal: 12, paddingTop: 8 },
   grid: { padding: GRID_PAD, gap: TILE_GAP, paddingBottom: 110 },
   rowWrap: { gap: TILE_GAP },
   tile: {
