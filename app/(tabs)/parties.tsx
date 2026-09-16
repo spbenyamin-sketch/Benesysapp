@@ -7,6 +7,14 @@ import { t } from '@/modules/voice/phrases';
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
 import { balanceSummary, formatMoney } from '@/utils/format';
 
+/** Address, town and state as one line, skipping whichever were left blank. */
+function placeOf(party: PartyWithBalance['party']): string {
+  return [party.address, party.city, party.state]
+    .map((part) => part?.trim())
+    .filter(Boolean)
+    .join(', ');
+}
+
 export default function PartiesScreen() {
   const router = useRouter();
   const { lang } = useVoice();
@@ -28,9 +36,12 @@ export default function PartiesScreen() {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return rows;
-    return rows.filter(
-      ({ party }) =>
-        party.name.toLowerCase().includes(q) || (party.phone ?? '').toLowerCase().includes(q),
+    // Everything the row shows can also be searched: a supplier is as often
+    // remembered by their town or their GST number as by the name on the file.
+    return rows.filter(({ party }) =>
+      [party.name, party.phone, party.address, party.city, party.state, party.gstin].some((field) =>
+        (field ?? '').toLowerCase().includes(q),
+      ),
     );
   }, [rows, query]);
 
@@ -70,7 +81,7 @@ export default function PartiesScreen() {
           style={styles.search}
           value={query}
           onChangeText={setQuery}
-          placeholder="Search by name or phone"
+          placeholder="Search by name, phone, town or GSTIN"
           placeholderTextColor="#999"
           autoCapitalize="none"
           clearButtonMode="while-editing"
@@ -92,6 +103,7 @@ export default function PartiesScreen() {
         renderItem={({ item }) => {
           const { party, balance } = item;
           const summary = balanceSummary(balance);
+          const place = placeOf(party);
           return (
             <Pressable
               style={styles.row}
@@ -103,6 +115,13 @@ export default function PartiesScreen() {
                   {party.type === 'customer' ? 'Customer' : 'Supplier'}
                   {party.phone ? ` · ${party.phone}` : ''}
                 </Text>
+                {/* Where they are, so a supplier can be placed without opening
+                    them. Two lines at most — the ledger has the full record. */}
+                {place ? (
+                  <Text style={styles.place} numberOfLines={2}>
+                    {place}
+                  </Text>
+                ) : null}
               </View>
               <View style={styles.rowRight}>
                 <Text style={[styles.amount, { color: summary.toneColor }]}>
@@ -153,6 +172,7 @@ const styles = StyleSheet.create({
   rowLeft: { flex: 1, gap: 3 },
   name: { fontSize: 16, fontWeight: '600', color: '#111' },
   sub: { fontSize: 13, color: '#888' },
+  place: { fontSize: 12, color: '#999', lineHeight: 17 },
   rowRight: { alignItems: 'flex-end', gap: 2 },
   amount: { fontSize: 15, fontWeight: '600' },
   balLabel: { fontSize: 11, color: '#999' },
