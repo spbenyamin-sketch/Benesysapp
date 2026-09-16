@@ -15,6 +15,13 @@
       "when": 1789553915719,
       "tag": "0001_awesome_riptide",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1789558823831,
+      "tag": "0002_curly_ares",
+      "breakpoints": true
     }
   ]
 }

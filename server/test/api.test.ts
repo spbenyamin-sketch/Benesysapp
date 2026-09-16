@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { after, before, describe, it } from 'node:test';
 import path from 'node:path';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
@@ -55,6 +58,130 @@ before(async () => {
 });
 
 after(() => pool.end());
+
+// ── Licensing ────────────────────────────────────────────────────────────────
+//
+// Online mode is licensed per INSTALLATION, so this suite has to come first:
+// every one below it needs an activated server, and it is the last `it` here
+// that activates this one.
+//
+// The licence is signed with the vendor's real key, through the vendor's real
+// script, because the server verifies against the public key compiled into the
+// app and there is deliberately no way to turn that off — a switch for the tests
+// would be a switch on a shop's computer too. So these tests need
+// tools/vendor-private-key.txt, which is what the vendor's own machine has.
+
+const ISSUE = path.join(__dirname, '..', '..', 'tools', 'issue-license.mjs');
+
+/** Sign a licence for `systemId` exactly as `node tools/issue-license.mjs` does. */
+function issueLicense(systemId: string, expiry: string, force = false): string {
+  const out = path.join(mkdtempSync(path.join(tmpdir(), 'lic-')), 'server.lic');
+  execFileSync(
+    process.execPath,
+    [ISSUE, systemId, expiry, 'Test Shop', ...(force ? ['--force'] : []), '--out', out],
+    { encoding: 'utf8' },
+  );
+  return readFileSync(out, 'utf8');
+}
+
+describe('licensing this installation', () => {
+  let owner = '';
+  let serverId = '';
+  let licenseText = '';
+
+  before(async () => {
+    if (!existsSync(path.join(__dirname, '..', '..', 'tools', 'vendor-private-key.txt'))) {
+      throw new Error(
+        'The server tests activate the test server with a real licence, so they need\n' +
+          'tools/vendor-private-key.txt. Restore it from your backup (see LICENSE-SETUP.md).',
+      );
+    }
+    owner = (await register('Licence Holder', 'licenceholder')).data.token;
+  });
+
+  it('refuses the shop’s own calls until the server is activated', async () => {
+    const parties = await rpc(owner, 'parties', 'listParties');
+    assert.equal(parties.status, 403);
+    assert.match(parties.data.error, /not been activated/);
+    // The people screen too — there is nothing to hire staff for yet.
+    assert.equal((await call('GET', '/api/users', { token: owner })).status, 403);
+  });
+
+  it('shows an unactivated server the Server ID to send the vendor', async () => {
+    const res = await call('GET', '/api/license', { token: owner });
+    assert.equal(res.status, 200);
+    assert.equal(res.data.state, 'unlicensed');
+    assert.match(res.data.systemId, /^SRV-[0-9A-F]{4}(-[0-9A-F]{4}){3}$/);
+    serverId = res.data.systemId;
+
+    // Not to the whole network, though: it is what a licence is bound to.
+    assert.equal((await call('GET', '/api/license')).status, 401);
+  });
+
+  it('refuses a licence meant for another server, or one that has already run out', async () => {
+    const stolen = await call('POST', '/api/license', {
+      token: owner,
+      json: { license: issueLicense('SRV-1A2B-3C4D-5E6F-0718', '1y') },
+    });
+    assert.equal(stolen.status, 400);
+    assert.match(stolen.data.error, /different server/);
+
+    const stale = await call('POST', '/api/license', {
+      token: owner,
+      json: { license: issueLicense(serverId, '2020-01-01', true) },
+    });
+    assert.equal(stale.status, 400);
+    assert.match(stale.data.error, /expired on 2020-01-01/);
+
+    assert.equal((await call('POST', '/api/license', { token: owner, json: {} })).status, 400);
+    assert.equal((await rpc(owner, 'parties', 'listParties')).status, 403);
+  });
+
+  it('opens the shop once the owner installs a licence signed for this server', async () => {
+    licenseText = issueLicense(serverId, '1y');
+    const res = await call('POST', '/api/license', { token: owner, json: { license: licenseText } });
+    assert.equal(res.status, 200, JSON.stringify(res.data));
+    assert.equal(res.data.state, 'active');
+    assert.equal(res.data.client, 'Test Shop');
+
+    assert.equal((await rpc(owner, 'parties', 'listParties')).status, 200);
+    assert.equal((await call('GET', '/api/users', { token: owner })).status, 200);
+  });
+
+  it('lets staff see the licence but never install one', async () => {
+    const add = await call('POST', '/api/users', {
+      token: owner,
+      json: { username: 'licencestaff', password: 'staff-pass-1' },
+    });
+    assert.equal(add.status, 201);
+    const staff = (
+      await call('POST', '/api/auth/login', {
+        json: { identifier: 'licencestaff', password: 'staff-pass-1' },
+      })
+    ).data.token;
+
+    assert.equal((await call('GET', '/api/license', { token: staff })).status, 200);
+    const tried = await call('POST', '/api/license', { token: staff, json: { license: licenseText } });
+    assert.equal(tried.status, 403);
+  });
+
+  it('locks the shop when the computer’s clock is wound back, and a reinstall does not clear it', async () => {
+    await pool.query(`update server_license set last_seen = '2099-01-01'`);
+
+    const blocked = await rpc(owner, 'parties', 'listParties');
+    assert.equal(blocked.status, 403);
+    assert.match(blocked.data.error, /date on the shop's computer/);
+
+    // Installing a genuine licence must not forgive the rolled-back clock, or
+    // winding the date back would be a way to revive one that has really run out.
+    const again = await call('POST', '/api/license', { token: owner, json: { license: licenseText } });
+    assert.equal(again.data.state, 'rolledBack');
+    assert.equal((await rpc(owner, 'parties', 'listParties')).status, 403);
+
+    await pool.query(`update server_license set last_seen = null`);
+    assert.equal((await rpc(owner, 'parties', 'listParties')).status, 200);
+  });
+});
 
 describe('shops and sign-in', () => {
   let ownerA = '';

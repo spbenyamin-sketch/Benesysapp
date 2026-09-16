@@ -9,7 +9,7 @@ import {
   readUsername,
 } from '../auth/validate';
 import { badRequest } from '../http/errors';
-import { body, requireAuth, requireOwner, type AppEnv } from '../http/middleware';
+import { body, requireAuth, requireLicense, requireOwner, type AppEnv } from '../http/middleware';
 
 function readRole(value: unknown, fallback?: Role): Role | undefined {
   if (value === undefined) return fallback;
@@ -17,9 +17,10 @@ function readRole(value: unknown, fallback?: Role): Role | undefined {
   throw badRequest('Role must be owner or staff.');
 }
 
-// The shop's people. Owners only.
+// The shop's people. Owners only, and only on a licensed install — there is
+// nothing to hire staff for while the app will not open.
 export const userRoutes = new Hono<AppEnv>()
-  .use(requireAuth, requireOwner)
+  .use(requireAuth, requireOwner, requireLicense)
 
   .get('/', async (c) => c.json(await listUsers(c.var.auth.shop.id)))
 

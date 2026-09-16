@@ -9,28 +9,16 @@ import * as SecureStore from 'expo-secure-store';
 import { daysBetween, todayISO } from './dates';
 import { getSystemId } from './device';
 import { verifyLicense, type LicenseFile } from './licenseFile';
+import { WARN_DAYS, isUsable, type LicenseState, type LicenseStatus } from './status';
 
 const K_LICENSE = 'license.file';
 const K_LAST_RUN = 'license.lastRun';
 
-/** Warn the shop this many days out, so a renewal can be arranged in time. */
-export const WARN_DAYS = 7;
-
-export type LicenseState = 'unlicensed' | 'active' | 'expiring' | 'expired' | 'rolledBack';
-
-export interface LicenseStatus {
-  state: LicenseState;
-  systemId: string;
-  expiry?: string;
-  /** Negative once the date has passed. */
-  daysLeft?: number;
-  /** Shop name the licence was issued to, when there is one. */
-  client?: string;
-}
-
-export function isUsable(status: LicenseStatus): boolean {
-  return status.state === 'active' || status.state === 'expiring';
-}
+// The states, the warning threshold and "may it open" now live in ./status, so
+// Online mode's server-side licence cannot drift away from the phone's. Kept
+// exported from here because the screens have always imported them from here.
+export { WARN_DAYS, isUsable };
+export type { LicenseState, LicenseStatus };
 
 /**
  * Read the licence and decide where the app stands today.

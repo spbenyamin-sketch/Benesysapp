@@ -52,6 +52,28 @@ export const sessions = pgTable('sessions', {
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
 });
 
+/**
+ * This installation's licence — one row, ever, for the whole server.
+ *
+ * It lives in the control schema rather than in a shop's own, because what is
+ * licensed is the install: a second shop registered on an unlicensed server must
+ * not become a second free copy. See modules/license/serverLicense.ts for why
+ * the identity is a seed in this database and not a fingerprint of the machine.
+ */
+export const serverLicense = pgTable('server_license', {
+  // Always 1. A primary key with one permitted value is the cheapest way to say
+  // "one row" to Postgres — an insert that races another one simply conflicts.
+  id: integer('id').primaryKey(),
+  // Random, written once on first start, never shown raw: the Server ID the
+  // owner sends to the vendor is a hash of it.
+  seed: text('seed').notNull(),
+  // The verified licence as JSON — re-verified on every check, never trusted.
+  license: text('license'),
+  // ISO date of the last check, for the clock-rollback rule.
+  lastSeen: text('last_seen'),
+  installedAt: timestamp('installed_at', { withTimezone: true }),
+});
+
 export const shopMigrations = pgTable(
   'shop_migrations',
   {

@@ -1,4 +1,6 @@
+import { isUsable } from '@/modules/license/status';
 import { createMiddleware } from 'hono/factory';
+import { licenseRefusal, licenseStatus } from '../auth/license';
 import { resolveSession, type AuthContext } from '../auth/service';
 import { withShop } from '../db/client';
 import { ApiError } from './errors';
@@ -19,6 +21,21 @@ export const requireOwner = createMiddleware<AppEnv>(async (c, next) => {
   if (c.var.auth.user.role !== 'owner') {
     throw new ApiError(403, 'Only the shop owner can do that.');
   }
+  await next();
+});
+
+/**
+ * The shop's own data and its people, only while this installation is licensed.
+ *
+ * The browser has its own gate (components/LicenseGate.web.tsx), but that is a
+ * screen, and a screen in a bundle on the shop's own computer can be edited out.
+ * This is the part that cannot: whatever reaches the API — a patched build, a
+ * second browser, curl — an unlicensed install answers nothing. Sign-in and
+ * /api/license stay open, or there would be no way to activate it.
+ */
+export const requireLicense = createMiddleware<AppEnv>(async (c, next) => {
+  const status = await licenseStatus();
+  if (!isUsable(status)) throw new ApiError(403, licenseRefusal(status));
   await next();
 });
 

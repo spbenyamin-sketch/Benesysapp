@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, readFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { verifyLicense } from '@/modules/license/licenseFile';
+import { acceptServerLicense, serverSystemId } from '@/modules/license/serverLicense';
 
 // tools/issue-license.mjs is the terminal version of keygen.html, and like it
 // carries its own copy of the signing rules — a standalone script cannot import
@@ -18,6 +19,9 @@ const SCRIPT = join(REPO, 'tools', 'issue-license.mjs');
 const hasKey = existsSync(join(REPO, 'tools', 'vendor-private-key.txt'));
 
 const DEVICE = '9F3C-11AB-7E20-04D5';
+// Online mode's half: a real seed, so the Server ID is derived exactly the way a
+// shop's server derives the one it puts on screen.
+const SEED = 'c0ffee00c0ffee00c0ffee00c0ffee00';
 
 function issue(args: string[]): { path: string; text: string } {
   const dir = mkdtempSync(join(tmpdir(), 'lic-'));
@@ -74,6 +78,24 @@ maybe('tools/issue-license.mjs', () => {
 
   it('refuses a System ID of the wrong shape', () => {
     expect(issueFails(['not-an-id', '1y'])).toMatch(/is not a System ID/);
+    expect(issueFails(['SRV-not-an-id', '1y'])).toMatch(/is not a System ID/);
+  });
+
+  // The same script, the same key, the same file — only the ID says which kind
+  // of install is being licensed. If that ever stopped being true, a shop's
+  // server would be unactivatable and this is where it would show.
+  it('issues a licence a shop’s SERVER accepts', () => {
+    const { text } = issue([serverSystemId(SEED), '1y', 'Sri Murugan Stores']);
+    const result = acceptServerLicense(SEED, text);
+    expect(result.reason).toBeUndefined();
+    expect(result.ok).toBe(true);
+    expect(result.license?.client).toBe('Sri Murugan Stores');
+  });
+
+  it('binds a server licence to that server, and not to a phone', () => {
+    const { text } = issue([serverSystemId(SEED), '1y']);
+    expect(acceptServerLicense('a-different-seed', text).ok).toBe(false);
+    expect(verifyLicense(text, DEVICE).valid).toBe(false);
   });
 
   it('refuses an unreadable expiry', () => {

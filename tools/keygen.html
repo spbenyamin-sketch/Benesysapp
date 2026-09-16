@@ -69,8 +69,8 @@
 <fieldset>
   <legend>Issue a licence</legend>
 
-  <label for="sysid">System ID (from the client's phone)</label>
-  <input id="sysid" placeholder="9F3C-11AB-7E20-04D5" autocomplete="off" spellcheck="false">
+  <label for="sysid">System ID (a phone) or Server ID (an Online mode server)</label>
+  <input id="sysid" placeholder="9F3C-11AB-7E20-04D5  /  SRV-9F3C-11AB-7E20-04D5" autocomplete="off" spellcheck="false">
 
   <label for="client">Shop name (optional — for your own records)</label>
   <input id="client" placeholder="Sri Murugan Stores" autocomplete="off">
@@ -109,8 +109,9 @@
 
 <footer>
   A licence is tied to one System ID. A factory-reset phone gets a new System ID
-  and needs a new file. The app only carries the public half of your key, so a
-  decompiled APK cannot be used to issue licences.
+  and needs a new file; an Online mode server shows an <code>SRV-</code> Server ID
+  instead, issued from this same box. The app only carries the public half of your
+  key, so a decompiled APK cannot be used to issue licences.
 </footer>
 
 <script src="./noble-ed25519.js"></script>

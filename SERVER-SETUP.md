@@ -81,7 +81,9 @@ npm run dev                 # http://localhost:4747
 | POST | `/api/auth/password` `{current, next}` | signed in — signs out other devices |
 | GET / POST | `/api/users` | owner |
 | PATCH | `/api/users/:id` `{displayName?, role?, active?, password?, screens?}` | owner |
-| POST | `/api/rpc/:module/:fn` `{args, undef}` | signed in — the app's service functions (see `server/src/rpc/registry.ts`) |
+| GET | `/api/license` | signed in — this server's id and licence state |
+| POST | `/api/license` `{license}` | owner — installs a signed `.lic` (see LICENSE-SETUP.md) |
+| POST | `/api/rpc/:module/:fn` `{args, undef}` | signed in **and licensed** — the app's service functions (see `server/src/rpc/registry.ts`) |
 
 Every signed-in call sends `Authorization: Bearer <token>`.
 

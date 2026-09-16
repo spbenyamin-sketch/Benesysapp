@@ -152,6 +152,11 @@ export function verifyLicense(
   systemId: string,
   /** Overridable so the tests can sign with a throwaway key instead of the real one. */
   publicKeyHex: string = VENDOR_PUBLIC_KEY,
+  /**
+   * What the System ID names, for the one message that has to say it out loud.
+   * A phone in Offline mode; in Online mode the shop's server.
+   */
+  subject: 'phone' | 'server' = 'phone',
 ): LicenseCheck {
   const license = typeof input === 'string' ? parseLicense(input) : input;
   if (!license) return { valid: false, reason: 'That file is not a licence file.' };
@@ -166,7 +171,7 @@ export function verifyLicense(
     return { valid: false, reason: 'That licence has an unreadable date in it.' };
   }
   if (license.systemId.trim().toUpperCase() !== systemId.trim().toUpperCase()) {
-    return { valid: false, reason: 'That licence was issued for a different phone.' };
+    return { valid: false, reason: `That licence was issued for a different ${subject}.` };
   }
 
   const signature = hexToBytes(license.sig);

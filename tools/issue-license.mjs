@@ -5,7 +5,12 @@
 //
 //   node tools/issue-license.mjs 9F3C-11AB-7E20-04D5 1y "Sri Murugan Stores"
 //   node tools/issue-license.mjs 9F3C-11AB-7E20-04D5 2027-08-10
+//   node tools/issue-license.mjs SRV-9F3C-11AB-7E20-04D5 1y "Sri Murugan Stores"
 //   node tools/issue-license.mjs --check tools/issued/9F3C11AB7E2004D5.lic
+//
+// The ID is a phone's System ID (Offline mode) or a server's Server ID, which
+// wears an SRV- prefix so this folder says which is which. Same licence, same
+// key, same command — only the shop's activation screen differs.
 //
 // Expiry is either an ISO date or a duration from today: 30d, 6m, 1y, 3y.
 //
@@ -54,6 +59,8 @@ const toHex = (bytes) => Buffer.from(bytes).toString('hex');
 const utf8 = (text) => new TextEncoder().encode(text);
 const iso = (date) =>
   `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+/** Both nine characters wide, so the printed block still lines up. */
+const idLabel = (id) => ((id ?? '').toUpperCase().startsWith('SRV-') ? 'Server ID' : 'System ID');
 
 function die(message) {
   console.error(message);
@@ -100,7 +107,7 @@ function check(path) {
     ok = false;
   }
   console.log(ok ? 'VALID' : 'INVALID');
-  console.log(`  System ID  ${license.systemId}`);
+  console.log(`  ${idLabel(license.systemId)}  ${license.systemId}`);
   console.log(`  Expires    ${license.expiry}${license.expiry < iso(new Date()) ? '  (already past)' : ''}`);
   if (license.client) console.log(`  Issued to  ${license.client}`);
   process.exit(ok ? 0 : 1);
@@ -123,15 +130,23 @@ const [systemIdRaw, expiryRaw, clientRaw] = positional.filter((a) => a !== '--fo
 if (!systemIdRaw || !expiryRaw) {
   die(
     'Usage: node tools/issue-license.mjs <SystemID> <expiry> ["Shop name"]\n' +
+      '       the ID is a phone\'s System ID, or a server\'s SRV- Server ID\n' +
       '       expiry is 2027-08-10, or a duration: 30d / 6m / 1y / 3y\n\n' +
       '  node tools/issue-license.mjs 9F3C-11AB-7E20-04D5 1y "Sri Murugan Stores"\n' +
+      '  node tools/issue-license.mjs SRV-9F3C-11AB-7E20-04D5 1y "Sri Murugan Stores"\n' +
       '  node tools/issue-license.mjs --check tools/issued/9F3C11AB7E2004D5.lic',
   );
 }
 
 const systemId = systemIdRaw.trim().toUpperCase();
-if (!/^[0-9A-F]{4}(-[0-9A-F]{4}){3}$/.test(systemId)) {
-  die(`"${systemIdRaw}" is not a System ID. It looks like 9F3C-11AB-7E20-04D5.`);
+// A phone's System ID, or the same thing behind SRV- for a shop's server. The
+// prefix is part of what gets signed, so a server's licence can never be pasted
+// into a phone and the vendor's issued/ folder says which is which.
+if (!/^(SRV-)?[0-9A-F]{4}(-[0-9A-F]{4}){3}$/.test(systemId)) {
+  die(
+    `"${systemIdRaw}" is not a System ID. A phone's looks like 9F3C-11AB-7E20-04D5,` +
+      ' a server\'s like SRV-9F3C-11AB-7E20-04D5.',
+  );
 }
 
 const expiry = resolveExpiry(expiryRaw);
@@ -159,7 +174,7 @@ writeFileSync(target, `${JSON.stringify(license, null, 2)}\n`, 'utf8');
 
 console.log('Licence written.');
 console.log(`  file       ${target}`);
-console.log(`  System ID  ${systemId}`);
+console.log(`  ${idLabel(systemId)}  ${systemId}`);
 console.log(`  expires    ${expiry}`);
 if (license.client) console.log(`  issued to  ${license.client}`);
 

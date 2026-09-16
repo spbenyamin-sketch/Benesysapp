@@ -6,6 +6,7 @@ import { cors } from 'hono/cors';
 import { ApiError } from './http/errors';
 import type { AppEnv } from './http/middleware';
 import { authRoutes } from './routes/auth';
+import { licenseRoutes } from './routes/license';
 import { rpcRoutes } from './routes/rpc';
 import { userRoutes } from './routes/users';
 
@@ -50,6 +51,7 @@ export function createApp() {
     .use('/api/*', cors({ origin, allowHeaders: ['Authorization', 'Content-Type'] }))
     .get('/api/health', (c) => c.json({ ok: true }))
     .route('/api/auth', authRoutes)
+    .route('/api/license', licenseRoutes)
     .route('/api/users', userRoutes)
     .route('/api/rpc', rpcRoutes);
 

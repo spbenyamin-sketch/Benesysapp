@@ -3,7 +3,7 @@ import { Hono } from 'hono';
 import { allowedScreens, type Screen } from '@/modules/auth/screens';
 import { db } from '../db/client';
 import { ApiError, badRequest } from '../http/errors';
-import { body, inShop, requireAuth, type AppEnv } from '../http/middleware';
+import { body, inShop, requireAuth, requireLicense, type AppEnv } from '../http/middleware';
 import { registry } from '../rpc/registry';
 
 /**
@@ -28,7 +28,7 @@ const MODULE_SCREENS: Partial<Record<string, readonly Screen[]>> = {
 // registry lists can be named here — never an arbitrary export.
 
 export const rpcRoutes = new Hono<AppEnv>()
-  .use(requireAuth, inShop)
+  .use(requireAuth, requireLicense, inShop)
 
   .post('/:module/:fn', async (c) => {
     const { module, fn } = c.req.param();
