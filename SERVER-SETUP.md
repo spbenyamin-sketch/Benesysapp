@@ -110,3 +110,15 @@ what belongs to it.
 
 `npm test` runs against the database in `server/.env.test`, which it **wipes first**.
 Never point `.env.test` at a database with real books in it.
+
+Its database has to exist. Once, as the postgres superuser:
+
+```powershell
+psql -h localhost -U postgres -c "CREATE DATABASE benesys_test OWNER benesys_billing ENCODING 'UTF8'"
+```
+
+Then `server/.env.test` is the same `DATABASE_URL` as `.env` with `benesys_test`
+on the end, and a `PORT` nothing else is using — the tests bind it. The licence
+suite activates its test server through the real flow, so
+`tools/vendor-private-key.txt` must be present; there is deliberately no way to
+switch the licence check off for tests.
