@@ -99,11 +99,13 @@ function SignInScreen({ mode, onSwitch }: { mode: 'login' | 'register'; onSwitch
       <View style={styles.card}>
         <Image source={require('@/assets/images/icon.png')} style={styles.brand} />
         <Text style={styles.title}>{registering ? 'Register your shop' : 'Sign in'}</Text>
-        <Text style={styles.subtle}>
-          {registering
-            ? 'Creates the shop on this server with you as its owner. Add your staff from Settings afterwards.'
-            : 'Online mode — your shop’s data is on the server, shared by everyone you add.'}
-        </Text>
+        {/* Signing in needs no explanation; registering a shop does. */}
+        {registering ? (
+          <Text style={styles.subtle}>
+            Creates the shop on this server with you as its owner. Add your staff from Settings
+            afterwards.
+          </Text>
+        ) : null}
 
         {registering ? (
           <TextField label="Shop name" value={shopName} onChangeText={setShopName} placeholder="Kannan Stores" required />
