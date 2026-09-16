@@ -11,7 +11,8 @@ module.exports = {
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/$1',
   },
-  testPathIgnorePatterns: ['/node_modules/', '/dist/', '/.expo/'],
+  // server/ has its own tests, run against Postgres with `npm test` inside it.
+  testPathIgnorePatterns: ['/node_modules/', '/dist/', '/.expo/', '/server/'],
   // @noble/* ship as ES modules only, so they have to go through Babel like the
   // rest of the source rather than being skipped as node_modules normally are.
   transformIgnorePatterns: ['node_modules/(?!@noble/)'],

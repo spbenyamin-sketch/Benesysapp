@@ -9,6 +9,7 @@ import { imageDataUri } from '@/modules/settings/brandImages';
 import { getBusinessProfile, type BusinessProfile } from '@/modules/settings/service';
 import { balanceSummary, formatDate } from '@/utils/format';
 import { escapeHtml as esc, htmlMoney as money } from '@/utils/html';
+import { isWeb, printHtml } from '@/utils/webFile';
 import type { LedgerEntry, PartyLedger } from '@/modules/parties/ledger';
 
 /**
@@ -115,6 +116,8 @@ function buildHtml(ledger: PartyLedger, biz: BusinessProfile, logo: string | nul
 export async function sharePartyStatement(ledger: PartyLedger): Promise<void> {
   const biz = await getBusinessProfile();
   const logo = await imageDataUri(biz.logoUri);
+  // A browser has no share sheet; its print dialog saves the PDF instead.
+  if (isWeb) return printHtml(buildHtml(ledger, biz, logo));
   const { uri } = await Print.printToFileAsync({ html: buildHtml(ledger, biz, logo) });
   if (await Sharing.isAvailableAsync()) {
     await Sharing.shareAsync(uri, {
@@ -128,5 +131,6 @@ export async function sharePartyStatement(ledger: PartyLedger): Promise<void> {
 export async function printPartyStatement(ledger: PartyLedger): Promise<void> {
   const biz = await getBusinessProfile();
   const logo = await imageDataUri(biz.logoUri);
+  if (isWeb) return printHtml(buildHtml(ledger, biz, logo));
   await Print.printAsync({ html: buildHtml(ledger, biz, logo) });
 }

@@ -1,4 +1,5 @@
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { atomic, type Statement, type Tx } from '@/db/atomic';
 import { db } from '@/db/client';
 import {
   invoiceItems,
@@ -181,8 +182,8 @@ export async function createInvoiceWithItems(
   const costOf = (l: InvoiceLineInput, i: number): number =>
     l.costPrice ?? (isPurchase ? unitCostFrom(computed[i].amount, l.qty) : purchasePriceOf.get(l.itemId) ?? 0);
 
-  return db.transaction((tx) => {
-    const inv = tx
+  return atomic(function* (tx) {
+    const [inv]: Invoice[] = yield tx
       .insert(invoices)
       .values({
         type: header.type,
@@ -203,22 +204,19 @@ export async function createInvoiceWithItems(
         // this a single sale could be returned again and again.
         sourceInvoiceId: header.sourceInvoiceId ?? null,
       })
-      .returning()
-      .get();
+      .returning();
 
-    writeLines(tx, inv.id, lines, computed, { sign, isPurchase, costOf, hsnOf });
+    yield* writeLines(tx, inv.id, lines, computed, { sign, isPurchase, costOf, hsnOf });
     return inv;
   });
 }
 
-/** The transaction handle handed to a `db.transaction` callback. */
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
-
 /**
  * Write a document's lines and move the stock they represent. Shared by create
  * and edit so the two can never drift apart on cost, HSN or stock direction.
+ * A step of an atomic() body — see db/atomic.
  */
-function writeLines(
+function* writeLines(
   tx: Tx,
   invoiceId: number,
   lines: InvoiceLineInput[],
@@ -230,10 +228,11 @@ function writeLines(
     costOf: (l: InvoiceLineInput, i: number) => number;
     hsnOf: Map<number, string | null>;
   },
-): void {
-  lines.forEach((l, i) => {
+): Generator<Statement, void, unknown[]> {
+  for (const [i, l] of lines.entries()) {
     const cost = ctx.costOf(l, i);
-    tx.insert(invoiceItems)
+    yield tx
+      .insert(invoiceItems)
       .values({
         invoiceId,
         itemId: l.itemId,
@@ -247,21 +246,20 @@ function writeLines(
         discount: computed[i].discount,
         hsnCode: ctx.hsnOf.get(l.itemId) ?? null,
 
-      })
-      .run();
-    if (ctx.sign === 0) return;
+      });
+    if (ctx.sign === 0) continue;
     // Buying the goods is also the moment we learn what they now cost, so a
     // purchase carries the new price back onto the item — the next sale is then
     // measured against what was actually paid, not last season's rate. A
     // free/zero line is never allowed to wipe a real price.
-    tx.update(items)
+    yield tx
+      .update(items)
       .set({
         currentStock: sql`${items.currentStock} + ${ctx.sign * l.qty}`,
         ...(ctx.isPurchase && cost > 0 ? { purchasePrice: cost } : {}),
       })
-      .where(eq(items.id, l.itemId))
-      .run();
-  });
+      .where(eq(items.id, l.itemId));
+  }
 }
 
 /**
@@ -354,19 +352,20 @@ export async function updateInvoiceWithItems(
       current: purchasePriceOf.get(l.itemId),
     });
 
-  db.transaction((tx) => {
+  await atomic(function* (tx) {
     // Put back the stock the old lines had moved, then start again.
     if (sign !== 0) {
       for (const l of oldLines) {
-        tx.update(items)
+        yield tx
+          .update(items)
           .set({ currentStock: sql`${items.currentStock} - ${sign * l.qty}` })
-          .where(eq(items.id, l.itemId))
-          .run();
+          .where(eq(items.id, l.itemId));
       }
     }
-    tx.delete(invoiceItems).where(eq(invoiceItems.invoiceId, id)).run();
+    yield tx.delete(invoiceItems).where(eq(invoiceItems.invoiceId, id));
 
-    tx.update(invoices)
+    yield tx
+      .update(invoices)
       .set({
         partyId: header.partyId,
         date: header.date,
@@ -380,10 +379,9 @@ export async function updateInvoiceWithItems(
         dueDate,
         placeOfSupply,
       })
-      .where(eq(invoices.id, id))
-      .run();
+      .where(eq(invoices.id, id));
 
-    writeLines(tx, id, lines, computed, { sign, isPurchase, costOf, hsnOf });
+    yield* writeLines(tx, id, lines, computed, { sign, isPurchase, costOf, hsnOf });
   });
 
   await recomputeInvoiceStatus(id);
@@ -535,14 +533,14 @@ export async function deleteInvoiceWithItems(id: number): Promise<void> {
   const lines = await listInvoiceItems(id);
   const sign = stockSign(invoice.type);
 
-  db.transaction((tx) => {
+  await atomic(function* (tx) {
     if (sign !== 0) {
       for (const l of lines) {
         // Reverse the original movement.
-        tx.update(items)
+        yield tx
+          .update(items)
           .set({ currentStock: sql`${items.currentStock} - ${sign * l.qty}` })
-          .where(eq(items.id, l.itemId))
-          .run();
+          .where(eq(items.id, l.itemId));
       }
     }
     // Payments carry a real FK to the invoice with no cascade, so a paid bill
@@ -550,8 +548,8 @@ export async function deleteInvoiceWithItems(id: number): Promise<void> {
     // with the bill: that money was only ever recorded because of this
     // document, and leaving it behind as an on-account credit would put an
     // advance on the party's ledger that nobody ever handed them.
-    tx.delete(payments).where(eq(payments.invoiceId, id)).run();
-    tx.delete(invoices).where(eq(invoices.id, id)).run(); // invoice_items cascade
+    yield tx.delete(payments).where(eq(payments.invoiceId, id));
+    yield tx.delete(invoices).where(eq(invoices.id, id)); // invoice_items cascade
   });
 }
 

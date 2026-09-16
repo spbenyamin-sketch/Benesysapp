@@ -9,6 +9,7 @@ import {
 import { printThermal, shareThermalPdf, upiPayment } from '@/modules/invoices/thermal';
 import { formatDate, formatQty, formatTaxRate } from '@/utils/format';
 import { escapeHtml, htmlMoney } from '@/utils/html';
+import { isWeb, printHtml } from '@/utils/webFile';
 import {
   lineAmount,
   lineTax,
@@ -321,6 +322,8 @@ export async function shareInvoicePdf(detail: InvoiceDetail): Promise<void> {
   if ((await getPrintFormat()) === 'thermal58') return shareThermalPdf(detail);
   const biz = await getBusinessProfile();
   const assets = await loadAssets(biz);
+  // A browser has no share sheet; its print dialog saves the PDF instead.
+  if (isWeb) return printHtml(buildHtml(detail, biz, assets));
   const { uri } = await Print.printToFileAsync({ html: buildHtml(detail, biz, assets) });
   if (await Sharing.isAvailableAsync()) {
     await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: detail.invoice.invoiceNo });
@@ -336,5 +339,6 @@ export async function printInvoice(detail: InvoiceDetail): Promise<void> {
   if ((await getPrintFormat()) === 'thermal58') return printThermal(detail);
   const biz = await getBusinessProfile();
   const assets = await loadAssets(biz);
+  if (isWeb) return printHtml(buildHtml(detail, biz, assets));
   await Print.printAsync({ html: buildHtml(detail, biz, assets) });
 }

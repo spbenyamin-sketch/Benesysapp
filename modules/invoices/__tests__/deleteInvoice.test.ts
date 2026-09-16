@@ -21,9 +21,10 @@ jest.mock('@/db/client', () => {
     return Object.assign([...base], { orderBy: () => state.returns });
   };
   const record = (op: string, t: unknown) => state.ops.push({ op, table: name(t) });
+  // Statements inside a transaction are executed with .all() — see db/atomic.
   const tx = {
-    update: (t: unknown) => ({ set: () => ({ where: () => ({ run: () => record('update', t) }) }) }),
-    delete: (t: unknown) => ({ where: () => ({ run: () => record('delete', t) }) }),
+    update: (t: unknown) => ({ set: () => ({ where: () => ({ all: () => (record('update', t), []) }) }) }),
+    delete: (t: unknown) => ({ where: () => ({ all: () => (record('delete', t), []) }) }),
   };
   return {
     __state: state,

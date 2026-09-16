@@ -1,0 +1,26 @@
+{
+  "name": "benesys-server",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "tsx watch --env-file=.env src/index.ts",
+    "start": "tsx --env-file=.env src/index.ts",
+    "db:generate": "drizzle-kit generate --config drizzle.control.config.ts && drizzle-kit generate --config drizzle.shop.config.ts",
+    "db:migrate": "tsx --env-file=.env src/db/migrate.ts",
+    "test": "tsx --env-file=.env.test --test test/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.1.1",
+    "drizzle-orm": "^0.45.2",
+    "hono": "^4.13.8",
+    "pg": "^8.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.4",
+    "@types/pg": "^8.23.1",
+    "drizzle-kit": "^0.31.10",
+    "tsx": "^4.23.13",
+    "typescript": "~6.0.3"
+  }
+}

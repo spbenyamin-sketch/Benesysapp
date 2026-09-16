@@ -64,14 +64,17 @@ jest.mock('@/db/client', () => {
         const row = { id: state.nextId++, ...values };
         rowsOf(t).push(row);
         state.ops.push({ op: 'insert', table: tableName(t) });
-        return { returning: () => ({ get: () => row }), run: () => row };
+        // Statements inside a transaction are executed with .all() — see db/atomic.
+        return { returning: () => ({ all: () => [row] }), all: () => [] };
       },
     }),
     update: (t: unknown) => ({
-      set: () => ({ where: () => ({ run: () => state.ops.push({ op: 'update', table: tableName(t) }) }) }),
+      set: () => ({
+        where: () => ({ all: () => (state.ops.push({ op: 'update', table: tableName(t) }), []) }),
+      }),
     }),
     delete: (t: unknown) => ({
-      where: () => ({ run: () => state.ops.push({ op: 'delete', table: tableName(t) }) }),
+      where: () => ({ all: () => (state.ops.push({ op: 'delete', table: tableName(t) }), []) }),
     }),
   };
 

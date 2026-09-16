@@ -27,6 +27,7 @@ import {
 } from '@/modules/reports/service';
 import { buildXlsx, type SheetSpec } from '@/utils/xlsx';
 import { formatTaxRate } from '@/utils/format';
+import { downloadFile, isWeb } from '@/utils/webFile';
 import type { InvoiceWithParty } from '@/modules/invoices/service';
 
 /** paise → a plain number in rupees, rounded to 2 dp (Excel-summable). */
@@ -50,8 +51,15 @@ async function preambleFor(title: string, range?: { from: string; to: string }):
   return lines;
 }
 
+const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
 /** Write the workbook to cache and open the share sheet. Returns the file uri. */
 async function shareWorkbook(sheets: SheetSpec[], filename: string): Promise<string> {
+  // A browser has no cache folder or share sheet: the workbook is downloaded.
+  if (isWeb) {
+    downloadFile(filename, buildXlsx(sheets), XLSX_MIME);
+    return filename;
+  }
   const file = new File(Paths.cache, filename);
   if (file.exists) file.delete();
   file.create();

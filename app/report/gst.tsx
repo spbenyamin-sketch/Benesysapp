@@ -22,6 +22,7 @@ import {
 } from '@/modules/reports/service';
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
 import { formatDate, formatMoney } from '@/utils/format';
+import { downloadFile, isWeb } from '@/utils/webFile';
 
 export default function GstReportScreen() {
   const { lang } = useVoice();
@@ -167,6 +168,11 @@ async function shareGstr1(month: string): Promise<string> {
     );
   }
   const filename = gstr1Filename(data.gstin, data.fp);
+  // A browser has no cache folder or share sheet: the return is downloaded.
+  if (isWeb) {
+    downloadFile(filename, JSON.stringify(data), 'application/json');
+    return filename;
+  }
   const file = new File(Paths.cache, filename);
   if (file.exists) file.delete();
   file.create();

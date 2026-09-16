@@ -14,6 +14,7 @@ import {
 import { Pressable } from 'react-native';
 import Button from '@/components/Button';
 import SelectField from '@/components/SelectField';
+import StaffSection from '@/components/StaffSection';
 import TextField from '@/components/TextField';
 import {
   deleteBrandImage,
@@ -63,6 +64,9 @@ import { INDIAN_STATES } from '@/utils/constants';
 import { TAX_MODE_LABEL, type TaxMode } from '@/utils/gst';
 
 // Keys persisted in the settings key/value table.
+/** The web app is Online mode: no phone lock, licence file, backups or voice. */
+const isWeb = Platform.OS === 'web';
+
 const KEYS = {
   name: 'business_name',
   gstin: 'business_gstin',
@@ -182,7 +186,13 @@ export default function SettingsScreen() {
       getPrintFormat().then((f) => {
         if (active) setPaper(f);
       });
-      Promise.all([
+      // In a browser only the account applies: the lock, backups and Drive all
+      // read the phone's secure store, which the web build doesn't have.
+      if (isWeb) {
+        getAccount().then((acc) => {
+          if (active) setAccount(acc);
+        });
+      } else Promise.all([
         getAccount(),
         isLockEnabled(),
         getLockCapability(),
@@ -379,6 +389,14 @@ export default function SettingsScreen() {
   };
 
   const doSignOut = () => {
+    // react-native-web's Alert shows nothing, so the browser's own confirm asks
+    // instead, and a reload brings the sign-in screen back.
+    if (isWeb) {
+      if (window.confirm('Sign out? You will need your password to get back in.')) {
+        void signOut().then(() => window.location.reload());
+      }
+      return;
+    }
     Alert.alert('Sign out?', 'You will need your password to get back in.', [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -565,6 +583,10 @@ export default function SettingsScreen() {
 
         <View style={styles.divider} />
 
+        {/* Voice and the phone-bound licence are phone features; the web app is
+            Online mode at a desk. */}
+        {isWeb ? null : (
+        <>
         <Text style={styles.sectionTitle}>Voice commands — குரல் கட்டளை</Text>
         <Text style={styles.sectionHint}>
           {status.available
@@ -610,7 +632,27 @@ export default function SettingsScreen() {
         <LicenseCard />
 
         <View style={styles.divider} />
+        </>
+        )}
 
+        {isWeb ? (
+          <>
+            <Text style={styles.sectionTitle}>Account</Text>
+            {account ? (
+              <Text style={styles.sectionHint}>
+                {account.username}
+                {account.email ? ` · ${account.email}` : ''}
+                {'\n'}Signed in to this shop’s online books.
+              </Text>
+            ) : null}
+            <Button label="Sign out" tone="ghost" onPress={doSignOut} style={styles.save} />
+
+            <View style={styles.divider} />
+
+            <StaffSection />
+          </>
+        ) : (
+        <>
         <Text style={styles.sectionTitle}>Account &amp; lock</Text>
         {account ? (
           <Text style={styles.sectionHint}>
@@ -798,15 +840,19 @@ export default function SettingsScreen() {
           tone="danger"
           style={styles.save}
         />
+        </>
+        )}
 
         <Text style={styles.version}>Billing App v1.0.0</Text>
       </ScrollView>
 
-      <DriveRestorePicker
-        visible={drivePicker}
-        onClose={() => setDrivePicker(false)}
-        onRestored={() => void getAutoBackupConfig().then(setAuto)}
-      />
+      {isWeb ? null : (
+        <DriveRestorePicker
+          visible={drivePicker}
+          onClose={() => setDrivePicker(false)}
+          onRestored={() => void getAutoBackupConfig().then(setAuto)}
+        />
+      )}
     </KeyboardAvoidingView>
   );
 }

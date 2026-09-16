@@ -7,6 +7,8 @@
 
 import { Directory, File, Paths } from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
+import { webImageDataUri } from '@/modules/settings/brandImages';
+import { isWeb } from '@/utils/webFile';
 
 const FOLDER = 'item-images';
 
@@ -39,6 +41,9 @@ const OPTIONS: ImagePicker.ImagePickerOptions = {
  * backed out. Throws with a readable message when permission is refused.
  */
 export async function captureItemPhoto(): Promise<string | null> {
+  // A browser's file input is the camera too, on a phone; on a desktop it is
+  // the only way in. Either way it is the picker.
+  if (isWeb) return pickItemPhoto();
   const perm = await ImagePicker.requestCameraPermissionsAsync();
   if (!perm.granted) throw new Error('Camera permission is needed to take a photo.');
   const res = await ImagePicker.launchCameraAsync(OPTIONS);
@@ -52,6 +57,8 @@ export async function pickItemPhoto(): Promise<string | null> {
   if (!perm.granted) throw new Error('Photo permission is needed to choose a picture.');
   const res = await ImagePicker.launchImageLibraryAsync(OPTIONS);
   if (res.canceled || !res.assets?.[0]) return null;
+  // No document directory to copy into on web; a tile-sized inline image instead.
+  if (isWeb) return webImageDataUri(res.assets[0].uri, 320, 'image/jpeg');
   return keep(res.assets[0].uri);
 }
 

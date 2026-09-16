@@ -20,5 +20,10 @@
     "**/*.tsx",
     ".expo/types/**/*.ts",
     "expo-env.d.ts"
+  ],
+  // The Postgres server is its own project with its own tsconfig and packages.
+  "exclude": [
+    "node_modules",
+    "server"
   ]
 }

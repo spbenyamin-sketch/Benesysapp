@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": ["node"],
+    // The app's service code (../modules) is run here unchanged. It imports
+    // `@/db/client` and `@/db/schema`; on the server those two names mean the
+    // Postgres connection and schema below instead of expo-sqlite. Everything
+    // else under `@/` is the app's own file. The more specific entries win.
+    "paths": {
+      "@/db/client": ["./src/db/client.ts"],
+      "@/db/atomic": ["./src/db/atomic.ts"],
+      "@/db/schema": ["./src/db/shop-schema.ts"],
+      "@/*": ["../*"],
+      // One drizzle for both halves: the app's modules would otherwise pick up
+      // the root node_modules copy, which has no Postgres driver next to it.
+      "drizzle-orm": ["./node_modules/drizzle-orm"],
+      "drizzle-orm/*": ["./node_modules/drizzle-orm/*"]
+    }
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts", "drizzle.*.config.ts"]
+}

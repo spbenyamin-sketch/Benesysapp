@@ -8,8 +8,42 @@
 
 import { Directory, File, Paths } from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
+import { isWeb } from '@/utils/webFile';
 
 const FOLDER = 'brand-images';
+
+/**
+ * A picked image, in a browser, as the data: uri that gets stored.
+ *
+ * There is no document directory on web to copy into, and the picker hands back
+ * the original file untouched — its quality and crop options are ignored there —
+ * so a phone photo would be megabytes in the database. It is drawn onto a canvas
+ * no larger than `maxPx` on its long side first. PNG keeps a logo's transparency.
+ */
+export function webImageDataUri(
+  blobUri: string,
+  maxPx: number,
+  type: 'image/png' | 'image/jpeg',
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxPx / Math.max(img.naturalWidth, img.naturalHeight));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+      canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        reject(new Error('This browser cannot read the picture.'));
+        return;
+      }
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL(type, 0.8));
+    };
+    img.onerror = () => reject(new Error('That file could not be read as a picture.'));
+    img.src = blobUri;
+  });
+}
 
 export type BrandImage = 'logo' | 'signature';
 
@@ -41,6 +75,7 @@ export async function pickBrandImage(kind: BrandImage): Promise<string | null> {
     quality: 0.8, // it is printed, so keep more detail than an item tile needs
   });
   if (res.canceled || !res.assets?.[0]) return null;
+  if (isWeb) return webImageDataUri(res.assets[0].uri, kind === 'logo' ? 400 : 600, 'image/png');
   return keep(res.assets[0].uri, kind);
 }
 
@@ -71,6 +106,8 @@ const MIME: Record<string, string> = {
  */
 export async function imageDataUri(uri: string | null | undefined): Promise<string | null> {
   if (!uri) return null;
+  // Already inline — how the web build stores a picked image.
+  if (uri.startsWith('data:')) return uri;
   try {
     const file = new File(uri);
     if (!file.exists) return null;

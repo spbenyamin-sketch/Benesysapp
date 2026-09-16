@@ -18,6 +18,7 @@ import { getBusinessProfile, type BusinessProfile } from '@/modules/settings/ser
 import { formatDate, formatQty, formatTaxRate } from '@/utils/format';
 import { escapeHtml, htmlMoney } from '@/utils/html';
 import { qrSvg, upiPayload } from '@/utils/qr';
+import { isWeb, printHtml } from '@/utils/webFile';
 import { splitTax, supplyType } from '@/utils/gst';
 import type { InvoiceType } from '@/utils/invoiceNumber';
 import type { InvoiceDetail } from '@/modules/invoices/service';
@@ -280,6 +281,8 @@ const ROLL_WIDTH_PT = Math.round((58 / 25.4) * 72);
 /** Render the receipt to a PDF the width of the roll and open the share sheet. */
 export async function shareThermalPdf(detail: InvoiceDetail): Promise<void> {
   const html = thermalHtml(await loadForPrint(detail));
+  // A browser has no share sheet; its print dialog saves the PDF instead.
+  if (isWeb) return printHtml(html);
   const { uri } = await Print.printToFileAsync({ html, width: ROLL_WIDTH_PT });
   if (await Sharing.isAvailableAsync()) {
     await Sharing.shareAsync(uri, {
@@ -295,5 +298,6 @@ export async function shareThermalPdf(detail: InvoiceDetail): Promise<void> {
  * counter printer advertises itself as — no native module, works in Expo Go.
  */
 export async function printThermal(detail: InvoiceDetail): Promise<void> {
+  if (isWeb) return printHtml(thermalHtml(await loadForPrint(detail)));
   await Print.printAsync({ html: thermalHtml(await loadForPrint(detail)) });
 }
