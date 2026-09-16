@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Alert,
   AppState,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -216,7 +217,7 @@ function AccountScreen({
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled">
-        <Text style={styles.brand}>🧾</Text>
+        <Image source={require('@/assets/images/icon.png')} style={styles.brand} />
         <Text style={styles.title}>{signingUp ? 'Create your account' : 'Welcome back'}</Text>
         <Text style={styles.subtle}>
           {signingUp
@@ -332,7 +333,8 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   form: { padding: 24, gap: 14, flexGrow: 1, justifyContent: 'center' },
-  brand: { fontSize: 44, textAlign: 'center' },
+  // The shop's own mark, the same file the launcher icon comes from.
+  brand: { width: 76, height: 76, alignSelf: 'center', resizeMode: 'contain' },
   title: { fontSize: 22, fontWeight: '700', color: '#111', textAlign: 'center' },
   subtle: { fontSize: 13, color: '#888', textAlign: 'center', lineHeight: 19 },
   error: { color: '#c0392b', fontSize: 13, textAlign: 'center' },

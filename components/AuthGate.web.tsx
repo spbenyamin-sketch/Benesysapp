@@ -2,7 +2,7 @@
 // Like the phone's AuthGate, nothing underneath is mounted until signed in.
 
 import { useEffect, useState, type ReactNode } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Button from '@/components/Button';
 import TextField from '@/components/TextField';
 import {
@@ -97,7 +97,7 @@ function SignInScreen({ mode, onSwitch }: { mode: 'login' | 'register'; onSwitch
   return (
     <ScrollView style={styles.flex} contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled">
       <View style={styles.card}>
-        <Text style={styles.brand}>🧾</Text>
+        <Image source={require('@/assets/images/icon.png')} style={styles.brand} />
         <Text style={styles.title}>{registering ? 'Register your shop' : 'Sign in'}</Text>
         <Text style={styles.subtle}>
           {registering
@@ -174,7 +174,8 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 24,
   },
-  brand: { fontSize: 44, textAlign: 'center' },
+  // The shop's own mark, the same file the phone's launcher icon comes from.
+  brand: { width: 76, height: 76, alignSelf: 'center', resizeMode: 'contain' },
   title: { fontSize: 22, fontWeight: '700', color: '#111', textAlign: 'center' },
   subtle: { fontSize: 13, color: '#888', textAlign: 'center', lineHeight: 19 },
   error: { color: '#c0392b', fontSize: 13, textAlign: 'center' },
