@@ -34,6 +34,8 @@ lost or leaked — it invalidates every licence ever issued.
    **Activate Billing App**, showing a **System ID** like `9F3C-11AB-7E20-04D5`.
 2. They tap **Send System ID** and it arrives on your phone over WhatsApp.
 3. You open `tools/keygen.html` (double-click — it runs offline in the browser).
+   It is one self-contained file: copy it onto a pendrive and it issues licences
+   on any computer, with nothing installed and no internet.
    Paste your private key once (it can be remembered in that browser), then the
    System ID, a shop name, and an expiry date. **Generate licence file** →
    **Download .lic**.
