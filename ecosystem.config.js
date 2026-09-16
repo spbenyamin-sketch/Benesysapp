@@ -6,9 +6,11 @@
 // WEB_DIR in server/src/app.ts. So there is one thing running and one address
 // to open, http://localhost:4747.
 //
-// tsx's CLI is named directly rather than going through `npm run`: on Windows
-// that would put a cmd.exe between pm2 and the server, and pm2 would then be
-// watching the wrapper instead of the thing that has to stay up.
+// node loads tsx and the .ts entry point itself, rather than pm2 running tsx's
+// CLI or `npm run`. Either of those puts a second process in the middle — and
+// on Windows that middle process gets its own console window on the desktop,
+// which pm2 then faithfully brings back every time somebody closes it. One
+// process: pm2 watches the server itself, and there is nothing to see.
 
 const path = require('path');
 
@@ -19,10 +21,14 @@ module.exports = {
     {
       name: 'benesys-billing',
       cwd: SERVER,
-      script: path.join(SERVER, 'node_modules', 'tsx', 'dist', 'cli.mjs'),
-      args: ['--env-file=.env', 'src/index.ts'],
+      script: path.join(SERVER, 'src', 'index.ts'),
       interpreter: 'node',
+      interpreter_args: '--import tsx --env-file=.env',
       env: { NODE_ENV: 'production' },
+      // Without this the server gets its own console window on the desktop, and
+      // closing it only kills the server — which pm2 dutifully starts again,
+      // window and all. It is a service; it should not be a window at all.
+      windowsHide: true,
       autorestart: true,
       // A crash loop is a broken install, not something to hammer at: stop
       // after ten tries so `pm2 logs` still holds the reason.
