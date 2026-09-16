@@ -15,11 +15,36 @@ This server is for **Online mode**: the web app (PWA) and, later, the phone sign
 - When a column is added to `db/schema.ts`, add it to `server/src/db/shop-schema.ts` too,
   then `npm run db:generate` and `npm run db:migrate` (every shop is upgraded).
 
-## Easiest: double-click `start-web.bat`
+## Running it: double-click `start-web.bat`
 
-It installs packages if missing, creates the `benesys_billing` database on the first run
-(asks once for the PostgreSQL `postgres` password), updates the tables, and starts the
-server (http://localhost:4747) and the web app (http://localhost:8081).
+One click, and safe to repeat — a run where nothing has changed takes seconds:
+
+1. installs the app and server packages, and pm2, if they are missing;
+2. creates the `benesys_billing` database on the very first run (asks once for the
+   PostgreSQL `postgres` password, then writes a random app password into `server/.env`);
+3. migrates the tables;
+4. rebuilds the web app **only if something in it changed** (`scripts/needs-web-build.js`
+   compares the sources against `dist/index.html` — an export takes minutes and the answer
+   is usually "nothing");
+5. starts it under **pm2** from `ecosystem.config.js`, then `pm2 save` and
+   `pm2-startup install`, so it restarts on a crash and comes back when Windows boots;
+6. waits for `/api/health`, opens the browser, and prints the address for other devices.
+
+**One process, one address: http://localhost:4747.** The server also serves the exported
+web app (`WEB_DIR`, default `../dist`, in `server/src/app.ts`), falling back to
+`index.html` so a typed-in `/invoice/12` reaches the app's own router. `app.json` sets
+`web.output: "single"` for exactly that. Nothing is cross-origin any more; CORS stays for
+the development server below.
+
+```powershell
+pm2 status                    # is it running?
+pm2 logs benesys-billing      # what is it doing?
+pm2 restart benesys-billing   # after pulling new code (rerun start-web.bat to rebuild)
+pm2 stop benesys-billing
+```
+
+While developing, run the two halves separately instead — `npm run dev` in `server/` and
+`npx expo start --web` at the root (http://localhost:8081, calling the API on 4747).
 
 ## How the web app reaches the data
 
