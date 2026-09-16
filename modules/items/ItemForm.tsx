@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -17,7 +17,7 @@ import SelectField from '@/components/SelectField';
 import TextField from '@/components/TextField';
 import { normaliseBarcode } from '@/modules/items/barcode';
 import { captureItemPhoto, deleteItemPhoto, pickItemPhoto } from '@/modules/items/images';
-import { createItem, findItemByBarcode, updateItem } from '@/modules/items/service';
+import { createItem, findItemByBarcode, listCategories, updateItem } from '@/modules/items/service';
 import { matchOption } from '@/modules/voice/match';
 import { useVoiceCommands } from '@/modules/voice/VoiceProvider';
 import { ITEM_CATEGORIES, ITEM_UNITS } from '@/utils/constants';
@@ -54,6 +54,10 @@ export default function ItemForm({
   // its bottle), and the shop knows its own shelves better than the app does.
   const [duplicateOf, setDuplicateOf] = useState<string | null>(null);
   const [category, setCategory] = useState(item?.category ?? '');
+  // Categories this shop has already used, so one typed for the last item is
+  // waiting on the list for the next. The presets come after them: a shop that
+  // has made its own names should see those first.
+  const [usedCategories, setUsedCategories] = useState<string[]>([]);
   const [unit, setUnit] = useState(item?.unit ?? 'pcs');
   const [salePrice, setSalePrice] = useState(item ? paiseToRupeeInput(item.salePrice) : '');
   const [purchasePrice, setPurchasePrice] = useState(
@@ -67,6 +71,27 @@ export default function ItemForm({
   const [voiceAlias, setVoiceAlias] = useState(item?.voiceAlias ?? '');
   const [imageUri, setImageUri] = useState<string | null>(item?.imageUri ?? null);
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    listCategories()
+      .then((names) => active && setUsedCategories(names))
+      // The presets alone still work; a category list is not worth an error.
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const categoryOptions = useMemo(() => {
+    const seen = new Map<string, string>();
+    // This item's own category first, in case it was deleted from every other.
+    for (const name of [category, ...usedCategories, ...ITEM_CATEGORIES]) {
+      const trimmed = name.trim();
+      if (trimmed && !seen.has(trimmed.toLowerCase())) seen.set(trimmed.toLowerCase(), trimmed);
+    }
+    return [...seen.values()];
+  }, [category, usedCategories]);
 
   // Photos are copied into the app's storage as soon as they are picked, so a
   // replaced/removed one is deleted right away — except the item's ORIGINAL
@@ -164,7 +189,9 @@ export default function ItemForm({
         setUnit(matchOption(intent.value, ITEM_UNITS) ?? intent.value);
         return true;
       case 'category':
-        setCategory(matchOption(intent.value, ITEM_CATEGORIES) ?? intent.value);
+        // The shop's own categories are matched too, so saying one it invented
+        // lands on that spelling instead of adding a near-identical twin.
+        setCategory(matchOption(intent.value, categoryOptions) ?? intent.value);
         return true;
       case 'alias':
         setVoiceAlias(intent.value);
@@ -250,8 +277,8 @@ export default function ItemForm({
           label="Category"
           value={category}
           onSelect={setCategory}
-          options={ITEM_CATEGORIES}
-          placeholder="Select category"
+          options={categoryOptions}
+          placeholder="Select or type a new category"
           allowCustom
         />
         <View style={styles.row}>

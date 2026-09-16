@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { eq, isNotNull } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { normaliseBarcode } from '@/modules/items/barcode';
 import { items, type Item, type NewItem } from '@/db/schema';
@@ -12,6 +12,30 @@ export async function createItem(data: ItemInput): Promise<Item> {
 
 export async function listItems(): Promise<Item[]> {
   return db.select().from(items).orderBy(items.name);
+}
+
+/**
+ * Every category the shop has actually used. The form offers these alongside
+ * the presets, so a category typed once for one item is there to pick the next
+ * time instead of being retyped — which is how "Kadai Saman" and "kadai saman"
+ * become two categories that mean one thing.
+ *
+ * When both spellings are already in the books the older item's wins, because
+ * that is the one the shop chose; reading in id order is what makes the answer
+ * the same every time rather than whatever the database hands back first.
+ */
+export async function listCategories(): Promise<string[]> {
+  const rows = await db
+    .select({ category: items.category })
+    .from(items)
+    .where(isNotNull(items.category))
+    .orderBy(items.id);
+  const seen = new Map<string, string>();
+  for (const { category } of rows) {
+    const name = category?.trim();
+    if (name && !seen.has(name.toLowerCase())) seen.set(name.toLowerCase(), name);
+  }
+  return [...seen.values()].sort((a, b) => a.localeCompare(b));
 }
 
 export async function getItem(id: number): Promise<Item | undefined> {
