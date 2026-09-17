@@ -95,8 +95,8 @@ Every bill, payment and expense in the app carries one switch, on the form:
 **In books** is the default, and everything recorded before this existed counts
 as in the books. A row marked otherwise:
 
-- still appears in the shop's own Sale, Purchase and Day Book reports, which
-  show one extra line naming how much is in and how much is out;
+- still appears in the shop's own reports, with the Sale and Purchase reports
+  showing one extra line naming how much of the total is not in the books;
 - is **left out of the Tally file**;
 - is **left out of the GST Summary and the GSTR-1 file**, because a return is
   filed on the books the shop keeps. The GST screen says how many documents that
