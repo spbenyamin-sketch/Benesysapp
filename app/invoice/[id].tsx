@@ -15,6 +15,7 @@ import {
 } from '@/modules/invoices/service';
 import { daysOverdue, isOverdue } from '@/modules/invoices/due';
 import { printInvoice, shareInvoicePdf } from '@/modules/invoices/pdf';
+import { partyDetailLines } from '@/modules/parties/describe';
 import { defaultDirectionForInvoice } from '@/modules/payments/service';
 import { getSetting } from '@/modules/settings/service';
 import { t, totalLine } from '@/modules/voice/phrases';
@@ -319,6 +320,13 @@ export default function InvoiceDetailScreen() {
               onPress={() => router.push({ pathname: '/party/[id]', params: { id: party.id } })}
             >
               <Text style={styles.partyName}>{party.name} ›</Text>
+              {/* Their mobile, town and GST number — what anyone checking this
+                  bill against the customer's copy looks for first. */}
+              {partyDetailLines(party).map((line) => (
+                <Text key={line} style={styles.partyDetail}>
+                  {line}
+                </Text>
+              ))}
             </Pressable>
           ) : null}
           {/* A credit note names the bill it gives back, and a converted sale
@@ -517,6 +525,7 @@ const styles = StyleSheet.create({
   date: { fontSize: 14, color: '#888' },
   overdue: { color: '#c0392b', fontWeight: '600' },
   partyName: { fontSize: 16, color: '#208AEF', fontWeight: '600', marginTop: 6 },
+  partyDetail: { fontSize: 12, color: '#888', lineHeight: 17 },
   linkLine: { fontSize: 13, color: '#208AEF', fontWeight: '600', marginTop: 4 },
   returnsBlock: { borderWidth: 1, borderColor: '#f0e0c0', backgroundColor: '#fdf9f0', borderRadius: 12, padding: 12, gap: 8 },
   returnsTitle: { fontSize: 13, fontWeight: '700', color: '#8a6d1f' },

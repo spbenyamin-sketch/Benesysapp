@@ -21,6 +21,13 @@ export interface PickerOption {
   id: number;
   label: string;
   sublabel?: string;
+  /**
+   * The rest of what this option is — a party's mobile, town and GST number,
+   * one short line each. Shown under the name in the list AND under the field
+   * once it is chosen, so the counter can check they picked the right Rajesh
+   * without leaving the bill. Searched along with the label.
+   */
+  details?: string[];
 }
 
 export default function PickerField({
@@ -31,6 +38,7 @@ export default function PickerField({
   placeholder = 'Select…',
   required = false,
   emptyText = 'Nothing to choose from yet.',
+  searchPlaceholder = 'Search',
 }: {
   label: string;
   value: number | null;
@@ -39,6 +47,8 @@ export default function PickerField({
   placeholder?: string;
   required?: boolean;
   emptyText?: string;
+  /** Worth spelling out where the list can be searched by more than the name. */
+  searchPlaceholder?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -50,10 +60,11 @@ export default function PickerField({
   const filtered = useMemo(() => {
     const term = query.trim().toLowerCase();
     if (!term) return options;
-    return options.filter(
-      (o) =>
-        o.label.toLowerCase().includes(term) ||
-        (o.sublabel ? o.sublabel.toLowerCase().includes(term) : false),
+    return options.filter((o) =>
+      [o.label, o.sublabel ?? '', ...(o.details ?? [])]
+        .join(' ')
+        .toLowerCase()
+        .includes(term),
     );
   }, [options, query]);
 
@@ -78,6 +89,15 @@ export default function PickerField({
         </Text>
         <Text style={styles.chevron}>▾</Text>
       </Pressable>
+      {selected?.details?.length ? (
+        <View style={styles.chosen}>
+          {selected.details.map((line) => (
+            <Text key={line} style={styles.chosenLine} numberOfLines={2}>
+              {line}
+            </Text>
+          ))}
+        </View>
+      ) : null}
 
       <Modal
         visible={open}
@@ -95,7 +115,7 @@ export default function PickerField({
               style={styles.search}
               value={query}
               onChangeText={setQuery}
-              placeholder="Search"
+              placeholder={searchPlaceholder}
               placeholderTextColor="#aaa"
               autoCapitalize="none"
             />
@@ -118,6 +138,11 @@ export default function PickerField({
                         {item.label}
                       </Text>
                       {item.sublabel ? <Text style={styles.sub}>{item.sublabel}</Text> : null}
+                      {item.details?.map((line) => (
+                        <Text key={line} style={styles.sub} numberOfLines={2}>
+                          {line}
+                        </Text>
+                      ))}
                     </View>
                     {active ? <Text style={styles.check}>✓</Text> : null}
                   </Pressable>
@@ -202,7 +227,9 @@ const styles = StyleSheet.create({
   optionLeft: { flex: 1, gap: 2 },
   optionText: { fontSize: 17, color: '#222' },
   optionActive: { color: '#208AEF', fontWeight: '700' },
-  sub: { fontSize: 13, color: '#888' },
+  sub: { fontSize: 13, color: '#888', lineHeight: 18 },
+  chosen: { gap: 1, paddingHorizontal: 2 },
+  chosenLine: { fontSize: 12, color: '#888', lineHeight: 17 },
   check: { color: '#208AEF', fontSize: 17, fontWeight: '700' },
   emptyText: { color: '#999', textAlign: 'center', paddingVertical: 24 },
   closeBtn: {

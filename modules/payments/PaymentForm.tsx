@@ -15,6 +15,7 @@ import PickerField, { type PickerOption } from '@/components/PickerField';
 import TextField from '@/components/TextField';
 import AccountPicker from '@/modules/bankAccounts/AccountPicker';
 import { listInvoicesByParty } from '@/modules/invoices/service';
+import { partyDetailLines } from '@/modules/parties/describe';
 import { listParties } from '@/modules/parties/service';
 import { recordPayment, type Direction } from '@/modules/payments/service';
 import { bestMatch, spokenNames } from '@/modules/voice/match';
@@ -115,12 +116,15 @@ export default function PaymentForm({
     };
   }, [partyId]);
 
+  // Name, then mobile, town and GST number — the bill is often made while the
+  // customer is standing there, and picking the wrong namesake is only caught
+  // by those. They are searchable too, so "madurai" or a GST number finds them.
   const partyOptions: PickerOption[] = useMemo(
     () =>
       parties.map((p) => ({
         id: p.id,
         label: p.name,
-        sublabel: p.type === 'customer' ? 'Customer' : 'Supplier',
+        details: partyDetailLines(p),
       })),
     [parties],
   );
@@ -259,6 +263,7 @@ export default function PaymentForm({
                 ? 'No customers yet — add one from the Parties tab.'
                 : 'No suppliers yet — add one from the Parties tab.'
           }
+          searchPlaceholder="Search by name, phone, town or GSTIN"
         />
 
         <TextField

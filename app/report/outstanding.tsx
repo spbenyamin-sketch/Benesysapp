@@ -2,6 +2,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import ExcelExportButton from '@/components/ExcelExportButton';
+import { partyDetailLines } from '@/modules/parties/describe';
 import { exportOutstandingExcel } from '@/modules/reports/excel';
 import { partyOutstanding, type Outstanding } from '@/modules/reports/service';
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
@@ -70,7 +71,18 @@ export default function OutstandingReportScreen() {
                 style={styles.row}
                 onPress={() => router.push({ pathname: '/party/[id]', params: { id: r.party.id } })}
               >
-                <Text style={styles.name}>{r.party.name}</Text>
+                <View style={styles.rowLeft}>
+                  <Text style={styles.name}>{r.party.name}</Text>
+                  {/* Mobile and town: the two things wanted the moment a name
+                      on this list has to be chased up. */}
+                  {partyDetailLines(r.party)
+                    .slice(0, 2)
+                    .map((line) => (
+                      <Text key={line} style={styles.detail} numberOfLines={1}>
+                        {line}
+                      </Text>
+                    ))}
+                </View>
                 <Text style={[styles.amount, { color: section.tone }]}>
                   {formatMoney(Math.abs(r.balance))}
                 </Text>
@@ -104,7 +116,9 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: '#eee',
   },
-  name: { fontSize: 15, color: '#111', flex: 1 },
+  rowLeft: { flex: 1, gap: 2 },
+  name: { fontSize: 15, color: '#111' },
+  detail: { fontSize: 12, color: '#999' },
   amount: { fontSize: 15, fontWeight: '600' },
   empty: { color: '#999', paddingVertical: 8 },
 });

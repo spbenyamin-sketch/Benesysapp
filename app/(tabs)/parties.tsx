@@ -1,19 +1,12 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { partyDetailLines, partySearchText } from '@/modules/parties/describe';
 import { listPartiesWithBalance, type PartyWithBalance } from '@/modules/parties/ledger';
 import { bestMatch, spokenNames } from '@/modules/voice/match';
 import { t } from '@/modules/voice/phrases';
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
 import { balanceSummary, formatMoney } from '@/utils/format';
-
-/** Address, town and state as one line, skipping whichever were left blank. */
-function placeOf(party: PartyWithBalance['party']): string {
-  return [party.address, party.city, party.state]
-    .map((part) => part?.trim())
-    .filter(Boolean)
-    .join(', ');
-}
 
 export default function PartiesScreen() {
   const router = useRouter();
@@ -38,11 +31,7 @@ export default function PartiesScreen() {
     if (!q) return rows;
     // Everything the row shows can also be searched: a supplier is as often
     // remembered by their town or their GST number as by the name on the file.
-    return rows.filter(({ party }) =>
-      [party.name, party.phone, party.address, party.city, party.state, party.gstin].some((field) =>
-        (field ?? '').toLowerCase().includes(q),
-      ),
-    );
+    return rows.filter(({ party }) => partySearchText(party).toLowerCase().includes(q));
   }, [rows, query]);
 
   // Voice: say a name to open that party's ledger, "தேடு" to filter the list.
@@ -103,7 +92,7 @@ export default function PartiesScreen() {
         renderItem={({ item }) => {
           const { party, balance } = item;
           const summary = balanceSummary(balance);
-          const place = placeOf(party);
+          const [who, ...rest] = partyDetailLines(party);
           return (
             <Pressable
               style={styles.row}
@@ -111,17 +100,15 @@ export default function PartiesScreen() {
             >
               <View style={styles.rowLeft}>
                 <Text style={styles.name}>{party.name}</Text>
-                <Text style={styles.sub}>
-                  {party.type === 'customer' ? 'Customer' : 'Supplier'}
-                  {party.phone ? ` · ${party.phone}` : ''}
-                </Text>
-                {/* Where they are, so a supplier can be placed without opening
-                    them. Two lines at most — the ledger has the full record. */}
-                {place ? (
-                  <Text style={styles.place} numberOfLines={2}>
-                    {place}
+                <Text style={styles.sub}>{who}</Text>
+                {/* Where they are and their GST number, so a supplier can be
+                    placed without opening them. Two lines at most each — the
+                    ledger has the full record. */}
+                {rest.map((line) => (
+                  <Text key={line} style={styles.place} numberOfLines={2}>
+                    {line}
                   </Text>
-                ) : null}
+                ))}
               </View>
               <View style={styles.rowRight}>
                 <Text style={[styles.amount, { color: summary.toneColor }]}>
