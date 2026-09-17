@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import DateRange, { defaultRange } from '@/components/DateRange';
 import ExcelExportButton from '@/components/ExcelExportButton';
+import { accountedNote, splitAccounted } from '@/modules/reports/accounted';
 import { exportSalesReportExcel } from '@/modules/reports/excel';
 import { salesReport, type SalesReport } from '@/modules/reports/service';
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
@@ -36,6 +37,12 @@ export default function SalesReportScreen() {
       : `${report.count} invoices, total sales ${formatMoney(report.grandTotal)}, tax ${formatMoney(report.taxTotal)}`;
   });
 
+  // What of this the accountant will never see. Nothing is said when the shop
+  // has marked nothing, which is the ordinary day.
+  const booksNote = report
+    ? accountedNote(splitAccounted(report.rows, (r) => r.grandTotal, report.returns), 'bill')
+    : '';
+
   return (
     <FlatList
       style={styles.screen}
@@ -57,6 +64,7 @@ export default function SalesReportScreen() {
               already taken off the totals above.
             </Text>
           )}
+          {booksNote ? <Text style={styles.booksNote}>{booksNote}</Text> : null}
           <ExcelExportButton onExport={() => exportSalesReportExcel(from, to)} />
           <Text style={styles.sectionTitle}>Invoices</Text>
         </View>
@@ -102,6 +110,7 @@ const styles = StyleSheet.create({
   statStrong: { color: '#208AEF', fontSize: 18, fontWeight: '700' },
   sectionTitle: { fontSize: 16, fontWeight: '700', color: '#111' },
   returnNote: { fontSize: 13, color: '#b8860b', lineHeight: 18 },
+  booksNote: { fontSize: 13, color: '#888', lineHeight: 18 },
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',

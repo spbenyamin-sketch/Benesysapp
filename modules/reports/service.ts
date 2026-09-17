@@ -228,11 +228,19 @@ export interface GstSummary {
   saleReturnRows: InvoiceWithParty[];
   purchaseRows: InvoiceWithParty[];
   purchaseReturnRows: InvoiceWithParty[];
+  /** Documents in this range the shop kept out of its books, and their value. */
+  leftOutCount: number;
+  leftOutTotal: number; // paise, gross
 }
 
 export async function gstSummary(from: string, to: string): Promise<GstSummary> {
   const all = await listInvoicesWithParty();
-  const inWindow = all.filter((i) => inRange(i.date, from, to));
+  const dated = all.filter((i) => inRange(i.date, from, to));
+  // A return is filed on the books the shop keeps. A bill it marked out of them
+  // is out of the return too — and the screen says how much, so the omission is
+  // never a silent one. (Its own sale/purchase reports still count everything.)
+  const inWindow = dated.filter((i) => i.accounted);
+  const leftOut = dated.filter((i) => !i.accounted);
   const sales = inWindow.filter((i) => i.type === 'sale');
   const returns = inWindow.filter((i) => i.type === 'saleReturn');
   const purchases = inWindow.filter((i) => i.type === 'purchase');
@@ -256,6 +264,8 @@ export async function gstSummary(from: string, to: string): Promise<GstSummary> 
     saleReturnRows: returns,
     purchaseRows: purchases,
     purchaseReturnRows: purchaseReturns,
+    leftOutCount: leftOut.length,
+    leftOutTotal: sumBy(leftOut, (r) => r.grandTotal),
   };
 }
 
@@ -555,7 +565,9 @@ export async function gstRateBreakup(
       .from(invoiceItems)
       .innerJoin(invoices, eq(invoiceItems.invoiceId, invoices.id))
       .innerJoin(parties, eq(invoices.partyId, parties.id))
-      .where(and(gte(invoices.date, from), lte(invoices.date, to))),
+      .where(
+        and(gte(invoices.date, from), lte(invoices.date, to), eq(invoices.accounted, true)),
+      ),
     getSetting('business_state'),
   ]);
 
@@ -628,6 +640,8 @@ export async function loadGstrInvoices(from: string, to: string): Promise<GstrIn
         inArray(invoices.type, ['sale', 'saleReturn', 'challan']),
         gte(invoices.date, from),
         lte(invoices.date, to),
+        // Out of the shop's books, so out of the return it files from them.
+        eq(invoices.accounted, true),
       ),
     );
   if (!heads.length) return [];

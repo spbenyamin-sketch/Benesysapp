@@ -114,6 +114,16 @@ export default function GstReportScreen() {
         <Text style={styles.netHint}>Output tax − input tax</Text>
       </View>
 
+      {/* The bills the shop kept out of its books are out of these figures too.
+          Said here, with the money, so nobody discovers it at the CA's desk. */}
+      {data?.leftOutCount ? (
+        <Text style={styles.leftOut}>
+          {data.leftOutCount} document(s) worth {formatMoney(data.leftOutTotal)} are marked
+          &ldquo;not in books&rdquo; and are left out of everything on this screen, and out of the
+          GSTR-1 file below.
+        </Text>
+      ) : null}
+
       <ExcelExportButton onExport={() => exportGstExcel(from, to)} />
       <Text style={styles.disclaimer}>
         The Excel file has 5 sheets: summary, sales &amp; purchase rate-wise slabs, and the
@@ -250,6 +260,7 @@ const styles = StyleSheet.create({
   lineStrong: { fontWeight: '700', color: '#111' },
   netCard: { backgroundColor: '#f4f8fe', borderRadius: 14, padding: 18, alignItems: 'center', gap: 4 },
   netLabel: { fontSize: 13, color: '#666', fontWeight: '600' },
+  leftOut: { fontSize: 13, color: '#b8860b', lineHeight: 19 },
   netValue: { fontSize: 28, fontWeight: '700' },
   netHint: { fontSize: 12, color: '#999' },
   disclaimer: { fontSize: 12, color: '#999', textAlign: 'center' },

@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import DateRange, { defaultRange } from '@/components/DateRange';
 import ExcelExportButton from '@/components/ExcelExportButton';
+import { accountedNote, splitAccounted } from '@/modules/reports/accounted';
 import { exportPurchaseReportExcel } from '@/modules/reports/excel';
 import { percentOf, purchaseReport, type PurchaseReport } from '@/modules/reports/service';
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
@@ -34,6 +35,11 @@ export default function PurchaseReportScreen() {
       ? `${report.count} பர்ச்சேஸ், மொத்தம் ${formatMoney(report.grandTotal)}, வரி ${formatMoney(report.taxTotal)}`
       : `${report.count} purchase bills, total ${formatMoney(report.grandTotal)}, tax ${formatMoney(report.taxTotal)}`;
   });
+
+  // What of this spend the accountant will never see.
+  const booksNote = report
+    ? accountedNote(splitAccounted(report.rows, (r) => r.grandTotal, report.returns), 'bill')
+    : '';
 
   return (
     <FlatList
@@ -82,6 +88,7 @@ export default function PurchaseReportScreen() {
             </View>
           ) : null}
 
+          {booksNote ? <Text style={styles.booksNote}>{booksNote}</Text> : null}
           <ExcelExportButton onExport={() => exportPurchaseReportExcel(from, to)} />
           <Text style={styles.sectionTitle}>Purchase bills</Text>
         </View>
@@ -144,6 +151,7 @@ const styles = StyleSheet.create({
   supplierTotal: { fontSize: 14, fontWeight: '600', color: '#111' },
   more: { fontSize: 12, color: '#999' },
   returnNote: { fontSize: 13, color: '#b8860b', lineHeight: 18 },
+  booksNote: { fontSize: 13, color: '#888', lineHeight: 18 },
   sectionTitle: { fontSize: 16, fontWeight: '700', color: '#111' },
   row: {
     flexDirection: 'row',
