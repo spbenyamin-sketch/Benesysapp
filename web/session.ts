@@ -38,6 +38,10 @@ export function getSession(): WebSession | null {
 }
 
 export function setSession(next: WebSession | null): void {
+  // The refresh on every page load usually hands back exactly what was already
+  // stored. Announcing that as a change would remount the gates for nothing, so
+  // a session that has not actually changed is kept quiet.
+  const changed = JSON.stringify(current) !== JSON.stringify(next);
   current = next;
   try {
     if (next) globalThis.localStorage?.setItem(KEY, JSON.stringify(next));
@@ -45,7 +49,7 @@ export function setSession(next: WebSession | null): void {
   } catch {
     // Private windows can refuse storage; the session still lasts this tab.
   }
-  listeners.forEach((fn) => fn(next));
+  if (changed) listeners.forEach((fn) => fn(next));
 }
 
 export function onSessionChange(fn: (s: WebSession | null) => void): () => void {

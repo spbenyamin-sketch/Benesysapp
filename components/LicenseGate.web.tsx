@@ -16,7 +16,7 @@
 // Not signed in — or the server unreachable — and it simply steps aside: AuthGate
 // underneath owns those two screens, and the server is still refusing the data.
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -42,12 +42,21 @@ export default function LicenseGate({ children }: { children: ReactNode }) {
   const [phase, setPhase] = useState<Phase>(session ? 'checking' : 'pass');
   const [status, setStatus] = useState<LicenseStatus | null>(null);
 
-  // Signed in or out anywhere: the licence is worth asking about only once there
-  // is a token to ask with.
+  // The token this gate has already asked about. Every page load refreshes the
+  // session against /api/auth/me, which hands back the same token and tells the
+  // listeners about it; asking the licence again on that would put the spinner
+  // back up, unmount AuthGate underneath, and have it refresh once more — a
+  // loop the shop sees as a page that never finishes loading. Only a different
+  // token — a sign-in, a sign-out, another account — is worth a fresh answer.
+  const asked = useRef<string | null>(session?.token ?? null);
+
   useEffect(
     () =>
       onSessionChange((s) => {
         setSession(s);
+        const token = s?.token ?? null;
+        if (token === asked.current) return;
+        asked.current = token;
         setPhase(s ? 'checking' : 'pass');
       }),
     [],
