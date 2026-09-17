@@ -110,6 +110,12 @@ export interface InvoiceHeaderInput {
    * the type of the row that holds it — see RETURN_TYPES/BILL_TYPES below.
    */
   sourceInvoiceId?: number | null;
+  /**
+   * Whether this document goes into the books the accountant keeps. Left out it
+   * means yes, which is what every bill written before the flag existed meant;
+   * an edit that does not mention it leaves the bill as the counter marked it.
+   */
+  accounted?: boolean;
 }
 
 /**
@@ -224,6 +230,7 @@ export async function createInvoiceWithItems(
         // Written so the bill knows what has already come back on it — without
         // this a single sale could be returned again and again.
         sourceInvoiceId: header.sourceInvoiceId ?? null,
+        accounted: header.accounted ?? true,
       })
       .returning();
 
@@ -359,6 +366,7 @@ export async function updateInvoiceWithItems(
         ? newBuyer?.state ?? null
         : existing.placeOfSupply;
   const dueDate = header.dueDate !== undefined ? header.dueDate : existing.dueDate;
+  const accounted = header.accounted !== undefined ? header.accounted : existing.accounted;
 
   const taxMode: TaxMode = header.taxMode ?? existing.taxMode;
   const { lines: computed, totals } = computeTotals(
@@ -406,6 +414,7 @@ export async function updateInvoiceWithItems(
 
         dueDate,
         placeOfSupply,
+        accounted,
       })
       .where(eq(invoices.id, id));
 
@@ -500,6 +509,9 @@ export async function convertToInvoice(id: number): Promise<Invoice> {
       // just because the customer has since moved.
       placeOfSupply: source.placeOfSupply,
       sourceInvoiceId: source.id,
+      // A quotation the shop kept off its books becomes a bill it keeps off
+      // them too; the counter can still say otherwise on the bill itself.
+      accounted: source.accounted,
     },
     // No costPrice is passed on purpose: the create path takes a fresh snapshot
     // from the item, which is what the goods cost the shop today.
@@ -632,6 +644,7 @@ export async function listInvoicesWithParty(limit?: number): Promise<InvoiceWith
       placeOfSupply: invoices.placeOfSupply,
       roundOff: invoices.roundOff,
       sourceInvoiceId: invoices.sourceInvoiceId,
+      accounted: invoices.accounted,
       createdAt: invoices.createdAt,
       partyName: parties.name,
     })

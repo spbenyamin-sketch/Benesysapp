@@ -78,6 +78,7 @@ function invoice(over: Partial<Invoice> = {}): Invoice {
     placeOfSupply: null,
     roundOff: 0,
     sourceInvoiceId: null,
+    accounted: true,
     createdAt: '2026-04-10T00:00:00.000Z',
     ...over,
   };
@@ -94,6 +95,7 @@ function payment(over: Partial<Payment> = {}): Payment {
     accountId: null,
     date: '2026-04-11',
     notes: null,
+    accounted: true,
     createdAt: '2026-04-11T00:00:00.000Z',
     ...over,
   };

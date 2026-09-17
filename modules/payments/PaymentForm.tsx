@@ -10,6 +10,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import BooksToggle from '@/components/BooksToggle';
 import Button from '@/components/Button';
 import PickerField, { type PickerOption } from '@/components/PickerField';
 import TextField from '@/components/TextField';
@@ -68,6 +69,8 @@ export default function PaymentForm({
   const [accountId, setAccountId] = useState<number | null>(null);
   const [date, setDate] = useState(todayISO());
   const [notes, setNotes] = useState('');
+  // In the books unless said otherwise — see components/BooksToggle.
+  const [accounted, setAccounted] = useState(true);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -211,6 +214,7 @@ export default function PaymentForm({
         accountId,
         date,
         notes: notes.trim() || null,
+        accounted,
       });
       router.back();
     } catch (e) {
@@ -326,6 +330,8 @@ export default function PaymentForm({
           autoCapitalize="none"
         />
         <TextField label="Notes" value={notes} onChangeText={setNotes} placeholder="Optional" multiline />
+
+        <BooksToggle value={accounted} onChange={setAccounted} />
 
         <Button label="Record payment" onPress={save} loading={saving} style={styles.save} />
       </ScrollView>

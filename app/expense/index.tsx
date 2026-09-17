@@ -7,6 +7,7 @@ import {
   listExpenses,
   summariseExpenses,
 } from '@/modules/expenses/service';
+import { NotInBooks } from '@/components/BooksToggle';
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
 import { formatDate, formatMoney, formatTaxRate } from '@/utils/format';
 import { financialYear } from '@/utils/invoiceNumber';
@@ -132,6 +133,7 @@ export default function ExpensesScreen() {
                 {formatDate(item.date)}
                 {item.taxRate > 0 ? ` · ${formatTaxRate(item.taxRate)} GST` : ''}
                 {item.notes ? ` · ${item.notes}` : ''}
+                {item.accounted ? null : <NotInBooks inline />}
               </Text>
             </View>
             <Text style={styles.amount}>−{formatMoney(item.amount)}</Text>

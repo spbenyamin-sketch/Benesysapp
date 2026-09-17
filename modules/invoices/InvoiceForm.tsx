@@ -12,6 +12,7 @@ import {
   View,
 } from 'react-native';
 import BarcodeScanner from '@/components/BarcodeScanner';
+import BooksToggle from '@/components/BooksToggle';
 import Button from '@/components/Button';
 import PickerField, { type PickerOption } from '@/components/PickerField';
 import {
@@ -188,6 +189,8 @@ export default function InvoiceForm({
   const [saving, setSaving] = useState(false);
   const [lineSeq, setLineSeq] = useState(0);
   const [taxMode, setTaxMode] = useState<TaxMode>('exclusive');
+  // In the books unless the counter says otherwise — see components/BooksToggle.
+  const [accounted, setAccounted] = useState(true);
   const [scanning, setScanning] = useState(false);
   // Bumped to re-arm the scanner after a code that matched nothing. It locks
   // itself on its first read — a packet held in front of the lens would
@@ -244,6 +247,9 @@ export default function InvoiceForm({
       if (!active || !source) return;
       setPartyId(source.invoice.partyId);
       setTaxMode(source.invoice.taxMode);
+      // A credit note against an off-books sale belongs off the books too, and
+      // an edit must not quietly put a bill back into them.
+      setAccounted(source.invoice.accounted);
       if (isEdit) {
         setDate(source.invoice.date);
         // Correcting a bill must not quietly drop the credit it was given.
@@ -472,7 +478,7 @@ export default function InvoiceForm({
       const inv = isEdit
         ? await updateInvoiceWithItems(
             editInvoiceId,
-            { partyId, date, discount, discountPercent, taxMode, dueDate: due },
+            { partyId, date, discount, discountPercent, taxMode, dueDate: due, accounted },
             parsedLines,
           )
         : await createInvoiceWithItems(
@@ -490,6 +496,7 @@ export default function InvoiceForm({
               // The bill this gives back, so it can never be given back twice
               // without the shop being told.
               sourceInvoiceId: isReturn ? sourceInvoiceId ?? null : null,
+              accounted,
             },
             parsedLines,
           );
@@ -814,6 +821,8 @@ export default function InvoiceForm({
             <Text style={styles.miniHint}>= {formatMoney(totals.discount)} off this bill</Text>
           ) : null}
         </View>
+
+        <BooksToggle value={accounted} onChange={setAccounted} />
 
         <View style={styles.taxModeRow}>
           {(['exclusive', 'inclusive'] as TaxMode[]).map((mode) => (

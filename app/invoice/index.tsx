@@ -1,6 +1,7 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { NotInBooks } from '@/components/BooksToggle';
 import DateRange, { defaultRange } from '@/components/DateRange';
 import { daysOverdue, isOverdue } from '@/modules/invoices/due';
 import { listInvoicesWithParty, type InvoiceWithParty } from '@/modules/invoices/service';
@@ -179,6 +180,7 @@ export default function InvoiceListScreen() {
               </Text>
               <Text style={styles.rowSub}>
                 {item.partyName} · {formatDate(item.date)}
+                {item.accounted ? null : <NotInBooks inline />}
               </Text>
             </View>
             <View style={styles.rowRight}>

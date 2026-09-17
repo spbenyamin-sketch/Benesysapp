@@ -7,6 +7,7 @@ import {
   paymentDirection,
   type PaymentWithParty,
 } from '@/modules/payments/service';
+import { NotInBooks } from '@/components/BooksToggle';
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
 import { formatDate, formatMoney } from '@/utils/format';
 
@@ -124,6 +125,7 @@ export default function PaymentsScreen() {
                 <Text style={styles.sub}>
                   {formatDate(item.date)} · {item.mode.toUpperCase()}
                   {item.invoiceNo ? ` · ${item.invoiceNo}` : ' · On-account'}
+                  {item.accounted ? null : <NotInBooks inline />}
                 </Text>
               </View>
               <View style={styles.rowRight}>

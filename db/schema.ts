@@ -104,6 +104,11 @@ export const invoices = sqliteTable('invoices', {
   taxMode: text('tax_mode', { enum: ['exclusive', 'inclusive'] })
     .notNull()
     .default('exclusive'),
+  // Whether this goes into the books the accountant keeps. Everything does by
+  // default — a shop that never thinks about it exports everything — but a row
+  // marked otherwise stays out of the Tally export and out of the GST return,
+  // while every one of the shop's own reports still counts it.
+  accounted: integer('accounted', { mode: 'boolean' }).notNull().default(true),
   createdAt: createdAt(),
 });
 
@@ -152,6 +157,8 @@ export const payments = sqliteTable('payments', {
   accountId: integer('account_id').references(() => bankAccounts.id),
   date: text('date').notNull(), // ISO 'YYYY-MM-DD'
   notes: text('notes'),
+  // In the books, or kept out of them — see invoices.accounted.
+  accounted: integer('accounted', { mode: 'boolean' }).notNull().default(true),
   createdAt: createdAt(),
 });
 
@@ -166,6 +173,8 @@ export const expenses = sqliteTable('expenses', {
   accountId: integer('account_id').references(() => bankAccounts.id),
   date: text('date').notNull(), // ISO 'YYYY-MM-DD'
   notes: text('notes'),
+  // In the books, or kept out of them — see invoices.accounted.
+  accounted: integer('accounted', { mode: 'boolean' }).notNull().default(true),
   createdAt: createdAt(),
 });
 

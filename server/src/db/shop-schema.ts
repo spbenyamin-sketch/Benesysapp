@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { bigint, integer, pgTable, text } from 'drizzle-orm/pg-core';
+import { bigint, boolean, integer, pgTable, text } from 'drizzle-orm/pg-core';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // The Postgres twin of the app's db/schema.ts — ONE SHOP's books.
@@ -89,6 +89,7 @@ export const invoices = pgTable('invoices', {
   taxMode: text('tax_mode', { enum: ['exclusive', 'inclusive'] })
     .notNull()
     .default('exclusive'),
+  accounted: boolean('accounted').notNull().default(true),
   createdAt: createdAt(),
 });
 
@@ -122,6 +123,7 @@ export const payments = pgTable('payments', {
   accountId: integer('account_id').references(() => bankAccounts.id),
   date: text('date').notNull(),
   notes: text('notes'),
+  accounted: boolean('accounted').notNull().default(true),
   createdAt: createdAt(),
 });
 
@@ -133,6 +135,7 @@ export const expenses = pgTable('expenses', {
   accountId: integer('account_id').references(() => bankAccounts.id),
   date: text('date').notNull(),
   notes: text('notes'),
+  accounted: boolean('accounted').notNull().default(true),
   createdAt: createdAt(),
 });
 

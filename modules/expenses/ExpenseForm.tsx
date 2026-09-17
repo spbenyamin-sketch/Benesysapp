@@ -10,6 +10,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import BooksToggle from '@/components/BooksToggle';
 import Button from '@/components/Button';
 import SelectField from '@/components/SelectField';
 import TextField from '@/components/TextField';
@@ -51,6 +52,9 @@ export default function ExpenseForm({ expense }: { expense?: Expense }) {
   const [taxRate, setTaxRate] = useState(expense ? expense.taxRate : 0);
   const [date, setDate] = useState(expense?.date ?? todayISO());
   const [notes, setNotes] = useState(expense?.notes ?? '');
+  // In the books unless said otherwise — see components/BooksToggle. An edit
+  // starts from what the expense already says, never from the default.
+  const [accounted, setAccounted] = useState(expense?.accounted ?? true);
   // Which account the money left. Hidden until the shop has any — see AccountPicker.
   const [accountId, setAccountId] = useState<number | null>(expense?.accountId ?? null);
   const [saving, setSaving] = useState(false);
@@ -77,6 +81,7 @@ export default function ExpenseForm({ expense }: { expense?: Expense }) {
         accountId,
         date,
         notes: notes.trim() || null,
+        accounted,
       };
       if (expense) await updateExpense(expense.id, data);
       else await createExpense(data);
@@ -211,6 +216,8 @@ export default function ExpenseForm({ expense }: { expense?: Expense }) {
           autoCapitalize="none"
         />
         <TextField label="Notes" value={notes} onChangeText={setNotes} placeholder="Optional" multiline />
+
+        <BooksToggle value={accounted} onChange={setAccounted} />
 
         <Button
           label={editing ? 'Save changes' : 'Add expense'}

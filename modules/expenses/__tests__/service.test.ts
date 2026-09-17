@@ -16,6 +16,7 @@ function expense(over: Partial<Expense> = {}): Expense {
     accountId: null,
     date: '2026-08-01',
     notes: null,
+    accounted: true,
     createdAt: '2026-08-01T00:00:00.000Z',
     ...over,
   };

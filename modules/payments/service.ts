@@ -112,6 +112,7 @@ export async function listPaymentsWithParty(limit?: number): Promise<PaymentWith
       accountId: payments.accountId,
       date: payments.date,
       notes: payments.notes,
+      accounted: payments.accounted,
       createdAt: payments.createdAt,
       partyName: parties.name,
       partyType: parties.type,

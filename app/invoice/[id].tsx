@@ -1,6 +1,7 @@
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { NotInBooks } from '@/components/BooksToggle';
 import Button from '@/components/Button';
 import {
   convertToInvoice,
@@ -298,8 +299,13 @@ export default function InvoiceDetailScreen() {
         <View style={styles.headerCard}>
           <View style={styles.headerTop}>
             <Text style={styles.typeLabel}>{TYPE_LABEL[invoice.type]}</Text>
-            <View style={[styles.badge, { backgroundColor: statusTone }]}>
-              <Text style={styles.badgeText}>{invoice.paymentStatus.toUpperCase()}</Text>
+            <View style={styles.headerRight}>
+              {/* Kept out of the accountant's books — said here because it is
+                  the one thing about this bill that is not on the printed copy. */}
+              {invoice.accounted ? null : <NotInBooks />}
+              <View style={[styles.badge, { backgroundColor: statusTone }]}>
+                <Text style={styles.badgeText}>{invoice.paymentStatus.toUpperCase()}</Text>
+              </View>
             </View>
           </View>
           <Text style={styles.invoiceNo}>{invoice.invoiceNo}</Text>
@@ -518,6 +524,7 @@ const styles = StyleSheet.create({
   container: { padding: 16, gap: 16, paddingBottom: 40 },
   headerCard: { backgroundColor: '#f4f8fe', borderRadius: 14, padding: 18, gap: 4 },
   headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   typeLabel: { fontSize: 13, color: '#666', fontWeight: '600' },
   badge: { borderRadius: 20, paddingHorizontal: 10, paddingVertical: 3 },
   badgeText: { color: '#fff', fontSize: 11, fontWeight: '700' },
