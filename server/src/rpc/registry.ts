@@ -13,6 +13,7 @@ import * as payments from '@/modules/payments/service';
 import * as pos from '@/modules/pos/service';
 import * as reports from '@/modules/reports/service';
 import * as settings from '@/modules/settings/service';
+import * as tally from '@/modules/tally/service';
 
 export type RpcFunction = (...args: any[]) => Promise<unknown>;
 
@@ -114,5 +115,9 @@ export const registry: Record<string, Record<string, RpcFunction>> = {
     setVoiceLang: settings.setVoiceLang,
     getVoiceSpeak: settings.getVoiceSpeak,
     setVoiceSpeak: settings.setVoiceSpeak,
+  },
+  tally: {
+    loadTallyExport: tally.loadTallyExport,
+    countLeftOut: tally.countLeftOut,
   },
 };

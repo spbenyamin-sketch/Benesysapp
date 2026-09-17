@@ -31,6 +31,7 @@ const MODULES = [
   'pos',
   'reports',
   'settings',
+  'tally',
 ];
 
 function asyncFunctionsOf(moduleName) {

@@ -47,6 +47,12 @@ const REPORTS: { href: Href; emoji: string; title: string; sub: string }[] = [
     sub: 'Output vs input tax, and the GSTR-1 file for your CA',
   },
   {
+    href: '/report/tally',
+    emoji: '📤',
+    title: 'Tally Export',
+    sub: 'One file your accountant imports straight into Tally',
+  },
+  {
     href: '/account',
     emoji: '🏦',
     title: 'Cash & Bank',
