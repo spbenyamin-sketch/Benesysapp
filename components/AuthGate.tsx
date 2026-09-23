@@ -25,6 +25,7 @@ import {
   getAccount,
   isRegistered,
   isSignedIn,
+  resetPasswordWithDeviceLock,
   signIn,
   signUp,
   type Account,
@@ -155,6 +156,9 @@ function AccountScreen({
   onSwitch: () => void;
 }) {
   const signingUp = mode === 'signup';
+  // Forgotten the password: the same two fields, proved with the phone's lock
+  // instead of the old password.
+  const [resetting, setResetting] = useState(false);
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -195,6 +199,30 @@ function AccountScreen({
     }
   };
 
+  /**
+   * Prove the phone, set the new password, and walk straight in — somebody who
+   * has just been locked out of their own till should not have to type it again.
+   */
+  const resetAndEnter = async () => {
+    setError(null);
+    setNotice(null);
+    if (password !== confirm) {
+      setError('Passwords do not match.');
+      return;
+    }
+    setBusy(true);
+    try {
+      await resetPasswordWithDeviceLock(password);
+      const acc = await getAccount();
+      if (!acc) throw new Error('No account on this device yet.');
+      onDone(await signIn(acc.username, password));
+    } catch (e) {
+      setError((e as Error)?.message ?? String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const offerRestore = (acc: Account) => {
     setBusy(false);
     Alert.alert(
@@ -218,11 +246,15 @@ function AccountScreen({
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled">
         <Image source={require('@/assets/images/icon.png')} style={styles.brand} />
-        <Text style={styles.title}>{signingUp ? 'Create your account' : 'Welcome back'}</Text>
+        <Text style={styles.title}>
+          {resetting ? 'Set a new password' : signingUp ? 'Create your account' : 'Welcome back'}
+        </Text>
         <Text style={styles.subtle}>
-          {signingUp
-            ? 'Your login stays on this phone — there is no server. Your data can be backed up to your own Google Drive.'
-            : 'Sign in to open your shop data.'}
+          {resetting
+            ? 'Nobody can email you a reset — nothing leaves this phone. Instead the phone itself will ask for your fingerprint, PIN or pattern, and then you choose a new password.'
+            : signingUp
+              ? 'Your login stays on this phone — there is no server. Your data can be backed up to your own Google Drive.'
+              : 'Sign in to open your shop data.'}
         </Text>
 
         {signingUp ? (
@@ -237,17 +269,19 @@ function AccountScreen({
           />
         ) : null}
 
-        <TextField
-          label={signingUp ? 'Username' : 'Username or email'}
-          value={username}
-          onChangeText={setUsername}
-          placeholder={signingUp ? 'shopowner' : 'shopowner'}
-          autoCapitalize="none"
-          required
-        />
+        {resetting ? null : (
+          <TextField
+            label={signingUp ? 'Username' : 'Username or email'}
+            value={username}
+            onChangeText={setUsername}
+            placeholder="shopowner"
+            autoCapitalize="none"
+            required
+          />
+        )}
 
         <TextField
-          label="Password"
+          label={resetting ? 'New password' : 'Password'}
           value={password}
           onChangeText={setPassword}
           placeholder="••••••"
@@ -256,7 +290,7 @@ function AccountScreen({
           required
         />
 
-        {signingUp ? (
+        {signingUp || resetting ? (
           <TextField
             label="Confirm password"
             value={confirm}
@@ -272,17 +306,43 @@ function AccountScreen({
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
         <Button
-          label={signingUp ? 'Create account' : 'Sign in'}
-          onPress={submit}
+          label={
+            resetting
+              ? '🔒  Check phone lock & save'
+              : signingUp
+                ? 'Create account'
+                : 'Sign in'
+          }
+          onPress={resetting ? resetAndEnter : submit}
           loading={busy}
           style={styles.wide}
         />
 
+        {/* Only offered where it is the answer: on the sign-in screen, to
+            somebody who is already locked out. */}
+        {!signingUp ? (
+          <Pressable
+            onPress={() => {
+              setResetting(!resetting);
+              setError(null);
+              setNotice(null);
+              setPassword('');
+              setConfirm('');
+            }}
+            hitSlop={8}
+          >
+            <Text style={styles.switch}>
+              {resetting ? 'Back to sign in' : 'Forgot your password?'}
+            </Text>
+          </Pressable>
+        ) : null}
+
         {signingUp ? (
           <>
             <Text style={styles.warn}>
-              There is no “forgot password” — nothing leaves this phone, so nobody can reset it for
-              you. Write it down somewhere safe.
+              Nothing leaves this phone, so nobody can email you a reset. If you forget it, the
+              phone’s own fingerprint or PIN can set a new one — so keep a screen lock on this
+              phone, and write the password down somewhere safe anyway.
             </Text>
 
             {/* The reinstall path: the phone's data is gone but Drive still has
@@ -296,11 +356,13 @@ function AccountScreen({
           </>
         ) : null}
 
-        <Pressable onPress={onSwitch} hitSlop={8}>
-          <Text style={styles.switch}>
-            {signingUp ? 'Already have an account? Sign in' : 'Create a new account instead'}
-          </Text>
-        </Pressable>
+        {resetting ? null : (
+          <Pressable onPress={onSwitch} hitSlop={8}>
+            <Text style={styles.switch}>
+              {signingUp ? 'Already have an account? Sign in' : 'Create a new account instead'}
+            </Text>
+          </Pressable>
+        )}
       </ScrollView>
 
       <DriveRestorePicker

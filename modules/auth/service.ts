@@ -8,6 +8,7 @@
 
 import * as Crypto from 'expo-crypto';
 import * as SecureStore from 'expo-secure-store';
+import { getLockCapability, promptUnlock } from './lock';
 
 const K_EMAIL = 'auth.email';
 const K_USERNAME = 'auth.username';
@@ -144,6 +145,38 @@ export async function changePassword(current: string, next: string): Promise<voi
   await Promise.all([
     SecureStore.setItemAsync(K_SALT, nextSalt),
     SecureStore.setItemAsync(K_HASH, await derive(next, nextSalt)),
+  ]);
+}
+
+/**
+ * Forgotten password. There is no server to email a link, and the hash cannot be
+ * reversed, so the only proof available offline is the phone's own screen lock —
+ * the same fingerprint/PIN the app lock already trusts. Whoever can unlock this
+ * phone can already open its gallery and its WhatsApp; letting them set a new
+ * billing password is not a new key, it is the one they already hold.
+ *
+ * Nothing is reset if the prompt is cancelled or nothing is enrolled: the caller
+ * is told what to do instead, which is restoring a backup onto a fresh install.
+ */
+export async function resetPasswordWithDeviceLock(next: string): Promise<void> {
+  const problem = validatePassword(next);
+  if (problem) throw new Error(problem);
+  if (!(await SecureStore.getItemAsync(K_HASH))) {
+    throw new Error('No account on this device yet.');
+  }
+
+  const { enrolled } = await getLockCapability();
+  if (!enrolled) {
+    throw new Error(
+      'This phone has no fingerprint, PIN or pattern set, so there is no way to prove the phone is yours. Set a screen lock in the phone’s own settings and try again.',
+    );
+  }
+  if (!(await promptUnlock())) throw new Error('Phone lock check failed — password not changed.');
+
+  const salt = randomSalt();
+  await Promise.all([
+    SecureStore.setItemAsync(K_SALT, salt),
+    SecureStore.setItemAsync(K_HASH, await derive(next, salt)),
   ]);
 }
 

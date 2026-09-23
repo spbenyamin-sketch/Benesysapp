@@ -106,6 +106,34 @@ Adding a screen means adding it to `SCREENS`, giving it a tab in
 `app/(tabs)/_layout.tsx`, and a path prefix in `PATH_SCREEN` so the guard knows
 what belongs to it.
 
+## A forgotten password
+
+A staff member who forgets theirs asks the owner, who sets a new one in
+**Settings → People**. An owner has nobody above them, and there is no mail
+server here to send a link through — so the answer is the computer holding the
+books:
+
+```
+reset-password.bat        (next to start-web.bat — double-click it)
+```
+
+It lists the accounts on this server, asks which one and what the new password
+should be, sets it, and deletes that person's sessions so a browser still signed
+in as them has to sign in again. Nothing else in the database is touched.
+
+Sitting at that computer is already enough to read every bill in Postgres, so
+this gives away nothing new; without it, a shop that mistyped its own password on
+day one would lose its books. The same reasoning as `start-web.bat` holding the
+database password in a file beside it. `server/src/tools/reset-password.ts` is
+the tool itself — it hashes with the server's own `hashPassword`, so a password
+set here is a password the API will accept.
+
+On the phone there is no server at all: the app's own sign-in screen offers
+**Forgot your password?**, which asks the phone for its fingerprint/PIN and then
+takes a new one (`resetPasswordWithDeviceLock` in `modules/auth/service.ts`). A
+phone with no screen lock set has no way to prove itself, and the way back there
+is a fresh install restored from the Drive backup.
+
 ## Tests
 
 `npm test` runs against the database in `server/.env.test`, which it **wipes first**.

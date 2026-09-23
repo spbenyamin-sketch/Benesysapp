@@ -67,6 +67,7 @@ function SignInScreen({ mode, onSwitch }: { mode: 'login' | 'register'; onSwitch
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [forgot, setForgot] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const submit = async () => {
@@ -154,6 +155,23 @@ function SignInScreen({ mode, onSwitch }: { mode: 'login' | 'register'; onSwitch
 
         <Button label={registering ? 'Register shop' : 'Sign in'} onPress={submit} loading={busy} style={styles.wide} />
 
+        {/* There is no mail server to send a reset link through, so the honest
+            answer is where to go: the owner resets staff in the app, and the
+            computer holding the books resets the owner. */}
+        {registering ? null : (
+          <Pressable onPress={() => setForgot(!forgot)} hitSlop={8}>
+            <Text style={styles.switch}>Forgot your password?</Text>
+          </Pressable>
+        )}
+        {forgot && !registering ? (
+          <Text style={styles.forgot}>
+            Staff: ask the shop owner — they set it in Settings → People.{'\n\n'}
+            Owner: on the computer that runs the books, double-click{' '}
+            <Text style={styles.code}>reset-password.bat</Text> (next to start-web.bat). It asks
+            which account and what the new password should be.
+          </Text>
+        ) : null}
+
         <Pressable onPress={onSwitch} hitSlop={8}>
           <Text style={styles.switch}>
             {registering ? 'Already have an account? Sign in' : 'New shop? Register it here'}
@@ -184,4 +202,6 @@ const styles = StyleSheet.create({
   wide: { alignSelf: 'stretch', marginTop: 6 },
   narrow: { minWidth: 200 },
   switch: { color: '#208AEF', fontSize: 14, textAlign: 'center', fontWeight: '600', marginTop: 4 },
+  forgot: { fontSize: 13, color: '#555', lineHeight: 19, backgroundColor: '#f4f8fe', borderRadius: 10, padding: 12 },
+  code: { fontWeight: '700', color: '#111' },
 });
