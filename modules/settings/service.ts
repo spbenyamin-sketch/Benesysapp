@@ -124,3 +124,16 @@ export async function getVoiceSpeak(): Promise<boolean> {
 export async function setVoiceSpeak(on: boolean): Promise<void> {
   await setSetting(VOICE_SPEAK_KEY, on ? '1' : '0');
 }
+
+// Voice off takes the floating mic off every screen. A shop that bills with its
+// thumbs should not have to work around a button it never asked for; on is still
+// the default, because the feature is only discovered by seeing it.
+export const VOICE_ON_KEY = 'voice_on'; // '0' = mic hidden, voice off
+
+export async function getVoiceOn(): Promise<boolean> {
+  return (await getSetting(VOICE_ON_KEY)) !== '0';
+}
+
+export async function setVoiceOn(on: boolean): Promise<void> {
+  await setSetting(VOICE_ON_KEY, on ? '1' : '0');
+}

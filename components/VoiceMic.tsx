@@ -50,6 +50,7 @@ export default function VoiceMic() {
     status,
     lang,
     speakBack,
+    enabled,
     helpOpen,
     setHelpOpen,
     changeLang,
@@ -95,6 +96,9 @@ export default function VoiceMic() {
 
   return (
     <>
+      {/* Voice off hides the button, not this component: Settings still opens the
+          "What can I say?" sheet below, which is how a shop finds voice again. */}
+      {enabled ? (
       <View pointerEvents="box-none" style={[styles.layer, { bottom }]}>
         {bubble ? (
           <View style={[styles.bubble, status.error ? styles.bubbleError : null]}>
@@ -121,6 +125,7 @@ export default function VoiceMic() {
           </Pressable>
         </View>
       </View>
+      ) : null}
 
       <Modal visible={menuOpen} animationType="slide" transparent onRequestClose={() => setMenuOpen(false)}>
         <Pressable style={styles.backdrop} onPress={() => setMenuOpen(false)}>

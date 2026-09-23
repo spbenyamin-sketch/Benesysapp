@@ -16,7 +16,14 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { getVoiceLang, getVoiceSpeak, setVoiceLang, setVoiceSpeak } from '@/modules/settings/service';
+import {
+  getVoiceLang,
+  getVoiceOn,
+  getVoiceSpeak,
+  setVoiceLang,
+  setVoiceOn,
+  setVoiceSpeak,
+} from '@/modules/settings/service';
 import { parseTranscript } from './parser';
 import { isFailureMessage, openedScreen, t } from './phrases';
 import {
@@ -40,9 +47,12 @@ interface VoiceContextValue {
   status: VoiceStatus;
   lang: VoiceLang;
   speakBack: boolean;
+  /** False also while the stored setting is still being read. */
+  enabled: boolean;
   helpOpen: boolean;
   changeLang: (lang: VoiceLang) => void;
   changeSpeakBack: (on: boolean) => void;
+  changeEnabled: (on: boolean) => void;
   setHelpOpen: (open: boolean) => void;
   toggleListening: () => void;
   /** Show (and optionally speak) a line of feedback under the mic. */
@@ -96,6 +106,9 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<VoiceStatus>(IDLE);
   const [lang, setLang] = useState<VoiceLang>('ta-IN');
   const [speakBack, setSpeakBack] = useState(true);
+  // Unknown until the stored answer arrives. The mic stays hidden meanwhile, so
+  // a shop that turned it off never sees it flash back on at every launch.
+  const [enabled, setEnabled] = useState<boolean | undefined>(undefined);
   const [helpOpen, setHelpOpen] = useState(false);
 
   const stack = useRef<Registration[]>([]);
@@ -126,10 +139,11 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let active = true;
-    Promise.all([getVoiceLang(), getVoiceSpeak()]).then(([l, s]) => {
+    Promise.all([getVoiceLang(), getVoiceSpeak(), getVoiceOn()]).then(([l, s, on]) => {
       if (!active) return;
       setLang(l);
       setSpeakBack(s);
+      setEnabled(on);
       langRef.current = l;
       speakRef.current = s;
     });
@@ -408,6 +422,19 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     void setVoiceSpeak(on);
   }, []);
 
+  const changeEnabled = useCallback(
+    (on: boolean) => {
+      setEnabled(on);
+      // Switching it off cannot leave the microphone open behind a hidden button.
+      if (!on) {
+        stop();
+        stopSpeaking();
+      }
+      void setVoiceOn(on);
+    },
+    [stop],
+  );
+
   // Hand the global handler the latest setters (see settingsRef above).
   useEffect(() => {
     settingsRef.current = { setLang: changeLang, setSpeak: changeSpeakBack };
@@ -429,16 +456,31 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       status,
       lang,
       speakBack,
+      enabled: enabled === true,
       helpOpen,
       changeLang,
       changeSpeakBack,
+      changeEnabled,
       setHelpOpen,
       toggleListening,
       say,
       register,
       unregister,
     }),
-    [status, lang, speakBack, helpOpen, changeLang, changeSpeakBack, toggleListening, say, register, unregister],
+    [
+      status,
+      lang,
+      speakBack,
+      enabled,
+      helpOpen,
+      changeLang,
+      changeSpeakBack,
+      changeEnabled,
+      toggleListening,
+      say,
+      register,
+      unregister,
+    ],
   );
 
   return <VoiceCtx.Provider value={value}>{children}</VoiceCtx.Provider>;

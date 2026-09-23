@@ -115,6 +115,8 @@ export const registry: Record<string, Record<string, RpcFunction>> = {
     setVoiceLang: settings.setVoiceLang,
     getVoiceSpeak: settings.getVoiceSpeak,
     setVoiceSpeak: settings.setVoiceSpeak,
+    getVoiceOn: settings.getVoiceOn,
+    setVoiceOn: settings.setVoiceOn,
   },
   tally: {
     loadTallyExport: tally.loadTallyExport,

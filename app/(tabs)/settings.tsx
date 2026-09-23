@@ -112,7 +112,8 @@ export default function SettingsScreen() {
   const [showClientId, setShowClientId] = useState(false);
   const [driveBusy, setDriveBusy] = useState(false);
   const [drivePicker, setDrivePicker] = useState(false);
-  const { status, lang, speakBack, changeLang, changeSpeakBack, setHelpOpen } = useVoice();
+  const { status, lang, speakBack, enabled, changeLang, changeSpeakBack, changeEnabled, setHelpOpen } =
+    useVoice();
 
   // Voice: every button and field on this screen — "பேக்அப்", "லாக் ஆன்",
   // "ஜிஎஸ்டின் 33ABC…", "பெயர் பென்சிஸ்", "சேமி", "சைன் அவுட்".
@@ -455,6 +456,23 @@ export default function SettingsScreen() {
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+        {/* Signing out used to be at the bottom of a long page, past backups and
+            the licence. It is the one thing on here somebody may need in a hurry
+            — on a shared counter machine especially — so it opens the page. */}
+        <View style={styles.accountBar}>
+          <View style={styles.accountWho}>
+            <Text style={styles.accountName} numberOfLines={1}>
+              {account?.username ?? 'Signed in'}
+            </Text>
+            <Text style={styles.accountHint} numberOfLines={1}>
+              {isWeb ? 'This shop’s online books' : 'This phone’s books'}
+            </Text>
+          </View>
+          <Pressable style={styles.signOutBtn} onPress={doSignOut}>
+            <Text style={styles.signOutText}>Sign out</Text>
+          </Pressable>
+        </View>
+
         <Text style={styles.sectionTitle}>Business profile</Text>
         <Text style={styles.sectionHint}>Shown on the invoice PDFs you share.</Text>
         <TextField label="Business name" value={name} onChangeText={setName} placeholder="My Business" />
@@ -588,11 +606,25 @@ export default function SettingsScreen() {
         {isWeb ? null : (
         <>
         <Text style={styles.sectionTitle}>Voice commands — குரல் கட்டளை</Text>
+        <View style={styles.optionRow}>
+          <Pressable
+            style={[styles.option, enabled && styles.optionOn]}
+            onPress={() => changeEnabled(!enabled)}
+          >
+            <Text style={[styles.optionText, enabled && styles.optionTextOn]}>
+              {enabled ? '🎙  Mic button on' : '🚫  Mic button hidden'}
+            </Text>
+          </Pressable>
+        </View>
         <Text style={styles.sectionHint}>
-          {status.available
-            ? 'Tap the 🎙 button on any screen and speak. Say “உதவி” / “help” for the full list.'
-            : 'Not available in Expo Go — the microphone needs the development build. See VOICE-SETUP.md.'}
+          {!enabled
+            ? 'The floating mic is off every screen. Turn it back on here whenever you want it.'
+            : status.available
+              ? 'Tap the 🎙 button on any screen and speak. Say “உதவி” / “help” for the full list.'
+              : 'Not available in Expo Go — the microphone needs the development build. See VOICE-SETUP.md.'}
         </Text>
+        {enabled ? (
+        <>
         <View style={styles.optionRow}>
           {(['ta-IN', 'en-IN'] as VoiceLang[]).map((l) => (
             <Pressable
@@ -622,6 +654,8 @@ export default function SettingsScreen() {
           onPress={() => setHelpOpen(true)}
           style={styles.save}
         />
+        </>
+        ) : null}
 
         <View style={styles.divider} />
 
@@ -645,7 +679,6 @@ export default function SettingsScreen() {
                 {'\n'}Signed in to this shop’s online books.
               </Text>
             ) : null}
-            <Button label="Sign out" tone="ghost" onPress={doSignOut} style={styles.save} />
 
             <View style={styles.divider} />
 
@@ -675,7 +708,6 @@ export default function SettingsScreen() {
             ? 'Asks for your phone’s fingerprint/PIN when the app opens and each time you come back to it.'
             : 'Set a fingerprint, PIN or pattern on your phone first to use this.'}
         </Text>
-        <Button label="Sign out" tone="ghost" onPress={doSignOut} style={styles.save} />
 
         <View style={styles.divider} />
 
@@ -919,6 +951,26 @@ const styles = StyleSheet.create({
   brandImage: { width: '100%', height: '100%' },
   brandAdd: { color: '#208AEF', fontWeight: '600', fontSize: 14 },
   brandRemove: { color: '#c0392b', fontWeight: '600', fontSize: 12 },
+  accountBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#f4f8fe',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+  },
+  accountWho: { flex: 1 },
+  accountName: { fontSize: 15, fontWeight: '700', color: '#111' },
+  accountHint: { fontSize: 12, color: '#888', marginTop: 2 },
+  signOutBtn: {
+    borderWidth: 1,
+    borderColor: '#c0392b',
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+  },
+  signOutText: { color: '#c0392b', fontWeight: '700', fontSize: 14 },
   sectionTitle: { fontSize: 17, fontWeight: '700', color: '#111' },
   subTitle: { fontSize: 15, fontWeight: '700', color: '#333', marginTop: 6 },
   sectionHint: { fontSize: 12, color: '#888', marginTop: -8 },

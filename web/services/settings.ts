@@ -22,3 +22,5 @@ export const getVoiceLang: typeof local.getVoiceLang = rpc('settings', 'getVoice
 export const setVoiceLang: typeof local.setVoiceLang = rpc('settings', 'setVoiceLang');
 export const getVoiceSpeak: typeof local.getVoiceSpeak = rpc('settings', 'getVoiceSpeak');
 export const setVoiceSpeak: typeof local.setVoiceSpeak = rpc('settings', 'setVoiceSpeak');
+export const getVoiceOn: typeof local.getVoiceOn = rpc('settings', 'getVoiceOn');
+export const setVoiceOn: typeof local.setVoiceOn = rpc('settings', 'setVoiceOn');
