@@ -121,6 +121,14 @@ It lists the accounts on this server, asks which one and what the new password
 should be, sets it, and deletes that person's sessions so a browser still signed
 in as them has to sign in again. Nothing else in the database is touched.
 
+It then restarts the server through pm2, and that part is not tidiness. Five
+wrong guesses lock a name out for fifteen minutes (`MAX_FAILURES` in
+`server/src/auth/service.ts`), and that count lives in the server process's
+memory, where no database tool can reach it. Somebody who has forgotten their
+password has usually collected the lock on the way here, so without the restart
+the new password would be refused too, with a message about waiting — which
+reads exactly like the reset not having worked.
+
 Sitting at that computer is already enough to read every bill in Postgres, so
 this gives away nothing new; without it, a shop that mistyped its own password on
 day one would lose its books. The same reasoning as `start-web.bat` holding the

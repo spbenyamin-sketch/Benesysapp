@@ -47,7 +47,20 @@ popd
 
 if not "%RC%"=="0" (
   echo  Nothing was changed.
+  goto :done
 )
+
+rem Five wrong guesses lock that name out for 15 minutes, and the server keeps
+rem that count in its own memory - so somebody who forgot their password has
+rem usually earned the lock before they get here, and a new password alone would
+rem still be refused. Restarting the server forgets the count.
+call pm2 -v >nul 2>nul
+if errorlevel 1 goto :done
+call pm2 restart benesys-billing >nul 2>nul
+if errorlevel 1 goto :done
+echo  The server was restarted, so any "try again in 15 minutes" is cleared too.
+
+:done
 
 echo.
 pause
