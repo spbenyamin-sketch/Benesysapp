@@ -457,8 +457,11 @@ export default function SettingsScreen() {
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
         {/* Signing out used to be at the bottom of a long page, past backups and
-            the licence. It is the one thing on here somebody may need in a hurry
-            — on a shared counter machine especially — so it opens the page. */}
+            the licence. It is the one thing on here somebody may need in a hurry,
+            so it opens the page instead. Online mode has it in the corner of
+            every page already (components/HeaderSignOut.web.tsx), so there it
+            would only be the same button twice. */}
+        {isWeb ? null : (
         <View style={styles.accountBar}>
           <View style={styles.accountWho}>
             <Text style={styles.accountName} numberOfLines={1}>
@@ -472,6 +475,7 @@ export default function SettingsScreen() {
             <Text style={styles.signOutText}>Sign out</Text>
           </Pressable>
         </View>
+        )}
 
         <Text style={styles.sectionTitle}>Business profile</Text>
         <Text style={styles.sectionHint}>Shown on the invoice PDFs you share.</Text>

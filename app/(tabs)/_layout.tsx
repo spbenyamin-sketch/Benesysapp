@@ -1,5 +1,6 @@
 import { Tabs } from 'expo-router';
 import { Text, type ColorValue } from 'react-native';
+import HeaderSignOut from '@/components/HeaderSignOut';
 import { useAllowedScreens } from '@/modules/auth/allowed';
 import { SCREEN_LABEL, SCREENS, type Screen } from '@/modules/auth/screens';
 
@@ -30,6 +31,8 @@ export default function TabsLayout() {
         headerShown: true,
         tabBarActiveTintColor: '#208AEF',
         tabBarInactiveTintColor: '#999',
+        // Nothing at all on the phone — see components/HeaderSignOut.tsx.
+        headerRight: () => <HeaderSignOut />,
       }}
     >
       {SCREENS.map((screen) => (
