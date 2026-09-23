@@ -1,5 +1,5 @@
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -9,13 +9,45 @@ import {
   Text,
   View,
 } from 'react-native';
+import DateRange from '@/components/DateRange';
 import { deleteParty } from '@/modules/parties/service';
-import { getPartyLedger, type LedgerEntry, type PartyLedger } from '@/modules/parties/ledger';
+import {
+  getPartyLedger,
+  type LedgerEntry,
+  type LedgerRange,
+  type PartyLedger,
+} from '@/modules/parties/ledger';
 import { sendWhatsAppReminder } from '@/modules/parties/reminder';
 import { sharePartyStatement } from '@/modules/parties/statement';
 import { getSetting } from '@/modules/settings/service';
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
 import { balanceSummary, formatDate, formatMoney } from '@/utils/format';
+import { financialYear } from '@/utils/invoiceNumber';
+
+/** Only a whole date filters; a half-typed "2026-0" would hide everything. */
+const isDay = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value);
+
+function monthStart(now: Date): string {
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+}
+
+type Period = 'month' | 'year' | 'all';
+
+const PERIODS: { kind: Period; label: string }[] = [
+  { kind: 'month', label: 'This month' },
+  { kind: 'year', label: 'This year' },
+  { kind: 'all', label: 'All' },
+];
+
+/** Which chip the typed dates happen to match, if any. */
+function periodOf(from: string, to: string): Period | 'custom' {
+  if (!from && !to) return 'all';
+  const now = new Date();
+  if (to !== now.toISOString().slice(0, 10)) return 'custom';
+  if (from === monthStart(now)) return 'month';
+  if (from === financialYear(now).start) return 'year';
+  return 'custom';
+}
 
 export default function PartyLedgerScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -24,14 +56,33 @@ export default function PartyLedgerScreen() {
   const { lang } = useVoice();
   const [ledger, setLedger] = useState<PartyLedger | null | undefined>(undefined);
   const [busy, setBusy] = useState<'remind' | 'statement' | null>(null);
+  // Blank both ends = the whole account, which is what opening a party means.
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+
+  const range = useMemo<LedgerRange | undefined>(() => {
+    const picked = { from: isDay(from) ? from : '', to: isDay(to) ? to : '' };
+    return picked.from || picked.to ? picked : undefined;
+  }, [from, to]);
+
+  const setPeriod = (kind: 'month' | 'year' | 'all') => {
+    if (kind === 'all') {
+      setFrom('');
+      setTo('');
+      return;
+    }
+    const now = new Date();
+    setFrom(kind === 'month' ? monthStart(now) : financialYear(now).start);
+    setTo(now.toISOString().slice(0, 10));
+  };
 
   // Voice: "மொத்தம்" reads the balance out · "பேமெண்ட்" opens the payment screen
   // already pointed at this party · "எடிட்" / "டெலிட்" the header buttons.
   useVoiceCommands((intent) => {
     if (!ledger) return false;
     if (intent.kind === 'total') {
-      const { label } = balanceSummary(ledger.balance);
-      return `${label} ${formatMoney(Math.abs(ledger.balance))}`;
+      const { label } = balanceSummary(ledger.outstanding);
+      return `${label} ${formatMoney(Math.abs(ledger.outstanding))}`;
     }
     if (intent.kind === 'navigate' && intent.target === 'newPayment') {
       router.push({ pathname: '/payment/new', params: { partyId } });
@@ -56,13 +107,13 @@ export default function PartyLedgerScreen() {
   useFocusEffect(
     useCallback(() => {
       let active = true;
-      getPartyLedger(partyId).then((l) => {
+      getPartyLedger(partyId, range).then((l) => {
         if (active) setLedger(l ?? null);
       });
       return () => {
         active = false;
       };
-    }, [partyId]),
+    }, [partyId, range]),
   );
 
   /**
@@ -76,7 +127,7 @@ export default function PartyLedgerScreen() {
     try {
       const businessName = (await getSetting('business_name')) || 'My Business';
       const result = await sendWhatsAppReminder(ledger.party, {
-        balance: ledger.balance,
+        balance: ledger.outstanding,
         businessName,
         lang,
       });
@@ -140,8 +191,9 @@ export default function PartyLedgerScreen() {
     );
   }
 
-  const { party, entries, balance } = ledger;
-  const summary = balanceSummary(balance);
+  const { party, entries, balance, outstanding } = ledger;
+  const summary = balanceSummary(outstanding);
+  const activePeriod = periodOf(from, to);
 
   return (
     <>
@@ -165,9 +217,11 @@ export default function PartyLedgerScreen() {
         ListHeaderComponent={
           <View style={styles.header}>
             <View style={styles.balanceCard}>
-              <Text style={styles.balanceLabel}>{balance === 0 ? 'Settled' : summary.label}</Text>
+              <Text style={styles.balanceLabel}>
+                {outstanding === 0 ? 'Settled' : summary.label}
+              </Text>
               <Text style={[styles.balanceAmount, { color: summary.toneColor }]}>
-                {formatMoney(Math.abs(balance))}
+                {formatMoney(Math.abs(outstanding))}
               </Text>
             </View>
 
@@ -182,7 +236,7 @@ export default function PartyLedgerScreen() {
 
             <View style={styles.actionRow}>
               {/* Only worth offering to someone who actually owes money. */}
-              {balance > 0 ? (
+              {outstanding > 0 ? (
                 <Pressable
                   style={[styles.actionBtn, busy === 'remind' && styles.actionBusy]}
                   onPress={remind}
@@ -212,13 +266,49 @@ export default function PartyLedgerScreen() {
             </View>
 
             <Text style={styles.sectionTitle}>Ledger</Text>
+
+            <View style={styles.period}>
+              <View style={styles.periodRow}>
+                {PERIODS.map((p) => (
+                  <Pressable
+                    key={p.kind}
+                    style={[styles.chip, activePeriod === p.kind && styles.chipOn]}
+                    onPress={() => setPeriod(p.kind)}
+                  >
+                    <Text style={[styles.chipText, activePeriod === p.kind && styles.chipTextOn]}>
+                      {p.label}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+              <DateRange from={from} to={to} onFrom={setFrom} onTo={setTo} />
+              {range ? (
+                <Text style={styles.periodNote}>
+                  {range.from ? formatDate(range.from) : 'Start'} —{' '}
+                  {range.to ? formatDate(range.to) : 'Today'} · earlier entries are in the brought
+                  forward figure
+                </Text>
+              ) : null}
+            </View>
           </View>
         }
         renderItem={({ item }) => <LedgerRow entry={item} />}
         ListFooterComponent={
-          <Pressable style={styles.deleteBtn} onPress={confirmDelete}>
-            <Text style={styles.deleteText}>Delete party</Text>
-          </Pressable>
+          <>
+            {/* With a period on screen the card above is today's figure, so the
+                period's own closing has to be said somewhere. */}
+            {range ? (
+              <View style={styles.closingRow}>
+                <Text style={styles.closingLabel}>
+                  Closing on {range.to ? formatDate(range.to) : 'today'}
+                </Text>
+                <Text style={styles.closingValue}>{formatMoney(Math.abs(balance))}</Text>
+              </View>
+            ) : null}
+            <Pressable style={styles.deleteBtn} onPress={confirmDelete}>
+              <Text style={styles.deleteText}>Delete party</Text>
+            </Pressable>
+          </>
         }
       />
     </>
@@ -296,6 +386,19 @@ const styles = StyleSheet.create({
   detailLabel: { color: '#888', fontSize: 14 },
   detailValue: { color: '#111', fontSize: 14, fontWeight: '500', flex: 1, textAlign: 'right' },
   sectionTitle: { fontSize: 16, fontWeight: '700', color: '#111' },
+  period: { gap: 10 },
+  periodRow: { flexDirection: 'row', gap: 8 },
+  chip: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 999,
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+  },
+  chipOn: { borderColor: '#208AEF', backgroundColor: '#f4f8fe' },
+  chipText: { color: '#555', fontSize: 13, fontWeight: '600' },
+  chipTextOn: { color: '#208AEF' },
+  periodNote: { fontSize: 12, color: '#888', lineHeight: 17 },
   entryRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -310,6 +413,18 @@ const styles = StyleSheet.create({
   entryRight: { alignItems: 'flex-end', gap: 2 },
   entryDelta: { fontSize: 15, fontWeight: '600' },
   entryBalance: { fontSize: 12, color: '#999' },
+  closingRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginHorizontal: 16,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 2,
+    borderTopColor: '#111',
+  },
+  closingLabel: { fontSize: 14, fontWeight: '600', color: '#444' },
+  closingValue: { fontSize: 16, fontWeight: '700', color: '#111' },
   deleteBtn: { marginTop: 24, alignItems: 'center', padding: 12 },
   deleteText: { color: '#c0392b', fontWeight: '600', fontSize: 15 },
 });

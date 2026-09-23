@@ -27,10 +27,28 @@ export interface LedgerEntry {
   balance: number; // running balance after this entry
 }
 
+/**
+ * The period a ledger was asked for. Either end may be blank, which means "no
+ * limit that side" — a shop asking "what has this customer done since April"
+ * should not have to name today's date to get an answer.
+ */
+export interface LedgerRange {
+  from?: string; // ISO 'YYYY-MM-DD', inclusive
+  to?: string; // ISO 'YYYY-MM-DD', inclusive
+}
+
 export interface PartyLedger {
   party: Party;
   entries: LedgerEntry[];
+  /** Closing balance of the entries shown — the whole account when no period. */
   balance: number;
+  /**
+   * What the party owes today, whatever period is on screen. A statement can be
+   * asked for last April; a reminder must never quote last April's figure.
+   */
+  outstanding: number;
+  /** Set only when a period was asked for; the statement prints it. */
+  range?: LedgerRange;
 }
 
 export interface PartyWithBalance {
@@ -78,7 +96,13 @@ function paymentDelta(payment: Payment, party: Party): number {
   return paymentDirection(payment, party.type) === 'out' ? payment.amount : -payment.amount;
 }
 
-export async function getPartyLedger(partyId: number): Promise<PartyLedger | null> {
+/** Dates are stored as 'YYYY-MM-DD' rows and full ISO timestamps alike. */
+const day = (iso: string) => iso.slice(0, 10);
+
+export async function getPartyLedger(
+  partyId: number,
+  range?: LedgerRange,
+): Promise<PartyLedger | null> {
   const party = await getParty(partyId);
   if (!party) return null;
 
@@ -87,13 +111,8 @@ export async function getPartyLedger(partyId: number): Promise<PartyLedger | nul
     listPaymentsByParty(partyId),
   ]);
 
-  const opening: Omit<LedgerEntry, 'balance'> = {
-    key: 'opening',
-    date: party.createdAt,
-    kind: 'opening',
-    label: 'Opening balance',
-    delta: party.openingBalance,
-  };
+  const from = range?.from ?? '';
+  const to = range?.to ?? '';
 
   const txns: Omit<LedgerEntry, 'balance'>[] = [];
   for (const inv of invoices) {
@@ -121,13 +140,36 @@ export async function getPartyLedger(partyId: number): Promise<PartyLedger | nul
   // Opening stays first (it's the starting point); transactions run by date.
   txns.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 
+  // A period cannot simply hide the earlier rows: everything before it is what
+  // the party already owed on day one of the period, so it is folded into the
+  // opening figure. Cut them away instead and every running balance on the page
+  // would be wrong — which is exactly the argument a statement has to survive.
+  const before = from ? txns.filter((t) => day(t.date) < from) : [];
+  const within = txns.filter(
+    (t) => (!from || day(t.date) >= from) && (!to || day(t.date) <= to),
+  );
+
+  const opening: Omit<LedgerEntry, 'balance'> = {
+    key: 'opening',
+    date: from || party.createdAt,
+    kind: 'opening',
+    label: before.length ? 'Balance brought forward' : 'Opening balance',
+    delta: before.reduce((sum, t) => sum + t.delta, party.openingBalance),
+  };
+
   let running = 0;
-  const entries: LedgerEntry[] = [opening, ...txns].map((e) => {
+  const entries: LedgerEntry[] = [opening, ...within].map((e) => {
     running += e.delta;
     return { ...e, balance: running };
   });
 
-  return { party, entries, balance: running };
+  return {
+    party,
+    entries,
+    balance: running,
+    outstanding: txns.reduce((sum, t) => sum + t.delta, party.openingBalance),
+    ...(from || to ? { range: { from, to } } : {}),
+  };
 }
 
 // Balances for the whole party list in one pass — cheap for a single-user local DB.

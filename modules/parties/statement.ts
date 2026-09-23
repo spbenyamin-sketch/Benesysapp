@@ -33,12 +33,22 @@ function row(entry: LedgerEntry): string {
 function buildHtml(ledger: PartyLedger, biz: BusinessProfile, logo: string | null): string {
   const { party, entries, balance } = ledger;
   const summary = balanceSummary(balance);
-  // The period the statement actually covers, taken from the entries themselves
-  // rather than asked for — a statement of everything is what a shop means when
-  // it says "send the account".
+  // The period the statement covers. With no period asked for it is taken from
+  // the entries themselves — a statement of everything is what a shop means when
+  // it says "send the account". With one, the dates the shop chose are printed
+  // even where nothing happened on them, because a customer reading "1 Apr — 30
+  // Apr" must not have to guess whether a quiet week was left out.
   const dated = entries.filter((e) => e.date);
-  const first = dated.length ? formatDate(dated[0].date) : '';
-  const last = dated.length ? formatDate(dated[dated.length - 1].date) : '';
+  const first = ledger.range?.from
+    ? formatDate(ledger.range.from)
+    : dated.length
+      ? formatDate(dated[0].date)
+      : '';
+  const last = ledger.range?.to
+    ? formatDate(ledger.range.to)
+    : dated.length
+      ? formatDate(dated[dated.length - 1].date)
+      : '';
 
   const debitTotal = entries.reduce((s, e) => s + (e.delta > 0 ? e.delta : 0), 0);
   const creditTotal = entries.reduce((s, e) => s + (e.delta < 0 ? -e.delta : 0), 0);

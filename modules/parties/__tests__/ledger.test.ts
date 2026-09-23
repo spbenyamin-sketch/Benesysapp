@@ -223,6 +223,80 @@ describe('getPartyLedger', () => {
   });
 });
 
+// A period is a window on the same derivation, never a different one: what
+// happened before it is carried in, what happened after it is still what the
+// party owes today. Both are money a customer can argue about, so both are
+// pinned here.
+describe('getPartyLedger over a period', () => {
+  const threeMonths = () => {
+    mockGetParty.mockResolvedValue(party({ openingBalance: 1000 }));
+    mockListInvoicesByParty.mockResolvedValue([
+      invoice({ id: 1, date: '2026-04-10', grandTotal: 5000 }),
+      invoice({ id: 2, date: '2026-05-20', grandTotal: 2000 }),
+      invoice({ id: 3, date: '2026-06-05', grandTotal: 400 }),
+    ]);
+    mockListPaymentsByParty.mockResolvedValue([
+      payment({ id: 1, date: '2026-05-25', amount: 3000 }),
+    ]);
+  };
+
+  it('folds everything before the period into a brought forward figure', async () => {
+    threeMonths();
+    const ledger = await getPartyLedger(1, { from: '2026-05-01', to: '2026-05-31' });
+    expect(ledger?.entries[0]).toMatchObject({
+      kind: 'opening',
+      label: 'Balance brought forward',
+      date: '2026-05-01',
+      delta: 6000, // 1000 opening + April's 5000
+    });
+    // Brought forward, the May sale, the May payment — June is not here.
+    expect(ledger?.entries.map((e) => e.balance)).toEqual([6000, 8000, 5000]);
+    expect(ledger?.balance).toBe(5000);
+  });
+
+  it('still reports what the party owes today, whatever period is shown', async () => {
+    threeMonths();
+    const ledger = await getPartyLedger(1, { from: '2026-05-01', to: '2026-05-31' });
+    // A reminder quotes this, not the period's closing: June's bill is owed too.
+    expect(ledger?.outstanding).toBe(5400);
+  });
+
+  it('calls it an opening balance when nothing was folded in', async () => {
+    threeMonths();
+    const ledger = await getPartyLedger(1, { from: '2026-01-01', to: '2026-04-30' });
+    expect(ledger?.entries[0]).toMatchObject({ label: 'Opening balance', delta: 1000 });
+    expect(ledger?.balance).toBe(6000);
+  });
+
+  it('takes an open end as no limit that side', async () => {
+    threeMonths();
+    const fromOnly = await getPartyLedger(1, { from: '2026-06-01' });
+    expect(fromOnly?.entries.map((e) => e.delta)).toEqual([5000, 400]);
+    expect(fromOnly?.balance).toBe(5400);
+
+    const toOnly = await getPartyLedger(1, { to: '2026-04-30' });
+    expect(toOnly?.entries.map((e) => e.delta)).toEqual([1000, 5000]);
+    expect(toOnly?.balance).toBe(6000);
+  });
+
+  it('records the period asked for, and nothing when none was', async () => {
+    threeMonths();
+    expect((await getPartyLedger(1, { from: '2026-05-01', to: '2026-05-31' }))?.range).toEqual({
+      from: '2026-05-01',
+      to: '2026-05-31',
+    });
+    expect((await getPartyLedger(1))?.range).toBeUndefined();
+  });
+
+  it('matches the whole account when the period covers everything', async () => {
+    threeMonths();
+    const all = await getPartyLedger(1);
+    const wide = await getPartyLedger(1, { from: '2020-01-01', to: '2030-12-31' });
+    expect(wide?.balance).toBe(all?.balance);
+    expect(wide?.entries).toHaveLength(all?.entries.length ?? 0);
+  });
+});
+
 describe('listPartiesWithBalance', () => {
   it('keeps each party on its own balance', async () => {
     const a = party({ id: 1, name: 'Rajesh', openingBalance: 1000 });
