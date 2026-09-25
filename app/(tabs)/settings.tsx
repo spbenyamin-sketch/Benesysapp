@@ -819,6 +819,10 @@ export default function SettingsScreen() {
           </>
         ) : (
           <>
+            <Text style={styles.driveWarn}>
+              ⚠ Right now every backup is only on this phone. If the phone is lost, broken or the
+              app is uninstalled, your bills go with it. Sign in once to keep a copy in Drive.
+            </Text>
             <Button
               label="Sign in with Google"
               onPress={connect}
@@ -934,6 +938,14 @@ function BrandImageField({
 }
 
 const styles = StyleSheet.create({
+  driveWarn: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: '#a8321e',
+    backgroundColor: '#fdeeea',
+    borderRadius: 10,
+    padding: 10,
+  },
   flex: { flex: 1, backgroundColor: '#fff' },
   container: { padding: 16, gap: 14, paddingBottom: 40 },
   brandRow: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },

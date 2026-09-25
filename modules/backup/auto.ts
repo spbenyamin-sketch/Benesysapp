@@ -58,7 +58,9 @@ export async function getAutoBackupConfig(): Promise<AutoBackupConfig> {
   ]);
   const n = Number(perDay);
   return {
-    enabled: auto === '1',
+    // Defaults ON: every run also uploads to Drive once an account is
+    // connected, and a shop that never opened Settings should still have one.
+    enabled: auto !== '0',
     perDay: (PER_DAY_CHOICES as readonly number[]).includes(n) ? (n as PerDay) : DEFAULT_PER_DAY,
     lastAt: lastAt ?? null,
     lastResult: lastResult ?? null,

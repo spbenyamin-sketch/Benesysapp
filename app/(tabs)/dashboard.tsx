@@ -1,6 +1,7 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { getDriveStatus } from '@/modules/backup/drive';
 import { listInvoicesWithParty, type InvoiceWithParty } from '@/modules/invoices/service';
 import { listPartiesWithBalance } from '@/modules/parties/ledger';
 import { stockSummary } from '@/modules/reports/service';
@@ -30,6 +31,10 @@ export default function DashboardScreen() {
   // Only ever shown when there IS something to buy — a shop with a full shelf
   // should see no more than it saw before this existed.
   const [reorderCount, setReorderCount] = useState(0);
+  // Until Drive is connected every backup stays on this phone, and a lost phone
+  // or an uninstall takes the books with it. Not in Online mode — the server
+  // holds those books.
+  const [driveMissing, setDriveMissing] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -64,6 +69,11 @@ export default function DashboardScreen() {
       stockSummary().then((s) => {
         if (active) setReorderCount(s.reorderCount);
       });
+      if (Platform.OS !== 'web') {
+        getDriveStatus()
+          .then((d) => active && setDriveMissing(d.configured && !d.connected))
+          .catch(() => {});
+      }
       return () => {
         active = false;
       };
@@ -153,6 +163,16 @@ export default function DashboardScreen() {
             <Kpi label="To collect" value={formatMoney(receivable)} tone="#1a9d5a" />
             <Kpi label="To pay" value={formatMoney(payable)} tone="#c0392b" />
           </View>
+
+          {driveMissing ? (
+            <Pressable style={styles.driveBanner} onPress={() => router.push('/settings')}>
+              <Text style={styles.driveTitle}>⚠ Your bills are only on this phone</Text>
+              <Text style={styles.driveText}>
+                If the phone is lost or the app is removed, they are gone. Sign in with Google in
+                Settings to keep a copy in your Drive ›
+              </Text>
+            </Pressable>
+          ) : null}
 
           {reorderCount > 0 ? (
             <Pressable style={styles.reorderBanner} onPress={() => router.push('/report/stock')}>
@@ -247,6 +267,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
   },
   reorderText: { fontSize: 14, fontWeight: '600', color: '#8a6d1f' },
+  driveBanner: {
+    borderWidth: 1,
+    borderColor: '#f3b4a8',
+    backgroundColor: '#fdeeea',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    gap: 4,
+  },
+  driveTitle: { fontSize: 14, fontWeight: '700', color: '#a8321e' },
+  driveText: { fontSize: 13, color: '#7a3b2e', lineHeight: 18 },
   sectionHead: {
     flexDirection: 'row',
     justifyContent: 'space-between',
