@@ -79,7 +79,26 @@ export default function LicenseGate({ children }: { children: ReactNode }) {
     };
   }, [phase]);
 
-  if (phase === 'pass') return <>{children}</>;
+  if (phase === 'pass') {
+    if (status?.state !== 'trial' || !session) return <>{children}</>;
+    // The trial works like a licence, so the only difference the shop sees is
+    // this strip — the days left, and for the owner a way to activate early.
+    return (
+      <View style={styles.flex}>
+        <View style={styles.trialBar}>
+          <Text style={styles.trialText}>
+            Free trial · {status.daysLeft} day{status.daysLeft === 1 ? '' : 's'} left
+          </Text>
+          {session.user.role === 'owner' ? (
+            <Pressable onPress={() => setPhase('blocked')} hitSlop={8}>
+              <Text style={styles.trialLink}>Enter licence</Text>
+            </Pressable>
+          ) : null}
+        </View>
+        <View style={styles.flex}>{children}</View>
+      </View>
+    );
+  }
 
   if (phase === 'checking' || !status) {
     return (
@@ -107,6 +126,16 @@ const HEADINGS: Record<string, { title: string; blurb: (status: LicenseStatus) =
     title: 'Activate this shop',
     blurb: () =>
       `Send the Server ID below to ${VENDOR}. You'll get a licence back over WhatsApp — paste it here and the shop opens.`,
+  },
+  trial: {
+    title: 'Activate this shop',
+    blurb: (s) =>
+      `The free trial has ${s.daysLeft} day${s.daysLeft === 1 ? '' : 's'} left. Send the Server ID below to ${VENDOR} — you'll get a licence back over WhatsApp. Paste it here.`,
+  },
+  trialOver: {
+    title: 'Free trial over',
+    blurb: () =>
+      `The 7-day free trial has ended. Send the Server ID below to ${VENDOR} for a licence, then paste it here — everything entered during the trial is kept.`,
   },
   expired: {
     title: 'Licence expired',
@@ -155,7 +184,8 @@ function LicenseScreen({
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  const heading = HEADINGS[status.state] ?? HEADINGS.unlicensed;
+  const key = status.state === 'expired' && status.trial ? 'trialOver' : status.state;
+  const heading = HEADINGS[key] ?? HEADINGS.unlicensed;
   // Over plain http to another device on the shop's network the browser withholds
   // the clipboard. The ID is selectable either way, so the button just goes.
   const canCopy = typeof navigator !== 'undefined' && !!navigator.clipboard;
@@ -255,6 +285,12 @@ function LicenseScreen({
           </Text>
         )}
 
+        {status.state === 'trial' ? (
+          <Pressable onPress={onRecheck} hitSlop={8}>
+            <Text style={styles.switch}>Back to the shop</Text>
+          </Pressable>
+        ) : null}
+
         <Pressable onPress={() => void signOut()} hitSlop={8}>
           <Text style={styles.switch}>Sign out</Text>
         </Pressable>
@@ -313,5 +349,16 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   wide: { alignSelf: 'stretch' },
+  trialBar: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 16,
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+    backgroundColor: '#fff4e5',
+  },
+  trialText: { fontSize: 13, color: '#8a5a00', fontWeight: '600' },
+  trialLink: { fontSize: 13, color: '#208AEF', fontWeight: '700' },
   switch: { color: '#208AEF', fontSize: 14, textAlign: 'center', fontWeight: '600', marginTop: 4 },
 });

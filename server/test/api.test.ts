@@ -99,18 +99,28 @@ describe('licensing this installation', () => {
     owner = (await register('Licence Holder', 'licenceholder')).data.token;
   });
 
-  it('refuses the shop’s own calls until the server is activated', async () => {
+  it('runs a fresh install as a 7-day free trial', async () => {
+    const res = await call('GET', '/api/license', { token: owner });
+    assert.equal(res.status, 200);
+    assert.equal(res.data.state, 'trial');
+    assert.equal(res.data.daysLeft, 6);
+    assert.equal((await rpc(owner, 'parties', 'listParties')).status, 200);
+  });
+
+  it('refuses the shop’s own calls once the trial has run out', async () => {
+    await pool.query(`update server_license set trial_start = '2020-01-01'`);
     const parties = await rpc(owner, 'parties', 'listParties');
     assert.equal(parties.status, 403);
-    assert.match(parties.data.error, /not been activated/);
-    // The people screen too — there is nothing to hire staff for yet.
+    assert.match(parties.data.error, /free trial ended/);
+    // The people screen too.
     assert.equal((await call('GET', '/api/users', { token: owner })).status, 403);
   });
 
-  it('shows an unactivated server the Server ID to send the vendor', async () => {
+  it('shows a lapsed trial the Server ID to send the vendor', async () => {
     const res = await call('GET', '/api/license', { token: owner });
     assert.equal(res.status, 200);
-    assert.equal(res.data.state, 'unlicensed');
+    assert.equal(res.data.state, 'expired');
+    assert.equal(res.data.trial, true);
     assert.match(res.data.systemId, /^SRV-[0-9A-F]{4}(-[0-9A-F]{4}){3}$/);
     serverId = res.data.systemId;
 

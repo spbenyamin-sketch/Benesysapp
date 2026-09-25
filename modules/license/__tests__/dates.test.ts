@@ -1,4 +1,5 @@
-import { dayNumber, daysBetween, groupFour, isValidDate, todayISO } from '@/modules/license/dates';
+import { addDays, dayNumber, daysBetween, groupFour, isValidDate, todayISO } from '@/modules/license/dates';
+import { evaluateTrial, isUsable } from '@/modules/license/status';
 
 // An off-by-one here is a shop locked out a day early, or a licence that runs a
 // day long. Both are worth a test.
@@ -66,5 +67,33 @@ describe('groupFour', () => {
   it('leaves a short remainder alone', () => {
     expect(groupFour('ABCDE')).toBe('ABCD-E');
     expect(groupFour('')).toBe('');
+  });
+});
+
+describe('addDays', () => {
+  it('moves across months and leap days', () => {
+    expect(addDays('2026-09-25', 6)).toBe('2026-10-01');
+    expect(addDays('2028-02-27', 2)).toBe('2028-02-29');
+    expect(addDays('2026-01-01', -1)).toBe('2025-12-31');
+  });
+});
+
+describe('evaluateTrial', () => {
+  const id = 'TEST-ID';
+
+  it('opens on the first and the seventh day', () => {
+    expect(evaluateTrial(id, '2026-09-01', '2026-09-01')).toMatchObject({ state: 'trial', daysLeft: 6, expiry: '2026-09-07' });
+    expect(evaluateTrial(id, '2026-09-01', '2026-09-07')).toMatchObject({ state: 'trial', daysLeft: 0 });
+    expect(isUsable(evaluateTrial(id, '2026-09-01', '2026-09-07'))).toBe(true);
+  });
+
+  it('locks on the eighth day', () => {
+    const s = evaluateTrial(id, '2026-09-01', '2026-09-08');
+    expect(s).toMatchObject({ state: 'expired', trial: true });
+    expect(isUsable(s)).toBe(false);
+  });
+
+  it('refuses a clock set before the trial began', () => {
+    expect(evaluateTrial(id, '2026-09-01', '2026-08-30').state).toBe('rolledBack');
   });
 });

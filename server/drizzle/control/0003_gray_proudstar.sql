@@ -1,0 +1,1 @@
+ALTER TABLE "server_license" ADD COLUMN "trial_start" text;

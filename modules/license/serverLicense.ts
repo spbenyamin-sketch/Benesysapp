@@ -29,7 +29,7 @@
 import { sha256 } from '@noble/hashes/sha2.js';
 import { daysBetween, groupFour, todayISO } from './dates';
 import { verifyLicense, type LicenseFile } from './licenseFile';
-import { WARN_DAYS, type LicenseStatus } from './status';
+import { WARN_DAYS, evaluateTrial, type LicenseStatus } from './status';
 
 /**
  * Server IDs wear a prefix so the vendor can tell at a glance which kind of
@@ -48,6 +48,8 @@ export interface ServerLicenseRow {
   license: string | null;
   /** ISO date of the last check, for the clock-rollback rule. */
   lastSeen: string | null;
+  /** ISO date the free trial began, or null before the first check stamps it. */
+  trialStart: string | null;
 }
 
 /** Test/verification seam — the real key is the one compiled into the app. */
@@ -79,10 +81,10 @@ export function evaluateServerLicense(row: ServerLicenseRow, options: Options = 
   const systemId = serverSystemId(row.seed);
   const today = options.today ?? todayISO();
 
-  if (!row.license) return { state: 'unlicensed', systemId };
+  if (!row.license) return trial(row, systemId, today);
 
   const check = verifyLicense(row.license, systemId, options.publicKeyHex, 'server');
-  if (!check.valid || !check.license) return { state: 'unlicensed', systemId };
+  if (!check.valid || !check.license) return trial(row, systemId, today);
 
   const { expiry, client } = check.license;
   const daysLeft = daysBetween(today, expiry);
@@ -96,6 +98,17 @@ export function evaluateServerLicense(row: ServerLicenseRow, options: Options = 
 
   if (daysLeft < 0) return { state: 'expired', systemId, expiry, client, daysLeft };
   return { state: daysLeft <= WARN_DAYS ? 'expiring' : 'active', systemId, expiry, client, daysLeft };
+}
+
+/**
+ * No licence yet: the install runs free for TRIAL_DAYS from its first check —
+ * the phone's rule, clock-rollback check included.
+ */
+function trial(row: ServerLicenseRow, systemId: string, today: string): LicenseStatus {
+  if (!row.trialStart) return { state: 'unlicensed', systemId };
+  const status = evaluateTrial(systemId, row.trialStart, today);
+  if (row.lastSeen && today < row.lastSeen) return { ...status, state: 'rolledBack' };
+  return status;
 }
 
 export interface ServerActivation {

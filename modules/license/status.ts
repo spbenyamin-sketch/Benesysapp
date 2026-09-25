@@ -6,10 +6,15 @@
 //
 // Pure: no SecureStore, no database, nothing platform-specific.
 
+import { addDays, daysBetween } from './dates';
+
 /** Warn the shop this many days out, so a renewal can be arranged in time. */
 export const WARN_DAYS = 7;
 
-export type LicenseState = 'unlicensed' | 'active' | 'expiring' | 'expired' | 'rolledBack';
+/** A fresh install runs this many days before it asks for a licence. */
+export const TRIAL_DAYS = 7;
+
+export type LicenseState = 'unlicensed' | 'trial' | 'active' | 'expiring' | 'expired' | 'rolledBack';
 
 export interface LicenseStatus {
   state: LicenseState;
@@ -20,9 +25,28 @@ export interface LicenseStatus {
   daysLeft?: number;
   /** Shop name the licence was issued to, when there is one. */
   client?: string;
+  /** True when the dates above belong to the free trial, not a licence. */
+  trial?: boolean;
 }
 
-/** True while the app is allowed to open. 'expiring' still works — it only warns. */
+/** True while the app is allowed to open. 'expiring' and 'trial' still work — they only warn. */
 export function isUsable(status: LicenseStatus): boolean {
-  return status.state === 'active' || status.state === 'expiring';
+  return status.state === 'active' || status.state === 'expiring' || status.state === 'trial';
+}
+
+/**
+ * Where a free trial that began on `start` stands on `today`.
+ *
+ * The start day counts as day one, so a 7-day trial begun on the 1st runs
+ * through the 7th and locks on the 8th. `expiry` is that last usable day, which
+ * makes `daysLeft` read exactly as it does for a real licence.
+ */
+export function evaluateTrial(systemId: string, start: string, today: string): LicenseStatus {
+  const expiry = addDays(start, TRIAL_DAYS - 1);
+  const daysLeft = daysBetween(today, expiry);
+  // A clock set before the trial began is the same trick as winding back past
+  // the last run — refuse it the same way.
+  if (today < start) return { state: 'rolledBack', systemId, expiry, daysLeft, trial: true };
+  if (daysLeft < 0) return { state: 'expired', systemId, expiry, daysLeft, trial: true };
+  return { state: 'trial', systemId, expiry, daysLeft, trial: true };
 }

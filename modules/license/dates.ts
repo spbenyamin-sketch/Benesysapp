@@ -44,3 +44,11 @@ export function todayISO(now: Date = new Date()): string {
 export function groupFour(text: string): string {
   return (text.match(/.{1,4}/g) ?? []).join('-');
 }
+
+/** `iso` moved `days` forward (or back, when negative), as ISO 'YYYY-MM-DD'. */
+export function addDays(iso: string, days: number): string {
+  const n = dayNumber(iso);
+  if (!Number.isFinite(n)) return iso;
+  const d = new Date(Date.UTC(2020, 0, 1) + (n + days) * 86400000);
+  return d.toISOString().slice(0, 10);
+}

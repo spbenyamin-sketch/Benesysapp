@@ -33,14 +33,20 @@ async function installRow() {
   // rather than raising, and both then read the same seed back.
   await control
     .insert(serverLicense)
-    .values({ id: ROW, seed: randomBytes(16).toString('hex') })
+    .values({ id: ROW, seed: randomBytes(16).toString('hex'), trialStart: todayISO() })
     .onConflictDoNothing();
   return read();
 }
 
 /** Where this server stands today, and the Server ID the owner sends the vendor. */
 export async function licenseStatus(): Promise<LicenseStatus> {
-  const row = await installRow();
+  let row = await installRow();
+  // Installs from before the trial existed have no start date; their trial
+  // begins the first time they are asked after the update.
+  if (!row.trialStart) {
+    await control.update(serverLicense).set({ trialStart: todayISO() }).where(eq(serverLicense.id, ROW));
+    row = await installRow();
+  }
   const status = evaluateServerLicense(row);
 
   // The rollback rule remembers the furthest date this server has ever seen, so
@@ -80,6 +86,9 @@ export async function installLicense(text: string): Promise<LicenseStatus> {
 
 /** What a refused API call is told — the same words the gate puts on screen. */
 export function licenseRefusal(status: LicenseStatus): string {
+  if (status.state === 'expired' && status.trial) {
+    return "This shop's 7-day free trial ended on " + status.expiry + '. Ask the owner to install its licence.';
+  }
   if (status.state === 'expired') {
     return `This shop's licence ran out on ${status.expiry}. Ask the owner to install a renewal.`;
   }

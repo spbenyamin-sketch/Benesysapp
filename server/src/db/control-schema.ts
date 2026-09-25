@@ -71,6 +71,9 @@ export const serverLicense = pgTable('server_license', {
   license: text('license'),
   // ISO date of the last check, for the clock-rollback rule.
   lastSeen: text('last_seen'),
+  // ISO date of the first check with no licence — day one of the free trial.
+  // Stamped once and never cleared, so a lapsed trial cannot be restarted.
+  trialStart: text('trial_start'),
   installedAt: timestamp('installed_at', { withTimezone: true }),
 });
 

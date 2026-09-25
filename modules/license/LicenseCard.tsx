@@ -35,7 +35,7 @@ export default function LicenseCard() {
     if (!status) return;
     void Share.share({
       message: `Billing App licence\n\nSystem ID: ${status.systemId}${
-        status.expiry ? `\nExpires: ${status.expiry}` : ''
+        status.expiry ? `\n${status.trial ? 'Trial ends' : 'Expires'}: ${status.expiry}` : ''
       }`,
     });
   };
@@ -86,7 +86,7 @@ export default function LicenseCard() {
       </View>
 
       <View style={styles.row}>
-        <Text style={styles.label}>Licence</Text>
+        <Text style={styles.label}>{status.trial ? 'Free trial' : 'Licence'}</Text>
         <Text style={[styles.value, warn && styles.warnText]}>
           {status.expiry
             ? `${formatDate(status.expiry)}${
@@ -109,8 +109,9 @@ export default function LicenseCard() {
 
       {warn ? (
         <Text style={styles.warnBanner}>
-          Ask your vendor for a renewal file before this runs out — the app stops opening on the
-          expiry date.
+          {status.trial
+            ? 'Ask your vendor for a licence before the trial ends — the app stops opening after the last day. Your data is kept.'
+            : 'Ask your vendor for a renewal file before this runs out — the app stops opening on the expiry date.'}
         </Text>
       ) : null}
 

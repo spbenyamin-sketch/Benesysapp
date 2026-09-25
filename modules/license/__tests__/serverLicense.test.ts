@@ -79,10 +79,13 @@ describe('serverSystemId', () => {
 });
 
 describe('evaluateServerLicense', () => {
-  const row = (over: { license?: string | null; lastSeen?: string | null } = {}) => ({
+  const row = (
+    over: { license?: string | null; lastSeen?: string | null; trialStart?: string | null } = {},
+  ) => ({
     seed: SEED,
     license: null,
     lastSeen: null,
+    trialStart: null,
     ...over,
   });
 
@@ -91,6 +94,34 @@ describe('evaluateServerLicense', () => {
     expect(status.state).toBe('unlicensed');
     expect(status.systemId).toBe(serverSystemId(SEED));
     expect(status.expiry).toBeUndefined();
+  });
+
+  it('runs a 7-day trial from its first check, then locks', () => {
+    expect(evaluateServerLicense(row({ trialStart: TODAY }), opts)).toMatchObject({
+      state: 'trial',
+      daysLeft: 6,
+      trial: true,
+    });
+    expect(evaluateServerLicense(row({ trialStart: isoIn(-6) }), opts).state).toBe('trial');
+    expect(evaluateServerLicense(row({ trialStart: isoIn(-7) }), opts)).toMatchObject({
+      state: 'expired',
+      trial: true,
+    });
+  });
+
+  it('refuses a trial whose clock was wound back', () => {
+    expect(evaluateServerLicense(row({ trialStart: isoIn(-2), lastSeen: isoIn(1) }), opts).state).toBe(
+      'rolledBack',
+    );
+  });
+
+  it('lets a licence take over from the trial', () => {
+    const status = evaluateServerLicense(
+      row({ trialStart: isoIn(-30), license: vendor.issue({ expiry: isoIn(90) }) }),
+      opts,
+    );
+    expect(status.state).toBe('active');
+    expect(status.trial).toBeUndefined();
   });
 
   it('is active with a licence for this server, and reports the days left', () => {

@@ -22,6 +22,13 @@
       "when": 1789558823831,
       "tag": "0002_curly_ares",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1790333079148,
+      "tag": "0003_gray_proudstar",
+      "breakpoints": true
     }
   ]
 }

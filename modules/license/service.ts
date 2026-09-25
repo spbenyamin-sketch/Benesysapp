@@ -5,19 +5,25 @@
 // and reloads every table, so a licence kept in the DB would be replaced by
 // whatever was in someone else's backup file.
 
+import { sql } from 'drizzle-orm';
 import * as SecureStore from 'expo-secure-store';
+import { db } from '@/db/client';
 import { daysBetween, todayISO } from './dates';
 import { getSystemId } from './device';
 import { verifyLicense, type LicenseFile } from './licenseFile';
-import { WARN_DAYS, isUsable, type LicenseState, type LicenseStatus } from './status';
+import { TRIAL_DAYS, WARN_DAYS, evaluateTrial, isUsable, type LicenseState, type LicenseStatus } from './status';
 
 const K_LICENSE = 'license.file';
 const K_LAST_RUN = 'license.lastRun';
+// Written once, on the first launch that finds no licence, and never cleared —
+// not even by clearLicense() — so a lapsed trial cannot be restarted from inside
+// the app.
+const K_TRIAL_START = 'license.trialStart';
 
 // The states, the warning threshold and "may it open" now live in ./status, so
 // Online mode's server-side licence cannot drift away from the phone's. Kept
 // exported from here because the screens have always imported them from here.
-export { WARN_DAYS, isUsable };
+export { TRIAL_DAYS, WARN_DAYS, isUsable };
 export type { LicenseState, LicenseStatus };
 
 /**
@@ -34,13 +40,13 @@ export async function checkLicense(): Promise<LicenseStatus> {
     SecureStore.getItemAsync(K_LAST_RUN),
   ]);
 
-  if (!stored) return { state: 'unlicensed', systemId };
+  if (!stored) return trial(systemId, lastRun);
 
   const check = verifyLicense(stored, systemId);
   if (!check.valid || !check.license) {
     // Either the phone changed or the stored file was edited. Treat it as never
     // having been activated — the client can import a licence for this device.
-    return { state: 'unlicensed', systemId };
+    return trial(systemId, lastRun);
   }
 
   const { expiry, client } = check.license;
@@ -64,6 +70,54 @@ export async function checkLicense(): Promise<LicenseStatus> {
     client,
     daysLeft,
   };
+}
+
+/**
+ * No licence yet: the app runs free for TRIAL_DAYS from its first launch, then
+ * asks for one. The clock-rollback rule applies here as it does to a licence.
+ */
+async function trial(systemId: string, lastRun: string | null): Promise<LicenseStatus> {
+  const today = todayISO();
+  const stored = await SecureStore.getItemAsync(K_TRIAL_START);
+  // A reinstall wipes the Keystore, so the stamp alone would hand out a fresh
+  // week to anyone who backs up, reinstalls and restores. The shop's own rows
+  // keep the day they were really created, so the trial starts no later than
+  // the oldest of them.
+  const oldest = oldestRecordDay();
+  let start = stored ?? today;
+  if (oldest && oldest < start) start = oldest;
+  if (start !== stored) await SecureStore.setItemAsync(K_TRIAL_START, start);
+
+  const status = evaluateTrial(systemId, start, today);
+  if (status.state !== 'rolledBack' && lastRun && today < lastRun) {
+    return { ...status, state: 'rolledBack' };
+  }
+  if (status.state !== 'rolledBack') await SecureStore.setItemAsync(K_LAST_RUN, today);
+  return status;
+}
+
+/**
+ * The local day the oldest shop record was created, or null on an empty shop.
+ * created_at is the database's own insert stamp — a restore keeps it, and no
+ * screen lets anyone type it — so it is the one date a backup cannot shed.
+ */
+function oldestRecordDay(): string | null {
+  try {
+    const row = db.get<{ first: string | null }>(sql`
+      select min(first) as first from (
+        select min(created_at) as first from parties
+        union all select min(created_at) from items
+        union all select min(created_at) from invoices
+        union all select min(created_at) from payments
+        union all select min(created_at) from expenses
+      )`);
+    if (!row?.first) return null;
+    const when = new Date(row.first);
+    return Number.isNaN(when.getTime()) ? null : todayISO(when);
+  } catch {
+    // An unreadable database says nothing about the trial either way.
+    return null;
+  }
 }
 
 export interface ActivationResult {

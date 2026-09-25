@@ -67,6 +67,11 @@ const HEADINGS: Record<string, { icon: string; title: string; blurb: string }> =
     title: 'Licence expired',
     blurb: `Your licence has run out. Send the System ID to ${VENDOR} for a renewal, then paste it below — your shop data is untouched and comes straight back.`,
   },
+  trialOver: {
+    icon: '⏳',
+    title: 'Free trial over',
+    blurb: `Your 7-day free trial has ended. Send the System ID below to ${VENDOR} for a licence, then paste it below — everything you entered during the trial is kept.`,
+  },
   rolledBack: {
     icon: '⚠️',
     title: "Phone's date was changed",
@@ -86,13 +91,14 @@ function ActivationScreen({
   const [busy, setBusy] = useState(false);
   const [pasted, setPasted] = useState('');
 
-  const heading = HEADINGS[status.state] ?? HEADINGS.unlicensed;
+  const key = status.state === 'expired' && status.trial ? 'trialOver' : status.state;
+  const heading = HEADINGS[key] ?? HEADINGS.unlicensed;
 
   const send = () => {
     void Share.share({
       message:
         `Billing App activation\n\nSystem ID: ${status.systemId}` +
-        (status.expiry ? `\nExpired on: ${status.expiry}` : ''),
+        (status.expiry ? `\n${status.trial ? 'Trial ended' : 'Expired'} on: ${status.expiry}` : ''),
     });
   };
 
