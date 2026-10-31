@@ -1,4 +1,5 @@
-// Online mode's gate: sign in to a shop on the server, or register a new shop.
+// Online mode's gate: sign in to the shop on the server, or — on a fresh install
+// only — register it.
 // Like the phone's AuthGate, nothing underneath is mounted until signed in.
 
 import { useEffect, useState, type ReactNode } from 'react';
@@ -6,6 +7,7 @@ import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View
 import Button from '@/components/Button';
 import TextField from '@/components/TextField';
 import {
+  canRegisterShop,
   checkSession,
   registerShop,
   signIn,
@@ -31,6 +33,23 @@ export default function AuthGate({ children }: { children: ReactNode }) {
       .catch(() => setPhase('offline'));
   }, [phase]);
 
+  // A server takes exactly one shop sign-up, on a fresh install. Until then the
+  // form opens on it; after that the link is not offered at all.
+  const [canRegister, setCanRegister] = useState(false);
+  const signingIn = phase === 'login' || phase === 'register';
+  useEffect(() => {
+    if (!signingIn) return;
+    let live = true;
+    canRegisterShop().then((yes) => {
+      if (!live) return;
+      setCanRegister(yes);
+      setPhase((p) => (yes && p === 'login' ? 'register' : !yes && p === 'register' ? 'login' : p));
+    });
+    return () => {
+      live = false;
+    };
+  }, [signingIn]);
+
   if (phase === 'ready') return <>{children}</>;
 
   if (phase === 'checking') {
@@ -54,12 +73,12 @@ export default function AuthGate({ children }: { children: ReactNode }) {
   return (
     <SignInScreen
       mode={phase}
-      onSwitch={() => setPhase(phase === 'login' ? 'register' : 'login')}
+      onSwitch={canRegister ? () => setPhase(phase === 'login' ? 'register' : 'login') : undefined}
     />
   );
 }
 
-function SignInScreen({ mode, onSwitch }: { mode: 'login' | 'register'; onSwitch: () => void }) {
+function SignInScreen({ mode, onSwitch }: { mode: 'login' | 'register'; onSwitch?: () => void }) {
   const registering = mode === 'register';
   const [shopName, setShopName] = useState('');
   const [email, setEmail] = useState('');
@@ -172,11 +191,13 @@ function SignInScreen({ mode, onSwitch }: { mode: 'login' | 'register'; onSwitch
           </Text>
         ) : null}
 
-        <Pressable onPress={onSwitch} hitSlop={8}>
-          <Text style={styles.switch}>
-            {registering ? 'Already have an account? Sign in' : 'New shop? Register it here'}
-          </Text>
-        </Pressable>
+        {onSwitch ? (
+          <Pressable onPress={onSwitch} hitSlop={8}>
+            <Text style={styles.switch}>
+              {registering ? 'Already have an account? Sign in' : 'New shop? Register it here'}
+            </Text>
+          </Pressable>
+        ) : null}
       </View>
     </ScrollView>
   );

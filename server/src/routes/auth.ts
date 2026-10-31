@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import {
+  canRegisterShop,
   changePassword,
   registerShop,
   signIn,
@@ -15,7 +16,11 @@ import {
 import { body, requireAuth, type AppEnv } from '../http/middleware';
 
 export const authRoutes = new Hono<AppEnv>()
-  // A new shop and its owner.
+  // Whether the sign-in page should offer "Register your shop" at all — only on
+  // a fresh install. Open to anyone: the answer is a yes or a no.
+  .get('/setup', async (c) => c.json({ canRegister: await canRegisterShop() }))
+
+  // A new shop and its owner. Refused once the server has one (auth/service.ts).
   .post('/register', async (c) => {
     const b = await body(c);
     const signedIn = await registerShop({

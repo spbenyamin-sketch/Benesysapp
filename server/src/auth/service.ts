@@ -72,20 +72,47 @@ async function openSession(userId: number): Promise<string> {
 
 // ── Shop sign-up ─────────────────────────────────────────────────────────────
 
+/** True until the first shop is registered on this server; never again after. */
+export async function canRegisterShop(): Promise<boolean> {
+  const [row] = await control.select({ id: shops.id }).from(shops).limit(1);
+  return !row;
+}
+
 /**
  * A new shop, its owner, and its empty books — all or nothing. A shop without
  * tables, or an owner without a shop, is never left behind by a failure halfway.
+ *
+ * One shop per server. The licence is bought for the install, and an open
+ * sign-up form on a port the whole shop network can reach would let anyone on
+ * it start a second, free set of books. So the form only works on a fresh
+ * install; after that, people are added by the owner under Settings → People.
+ * `anotherShop` is for code already running on the server, never for the API.
  */
-export async function registerShop(input: {
-  shopName: string;
-  username: string;
-  email: string;
-  password: string;
-  displayName: string | null;
-}): Promise<SignedIn> {
+export async function registerShop(
+  input: {
+    shopName: string;
+    username: string;
+    email: string;
+    password: string;
+    displayName: string | null;
+  },
+  opts: { anotherShop?: boolean } = {},
+): Promise<SignedIn> {
   const passwordHash = await hashPassword(input.password);
   const { shop, owner } = await control
     .transaction(async (tx) => {
+      // Two sign-ups racing on a fresh install: the second waits here, then sees
+      // the first one's shop and is refused, rather than both counting zero.
+      await tx.execute(sql`lock table ${shops} in share row exclusive mode`);
+      if (!opts.anotherShop) {
+        const [existing] = await tx.select({ id: shops.id }).from(shops).limit(1);
+        if (existing) {
+          throw new ApiError(
+            403,
+            'This server already has its shop. Ask the shop owner to add you under Settings → People.',
+          );
+        }
+      }
       const [shop] = await tx.insert(shops).values({ name: input.shopName }).returning();
       const [owner] = await tx
         .insert(users)

@@ -47,6 +47,18 @@ export async function getAccount(): Promise<Account | null> {
   return s ? toAccount(s) : null;
 }
 
+/**
+ * Whether this server still takes a shop sign-up — true only on a fresh install.
+ * A server that cannot be asked counts as no: the form would only be refused.
+ */
+export async function canRegisterShop(): Promise<boolean> {
+  try {
+    return (await request<{ canRegister: boolean }>('/api/auth/setup', { method: 'GET' })).canRegister;
+  } catch {
+    return false;
+  }
+}
+
 /** A new shop with this person as its owner. */
 export async function registerShop(input: {
   shopName: string;
