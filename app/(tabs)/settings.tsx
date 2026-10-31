@@ -14,6 +14,7 @@ import {
 import { Pressable } from 'react-native';
 import Button from '@/components/Button';
 import SelectField from '@/components/SelectField';
+import ServerBackupSection from '@/components/ServerBackupSection';
 import StaffSection from '@/components/StaffSection';
 import TextField from '@/components/TextField';
 import {
@@ -687,6 +688,7 @@ export default function SettingsScreen() {
             <View style={styles.divider} />
 
             <StaffSection />
+            <ServerBackupSection />
           </>
         ) : (
         <>

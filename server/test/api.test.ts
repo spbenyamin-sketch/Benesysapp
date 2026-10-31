@@ -7,6 +7,7 @@ import path from 'node:path';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { createParty } from '@/modules/parties/service';
 import { createApp } from '../src/app';
+import { registerShop } from '../src/auth/service';
 import { control, pool } from '../src/db/client';
 import { ApiError } from '../src/http/errors';
 import { inShop, requireAuth } from '../src/http/middleware';
@@ -45,6 +46,32 @@ const register = (shopName: string, username: string) =>
   call('POST', '/api/auth/register', {
     json: { shopName, username, email: `${username}@example.com`, password: 'owner-pass-1' },
   });
+
+/**
+ * A further shop on the same server. The API takes only the first sign-up (one
+ * shop per install), so the suites that need shops of their own — and the one
+ * proving two shops cannot see each other — make them in-process, the only way
+ * there is. Answers in the same shape as `register`.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- same as `call`'s parsed JSON
+async function registerAnother(shopName: string, username: string): Promise<{ status: number; data: any }> {
+  try {
+    const data = await registerShop(
+      {
+        shopName,
+        username: username.toLowerCase(),
+        email: `${username.toLowerCase()}@example.com`,
+        password: 'owner-pass-1',
+        displayName: null,
+      },
+      { anotherShop: true },
+    );
+    return { status: 201, data };
+  } catch (e) {
+    if (e instanceof ApiError) return { status: e.status, data: { error: e.message } };
+    throw e;
+  }
+}
 
 before(async () => {
   const shopSchemas = await pool.query<{ nspname: string }>(
@@ -96,6 +123,8 @@ describe('licensing this installation', () => {
           'tools/vendor-private-key.txt. Restore it from your backup (see LICENSE-SETUP.md).',
       );
     }
+    // The one sign-up this server will ever take through the API.
+    assert.deepEqual((await call('GET', '/api/auth/setup')).data, { canRegister: true });
     owner = (await register('Licence Holder', 'licenceholder')).data.token;
   });
 
@@ -196,8 +225,19 @@ describe('licensing this installation', () => {
 describe('shops and sign-in', () => {
   let ownerA = '';
 
+  it('takes no second shop sign-up once the server has its shop', async () => {
+    assert.deepEqual((await call('GET', '/api/auth/setup')).data, { canRegister: false });
+    const res = await register('Freeloader Stores', 'freeloader');
+    assert.equal(res.status, 403);
+    assert.match(res.data.error, /already has its shop/);
+    const tried = await call('POST', '/api/auth/login', {
+      json: { identifier: 'freeloader', password: 'owner-pass-1' },
+    });
+    assert.equal(tried.status, 401);
+  });
+
   it('registers a shop with its owner and signs them in', async () => {
-    const r = await register('Kannan Stores', 'Kannan');
+    const r = await registerAnother('Kannan Stores', 'Kannan');
     assert.equal(r.status, 201);
     assert.equal(r.data.user.username, 'kannan');
     assert.equal(r.data.user.role, 'owner');
@@ -210,7 +250,7 @@ describe('shops and sign-in', () => {
   });
 
   it('refuses a taken username, a weak password and a missing shop name', async () => {
-    assert.equal((await register('Other', 'kannan')).status, 409);
+    assert.equal((await registerAnother('Other', 'kannan')).status, 409);
     const weak = await call('POST', '/api/auth/register', {
       json: { shopName: 'X', username: 'weakling', email: 'w@example.com', password: 'short' },
     });
@@ -242,7 +282,7 @@ describe('shops and sign-in', () => {
   });
 
   it('locks an identifier out after repeated wrong passwords', async () => {
-    await register('Guess Shop', 'guessme');
+    await registerAnother('Guess Shop', 'guessme');
     const statuses: number[] = [];
     for (let i = 0; i < 6; i++) {
       statuses.push(
@@ -278,7 +318,7 @@ describe('the shop’s people', () => {
   let staffId = 0;
 
   before(async () => {
-    owner = (await register('Murugan Traders', 'murugan')).data.token;
+    owner = (await registerAnother('Murugan Traders', 'murugan')).data.token;
   });
 
   it('lets the owner add staff, who can bill but not manage people', async () => {
@@ -336,7 +376,7 @@ describe('the shop’s people', () => {
   });
 
   it('cannot touch another shop’s users', async () => {
-    const other = await register('Someone Else', 'someoneelse');
+    const other = await registerAnother('Someone Else', 'someoneelse');
     const res = await call('PATCH', `/api/users/${other.data.user.id}`, {
       token: owner,
       json: { active: false },
@@ -366,8 +406,8 @@ describe('the shop’s people', () => {
 
 describe('shop books', () => {
   it('keeps each shop’s parties to itself', async () => {
-    const a = (await register('Shop A', 'shopa')).data.token;
-    const b = (await register('Shop B', 'shopb')).data.token;
+    const a = (await registerAnother('Shop A', 'shopa')).data.token;
+    const b = (await registerAnother('Shop B', 'shopb')).data.token;
 
     const created = await rpc(a, 'parties', 'createParty', { name: 'Ravi', type: 'customer' });
     assert.equal(created.status, 200);
@@ -380,7 +420,7 @@ describe('shop books', () => {
   });
 
   it('undoes everything a failed request wrote', async () => {
-    const t = (await register('Rollback Shop', 'rollback')).data.token;
+    const t = (await registerAnother('Rollback Shop', 'rollback')).data.token;
     const res = await call('POST', '/api/test/write-then-fail', { token: t });
     assert.equal(res.status, 400);
     assert.equal(res.data.error, 'failed on purpose');
@@ -388,14 +428,14 @@ describe('shop books', () => {
   });
 
   it('runs only what the registry lists', async () => {
-    const t = (await register('Allowlist Shop', 'allowlist')).data.token;
+    const t = (await registerAnother('Allowlist Shop', 'allowlist')).data.token;
     assert.equal((await rpc(t, 'parties', 'constructor')).status, 404);
     assert.equal((await rpc(t, 'auth', 'signOut')).status, 404);
     assert.equal((await rpc(t, 'invoices', 'stockSign', 'sale')).status, 404);
   });
 
   it('answers a missing row as undefined, and shows the service’s own error text', async () => {
-    const t = (await register('Errors Shop', 'errors')).data.token;
+    const t = (await registerAnother('Errors Shop', 'errors')).data.token;
     const missing = await rpc(t, 'parties', 'getParty', 12345);
     assert.equal(missing.status, 200);
     assert.equal('result' in missing.data, false);
@@ -425,7 +465,7 @@ describe('bills on Postgres, through the app’s own invoice service', () => {
   const stockOf = async (id: number) => (await rpc(t, 'items', 'getItem', id)).data.result.currentStock;
 
   before(async () => {
-    t = (await register('Bill Shop', 'billshop')).data.token;
+    t = (await registerAnother('Bill Shop', 'billshop')).data.token;
     partyId = (await rpc(t, 'parties', 'createParty', { name: 'Ravi', type: 'customer' })).data.result.id;
   });
 
@@ -500,5 +540,37 @@ describe('bills on Postgres, through the app’s own invoice service', () => {
     const pays = (await rpc(t, 'payments', 'listPaymentsByInvoice', detail.invoice.id)).data.result;
     assert.equal(pays[0].mode, 'cash');
     assert.equal((await rpc(t, 'invoices', 'getInvoice', detail.invoice.id)).data.result.paymentStatus, 'paid');
+  });
+});
+
+describe('the server’s daily backup', () => {
+  let owner = '';
+  let staff = '';
+
+  before(async () => {
+    process.env.BACKUP_DIR = mkdtempSync(path.join(tmpdir(), 'benesys-backup-'));
+    owner = (await registerAnother('Backup Shop', 'backupowner')).data.token;
+    await call('POST', '/api/users', { token: owner, json: { username: 'backupstaff', password: 'staff-pass-1' } });
+    staff = (await call('POST', '/api/auth/login', { json: { identifier: 'backupstaff', password: 'staff-pass-1' } }))
+      .data.token;
+  });
+
+  it('shows the owner that nothing has been backed up yet, then takes one on request', async () => {
+    const before = await call('GET', '/api/backup', { token: owner });
+    assert.equal(before.status, 200);
+    assert.equal(before.data.latest, null);
+    assert.equal(before.data.dir, process.env.BACKUP_DIR);
+
+    const taken = await call('POST', '/api/backup', { token: owner });
+    assert.equal(taken.status, 200, JSON.stringify(taken.data));
+    assert.match(taken.data.latest.file, /^benesys_billing-\d{4}-\d{2}-\d{2}_\d{4}\.dump$/);
+    assert.ok(taken.data.latest.size > 1000);
+    assert.equal(taken.data.error, null);
+  });
+
+  it('is the owner’s alone, and nobody’s without signing in', async () => {
+    assert.equal((await call('GET', '/api/backup', { token: staff })).status, 403);
+    assert.equal((await call('POST', '/api/backup', { token: staff })).status, 403);
+    assert.equal((await call('GET', '/api/backup')).status, 401);
   });
 });

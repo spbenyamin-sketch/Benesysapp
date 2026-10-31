@@ -74,13 +74,15 @@ npm run dev                 # http://localhost:4747
 
 | Method | Path | Who |
 |---|---|---|
-| POST | `/api/auth/register` `{shopName, username, email, password}` | anyone — creates a shop + its owner |
+| GET | `/api/auth/setup` | anyone — `{canRegister}`, true only on a fresh install |
+| POST | `/api/auth/register` `{shopName, username, email, password}` | anyone, **once** — creates the server's one shop + its owner; 403 after that |
 | POST | `/api/auth/login` `{identifier, password}` | username or email |
 | POST | `/api/auth/logout` | signed in |
 | GET | `/api/auth/me` | signed in |
 | POST | `/api/auth/password` `{current, next}` | signed in — signs out other devices |
 | GET / POST | `/api/users` | owner |
 | PATCH | `/api/users/:id` `{displayName?, role?, active?, password?, screens?}` | owner |
+| GET / POST | `/api/backup` | owner — last backup / take one now |
 | GET | `/api/license` | signed in — this server's id and licence state |
 | POST | `/api/license` `{license}` | owner — installs a signed `.lic` (see LICENSE-SETUP.md) |
 | POST | `/api/rpc/:module/:fn` `{args, undef}` | signed in **and licensed** — the app's service functions (see `server/src/rpc/registry.ts`) |
@@ -105,6 +107,35 @@ put together without them.
 Adding a screen means adding it to `SCREENS`, giving it a tab in
 `app/(tabs)/_layout.tsx`, and a path prefix in `PATH_SCREEN` so the guard knows
 what belongs to it.
+
+## One shop per server
+
+`/api/auth/register` takes exactly one sign-up: the first, on a fresh install.
+After that it answers 403 and the sign-in page stops offering "Register your
+shop". The licence is bought for the install, and an open sign-up form on a port
+the whole shop network can reach let anyone start a second, free set of books.
+Everyone else is added by the owner under **Settings → People**.
+
+## Backups
+
+The server takes a `pg_dump` of its whole database every day it is switched on
+(`server/src/backup/pgDump.ts`) — checked two minutes after start and then
+hourly, by the age of the newest backup, because a shop computer is off at night
+and a 2 a.m. job would never run. It keeps the newest 30.
+
+- Folder: `DocumentsBenesys Billing Backups` of the Windows user pm2 runs as.
+  Deliberately outside the app folder, so replacing the app never takes the
+  backups with it. Set `BACKUP_DIR=...` in `server/.env` to point it at a
+  OneDrive / Google Drive folder or a pendrive — then they leave the computer too.
+- `BACKUP_KEEP=30` changes how many are kept. `BACKUP_DISABLED=1` turns it off.
+- **Settings → Server backup** (owner only) shows the last backup, warns when the
+  last try failed or none is newer than two days, and has **Back up now**.
+
+To put one back, double-click `restore-backup.bat`. It stops the server, lists
+the backups, asks which one and for a typed YES, takes one more backup of the
+books as they are now (`...before-restore-...dump`, never pruned), restores in a
+single transaction, runs the migrations and starts the server again. Picked the
+wrong day? Run it again and pick the before-restore one.
 
 ## A forgotten password
 
