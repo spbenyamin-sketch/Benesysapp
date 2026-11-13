@@ -11,6 +11,7 @@ import VoiceMic from '@/components/VoiceMic';
 import { VoiceProvider } from '@/modules/voice/VoiceProvider';
 import { useAutoBackup } from '@/modules/backup/useAutoBackup';
 import '@/web/installAlert';
+import { I18nProvider, LangRemount } from '@/i18n/I18nProvider';
 
 export default function RootLayout() {
   const { success, error } = useDbMigrations();
@@ -42,21 +43,25 @@ export default function RootLayout() {
   // Online mode it covers a screen this account was not given.
   return (
     <SafeAreaProvider>
-      <LicenseGate>
-        <AuthGate>
-          <VoiceProvider>
-            <AutoBackupRunner />
-            <ScreenGuard>
-              <Stack screenOptions={{ headerShown: false }}>
-                <Stack.Screen name="(tabs)" />
-              </Stack>
-            </ScreenGuard>
-            <VoiceMic />
-            <BackupOnExit />
-            <StatusBar style="auto" />
-          </VoiceProvider>
-        </AuthGate>
-      </LicenseGate>
+      <I18nProvider>
+        <LicenseGate>
+          <AuthGate>
+            <LangRemount>
+              <VoiceProvider>
+                <AutoBackupRunner />
+                <ScreenGuard>
+                  <Stack screenOptions={{ headerShown: false }}>
+                    <Stack.Screen name="(tabs)" />
+                  </Stack>
+                </ScreenGuard>
+                <VoiceMic />
+                <BackupOnExit />
+                <StatusBar style="auto" />
+              </VoiceProvider>
+            </LangRemount>
+          </AuthGate>
+        </LicenseGate>
+      </I18nProvider>
     </SafeAreaProvider>
   );
 }
