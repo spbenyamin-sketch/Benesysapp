@@ -21,6 +21,42 @@ const MODULE_SCREENS: Partial<Record<string, readonly Screen[]>> = {
   reports: ['reports', 'dashboard'],
 };
 
+/**
+ * What only an owner may do, whatever tabs a staff member was given. One table,
+ * on purpose. A counter person bills — creates and edits invoices, payments,
+ * parties, items, quick bills — but does not make records disappear or change
+ * how the shop presents itself. Deleting is the one action that can hide a sale
+ * that really happened; the settings are the shop's name, GSTIN, invoice prefix,
+ * logo, tax mode and print format.
+ *
+ * Not listed because they have their own owner-only routes: managing people
+ * (/api/users), the server backup (/api/backup) and the licence. There is no
+ * restore over the API at all — that is restore-backup.bat, at the server.
+ *
+ * Voice on/off and language stay open: they are how the person at the counter
+ * likes to work, not a decision about the books.
+ *
+ * test/api.test.ts ("what staff may do") fails when the registry grows a delete*,
+ * remove*, restore* or settings set* function that is not listed here, so a new
+ * one cannot arrive open by default without somebody deciding it should.
+ */
+export const OWNER_ONLY: Readonly<Record<string, readonly string[]>> = {
+  bankAccounts: ['deleteBankAccount'],
+  expenses: ['deleteExpense'],
+  invoices: ['deleteInvoice', 'deleteInvoiceWithItems', 'deleteInvoiceItem'],
+  items: ['deleteItem'],
+  parties: ['deleteParty'],
+  payments: ['deletePayment'],
+  settings: ['setSetting', 'deleteSetting', 'setDefaultTaxMode', 'setPrintFormat', 'setSaleStartNo'],
+};
+
+/** Settings writes a staff member may still make (see OWNER_ONLY). */
+export const STAFF_SETTINGS = ['setVoiceLang', 'setVoiceSpeak', 'setVoiceOn'] as const;
+
+export function isOwnerOnly(module: string, fn: string): boolean {
+  return Object.hasOwn(OWNER_ONLY, module) && OWNER_ONLY[module].includes(fn);
+}
+
 // POST /api/rpc/:module/:fn  { args: [...], undef: [indices] }  →  { result }
 //
 // Runs one of the app's own service functions, unchanged, against the signed-in
@@ -35,6 +71,10 @@ export const rpcRoutes = new Hono<AppEnv>()
     const functions = Object.hasOwn(registry, module) ? registry[module] : undefined;
     const target = functions && Object.hasOwn(functions, fn) ? functions[fn] : undefined;
     if (!target) throw new ApiError(404, `Unknown operation ${module}.${fn}.`);
+
+    if (c.var.auth.user.role !== 'owner' && isOwnerOnly(module, fn)) {
+      throw new ApiError(403, 'Only the shop owner can do that.');
+    }
 
     const needs = MODULE_SCREENS[module];
     if (needs) {

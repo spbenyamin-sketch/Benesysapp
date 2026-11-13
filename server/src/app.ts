@@ -37,19 +37,55 @@ const WEB_INDEX = path.resolve(process.cwd(), WEB_DIR, 'index.html');
  */
 const hasWebBuild = () => existsSync(WEB_INDEX);
 
-export function createApp() {
-  // The web app is served from its own origin (Expo's dev server is :8081), so
-  // the browser has to be told it may call this one. Auth is a bearer header,
-  // not a cookie, so there is no cross-site request to forge — which is also
-  // why CORS_ORIGINS=* (any device on the shop's network) is acceptable.
-  const configured = (process.env.CORS_ORIGINS ?? 'http://localhost:8081')
+/** Expo's development server, the one other origin the web app is ever served from. */
+const DEV_PORT = '8081';
+
+/**
+ * Which page origins may call this API from another origin. Normally none needs
+ * to: the shop opens the app from this server itself — http://localhost:4747 at
+ * the counter, http://<this PC's LAN IP>:4747 on the others — and a page calling
+ * its own origin is not a CORS request at all, so LAN access needs nothing here.
+ *
+ * Cross-origin is only development: `npx expo start --web` serves the page on
+ * :8081 and it calls the API on :4747. Allowed are localhost / 127.0.0.1 on
+ * :8081, and :8081 on the same host name the request came in on (a second PC in
+ * the shop opening the dev server by its LAN IP). Anything listed in
+ * CORS_ORIGINS (comma-separated) is allowed as well; `*` is ignored — older
+ * installs wrote CORS_ORIGINS=* and that must not mean "any web page on the
+ * internet may drive this API from a browser on the shop's network".
+ */
+export function allowedOrigin(origin: string, requestHost: string | undefined): boolean {
+  const extra = (process.env.CORS_ORIGINS ?? '')
     .split(',')
     .map((s) => s.trim())
-    .filter(Boolean);
-  const origin = configured.includes('*') ? (o: string) => o : configured;
+    .filter((s) => s && s !== '*');
+  if (extra.includes(origin)) return true;
 
+  let url: URL;
+  try {
+    url = new URL(origin);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== 'http:' || url.port !== DEV_PORT) return false;
+  if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') return true;
+  // The Host header's name without its port; [::1]-style hosts keep their brackets,
+  // which is also how URL reports them.
+  const host = (requestHost ?? '').replace(/:\d+$/, '').toLowerCase();
+  return host !== '' && url.hostname === host;
+}
+
+export function createApp() {
   const app = new Hono<AppEnv>()
-    .use('/api/*', cors({ origin, allowHeaders: ['Authorization', 'Content-Type'] }))
+    .use(
+      '/api/*',
+      cors({
+        // null sends no Access-Control-Allow-Origin, and the browser refuses the
+        // cross-origin call. Same-origin calls never look at it.
+        origin: (o, c) => (allowedOrigin(o, c.req.header('host')) ? o : null),
+        allowHeaders: ['Authorization', 'Content-Type'],
+      }),
+    )
     .get('/api/health', (c) => c.json({ ok: true }))
     .route('/api/auth', authRoutes)
     .route('/api/backup', backupRoutes)

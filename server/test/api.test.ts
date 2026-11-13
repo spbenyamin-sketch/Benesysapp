@@ -6,11 +6,13 @@ import { after, before, describe, it } from 'node:test';
 import path from 'node:path';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { createParty } from '@/modules/parties/service';
-import { createApp } from '../src/app';
-import { registerShop } from '../src/auth/service';
+import { allowedOrigin, createApp } from '../src/app';
+import { MAX_IP_FAILURES, registerShop } from '../src/auth/service';
 import { control, pool } from '../src/db/client';
 import { ApiError } from '../src/http/errors';
 import { inShop, requireAuth } from '../src/http/middleware';
+import { isOwnerOnly, OWNER_ONLY, STAFF_SETTINGS } from '../src/routes/rpc';
+import { registry } from '../src/rpc/registry';
 
 // Runs the API in-process against the database in .env.test, which is wiped
 // first. Never point .env.test at a database with real books in it.
@@ -572,5 +574,202 @@ describe('the server’s daily backup', () => {
     assert.equal((await call('GET', '/api/backup', { token: staff })).status, 403);
     assert.equal((await call('POST', '/api/backup', { token: staff })).status, 403);
     assert.equal((await call('GET', '/api/backup')).status, 401);
+  });
+});
+
+// ── Hardening ────────────────────────────────────────────────────────────────
+
+describe('what staff may do', () => {
+  let owner = '';
+  let staff = '';
+  let partyId = 0;
+
+  before(async () => {
+    owner = (await registerAnother('Perm Shop', 'permowner')).data.token;
+    await call('POST', '/api/users', { token: owner, json: { username: 'permstaff', password: 'staff-pass-1' } });
+    staff = (await call('POST', '/api/auth/login', { json: { identifier: 'permstaff', password: 'staff-pass-1' } }))
+      .data.token;
+    assert.ok(staff);
+  });
+
+  it('still bills: parties, items, invoices, payments', async () => {
+    const party = await rpc(staff, 'parties', 'createParty', { name: 'Ravi', type: 'customer' });
+    assert.equal(party.status, 200, JSON.stringify(party.data));
+    partyId = party.data.result.id;
+    assert.equal((await rpc(staff, 'parties', 'updateParty', partyId, { phone: '9000000000' })).status, 200);
+
+    const item = await rpc(staff, 'items', 'createItem', {
+      name: 'Dal',
+      salePrice: 10000,
+      purchasePrice: 6000,
+      taxRate: 0,
+      openingStock: 10000,
+      currentStock: 10000,
+    });
+    assert.equal(item.status, 200, JSON.stringify(item.data));
+    const inv = await rpc(staff, 'invoices', 'createInvoiceWithItems', { type: 'sale', partyId, date: '2026-09-15' }, [
+      { itemId: item.data.result.id, qty: 1000, rate: 10000, taxRate: 0 },
+    ]);
+    assert.equal(inv.status, 200, JSON.stringify(inv.data));
+    const paid = await rpc(staff, 'payments', 'recordPayment', {
+      partyId,
+      invoiceId: inv.data.result.id,
+      amount: 10000,
+      mode: 'cash',
+      direction: 'in',
+      date: '2026-09-15',
+    });
+    assert.equal(paid.status, 200, JSON.stringify(paid.data));
+    assert.equal((await rpc(staff, 'settings', 'getBusinessProfile')).status, 200);
+    assert.equal((await rpc(staff, 'settings', 'setVoiceOn', true)).status, 200);
+  });
+
+  it('cannot delete records or change the shop settings, while the owner can', async () => {
+    const refused: [string, string, ...unknown[]][] = [
+      ['parties', 'deleteParty', partyId],
+      ['invoices', 'deleteInvoice', 1],
+      ['invoices', 'deleteInvoiceWithItems', 1],
+      ['payments', 'deletePayment', 1],
+      ['items', 'deleteItem', 1],
+      ['expenses', 'deleteExpense', 1],
+      ['bankAccounts', 'deleteBankAccount', 1],
+      ['settings', 'setSetting', 'business.name', 'Hijacked'],
+      ['settings', 'deleteSetting', 'business.name'],
+      ['settings', 'setPrintFormat', 'a4'],
+      ['settings', 'setDefaultTaxMode', 'inclusive'],
+    ];
+    for (const [module, fn, ...args] of refused) {
+      const res = await rpc(staff, module, fn, ...args);
+      assert.equal(res.status, 403, `${module}.${fn} was allowed for staff`);
+      assert.match(res.data.error, /Only the shop owner/);
+    }
+    // Nothing was deleted on the way.
+    assert.ok((await rpc(owner, 'parties', 'getParty', partyId)).data.result);
+
+    const spare = (await rpc(owner, 'parties', 'createParty', { name: 'Spare', type: 'customer' })).data.result;
+    assert.equal((await rpc(owner, 'parties', 'deleteParty', spare.id)).status, 200);
+  });
+
+  it('lists every delete, remove, restore and settings write as owner-only', async () => {
+    for (const [module, fns] of Object.entries(registry)) {
+      for (const fn of Object.keys(fns)) {
+        const destructive = /^(delete|remove|restore|wipe|purge)/i.test(fn);
+        const settingsWrite =
+          module === 'settings' && /^set/.test(fn) && !(STAFF_SETTINGS as readonly string[]).includes(fn);
+        if (destructive || settingsWrite) {
+          assert.ok(isOwnerOnly(module, fn), `${module}.${fn} is open to staff; add it to OWNER_ONLY in routes/rpc.ts`);
+        }
+      }
+    }
+    // And nothing in the table is a typo that guards nothing.
+    for (const [module, fns] of Object.entries(OWNER_ONLY)) {
+      for (const fn of fns) assert.ok(registry[module]?.[fn], `OWNER_ONLY names unknown ${module}.${fn}`);
+    }
+  });
+});
+
+describe('cross-origin calls', () => {
+  const preflight = (origin: string, host = 'localhost:4747') =>
+    app.request('/api/auth/login', {
+      method: 'OPTIONS',
+      headers: { Origin: origin, Host: host, 'Access-Control-Request-Method': 'POST' },
+    });
+
+  const withCorsEnv = async (value: string, run: () => Promise<void>) => {
+    const saved = process.env.CORS_ORIGINS;
+    process.env.CORS_ORIGINS = value;
+    try {
+      await run();
+    } finally {
+      if (saved === undefined) delete process.env.CORS_ORIGINS;
+      else process.env.CORS_ORIGINS = saved;
+    }
+  };
+
+  it('lets the Expo dev server on :8081 call the API', async () => {
+    const res = await preflight('http://localhost:8081');
+    assert.equal(res.headers.get('access-control-allow-origin'), 'http://localhost:8081');
+  });
+
+  it('refuses any other web page, even when .env still says CORS_ORIGINS=*', async () => {
+    await withCorsEnv('*', async () => {
+      for (const o of ['http://evil.example', 'http://localhost:3000', 'https://localhost:8081']) {
+        const res = await preflight(o);
+        assert.equal(res.headers.get('access-control-allow-origin'), null, o);
+      }
+    });
+  });
+
+  it('allows :8081 on the host the request came in on, and listed extras', async () => {
+    assert.equal(allowedOrigin('http://192.168.1.5:8081', '192.168.1.5:4747'), true);
+    assert.equal(allowedOrigin('http://192.168.1.9:8081', '192.168.1.5:4747'), false);
+    assert.equal(allowedOrigin('http://127.0.0.1:8081', undefined), true);
+    assert.equal(allowedOrigin('not a url', 'localhost:4747'), false);
+    await withCorsEnv('http://till.local:5000, *', async () => {
+      assert.equal(allowedOrigin('http://till.local:5000', 'localhost:4747'), true);
+      assert.equal(allowedOrigin('http://evil.example', 'localhost:4747'), false);
+    });
+  });
+
+  it('answers a same-origin page (the shop LAN address), which needs no CORS', async () => {
+    const res = await app.request('/api/health', { headers: { Origin: 'http://192.168.1.5:4747' } });
+    assert.equal(res.status, 200);
+  });
+});
+
+describe('sign-in limit per computer', () => {
+  const loginFrom = (ip: string, identifier: string, password: string) =>
+    app.request(
+      '/api/auth/login',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier, password }),
+      },
+      { incoming: { socket: { remoteAddress: ip } } },
+    );
+
+  before(async () => {
+    await registerAnother('IP Shop', 'iplimit');
+  });
+
+  it('locks a computer out after many wrong guesses across different names', async () => {
+    // A different name each time, so the per-name lock never trips.
+    for (let i = 0; i < MAX_IP_FAILURES; i++) {
+      assert.equal((await loginFrom('10.0.0.66', `nobody${i}`, 'wrong-wrong')).status, 401);
+    }
+    const locked = await loginFrom('10.0.0.66', 'iplimit', 'owner-pass-1');
+    assert.equal(locked.status, 429);
+    assert.match(((await locked.json()) as { error: string }).error, /this computer/);
+
+    // Another computer in the shop is not held up.
+    assert.equal((await loginFrom('10.0.0.67', 'iplimit', 'owner-pass-1')).status, 200);
+  });
+});
+
+describe('the trial cannot be restarted', () => {
+  it('deleting the licence row does not hand out a fresh 7 days', async () => {
+    const owner = (await call('POST', '/api/auth/login', { json: { identifier: 'kannan', password: 'owner-pass-1' } }))
+      .data.token;
+    const saved = (await pool.query('select * from server_license')).rows[0];
+    const oldest = (await pool.query('select id, created_at from shops order by created_at limit 1')).rows[0];
+    try {
+      await pool.query(`update shops set created_at = now() - interval '30 days' where id = $1`, [oldest.id]);
+      await pool.query('delete from server_license');
+
+      const res = await call('GET', '/api/license', { token: owner });
+      assert.equal(res.status, 200);
+      assert.equal(res.data.state, 'expired');
+      assert.equal(res.data.trial, true);
+      assert.equal((await rpc(owner, 'parties', 'listParties')).status, 403);
+    } finally {
+      await pool.query('delete from server_license');
+      await pool.query(
+        'insert into server_license (id, seed, license, last_seen, trial_start, installed_at) values ($1,$2,$3,$4,$5,$6)',
+        [saved.id, saved.seed, saved.license, saved.last_seen, saved.trial_start, saved.installed_at],
+      );
+      await pool.query('update shops set created_at = $2 where id = $1', [oldest.id, oldest.created_at]);
+    }
+    assert.equal((await rpc(owner, 'parties', 'listParties')).status, 200);
   });
 });

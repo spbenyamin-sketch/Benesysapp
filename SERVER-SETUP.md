@@ -33,8 +33,16 @@ One click, and safe to repeat — a run where nothing has changed takes seconds:
 **One process, one address: http://localhost:4747.** The server also serves the exported
 web app (`WEB_DIR`, default `../dist`, in `server/src/app.ts`), falling back to
 `index.html` so a typed-in `/invoice/12` reaches the app's own router. `app.json` sets
-`web.output: "single"` for exactly that. Nothing is cross-origin any more; CORS stays for
-the development server below.
+`web.output: "single"` for exactly that. Nothing is cross-origin any more — other PCs in the
+shop open http://<this PC's LAN IP>:4747, which is the same origin too. CORS is only for the
+development server below: the API answers pages on `:8081` (localhost, 127.0.0.1, or the
+same host name the API was reached on) and any origin listed in `CORS_ORIGINS`. A
+`CORS_ORIGINS=*` left in an older `.env` is ignored (`allowedOrigin` in `server/src/app.ts`).
+
+**Plain HTTP, on purpose.** The server is for the shop's own computer and its LAN, so it
+has no TLS: passwords and bills cross the shop network unencrypted. Do not forward port
+4747 to the internet. If it ever has to be reached from outside, put it behind a VPN or a
+reverse proxy that terminates HTTPS — not inside this process.
 
 ```powershell
 pm2 status                    # is it running?
@@ -104,6 +112,13 @@ or Dashboard screen, see `MODULE_SCREENS` in `server/src/routes/rpc.ts`. Items,
 parties, invoices and payments stay open to everyone, because a bill cannot be
 put together without them.
 
+What staff can **never** do, whatever tabs they have, is in one table — `OWNER_ONLY` in
+the same file: deleting invoices, payments, expenses, parties, items or bank accounts,
+and writing the shop's settings (business profile, tax mode, print format; voice
+preferences stay open). People, the server backup and the licence are owner-only routes
+of their own. A test fails if the registry gains a `delete*` / `remove*` / `restore*` or
+settings `set*` function that is not in the table.
+
 Adding a screen means adding it to `SCREENS`, giving it a tab in
 `app/(tabs)/_layout.tsx`, and a path prefix in `PATH_SCREEN` so the guard knows
 what belongs to it.
@@ -115,6 +130,10 @@ After that it answers 403 and the sign-in page stops offering "Register your
 shop". The licence is bought for the install, and an open sign-up form on a port
 the whole shop network can reach let anyone start a second, free set of books.
 Everyone else is added by the owner under **Settings → People**.
+
+The 7-day trial starts on the first licence check. Deleting the `server_license` row does
+not restart it: a recreated row dates its trial from the day the server's oldest shop was
+registered (`trialStartFor` in `server/src/auth/license.ts`).
 
 ## Backups
 
@@ -154,7 +173,8 @@ in as them has to sign in again. Nothing else in the database is touched.
 
 It then restarts the server through pm2, and that part is not tidiness. Five
 wrong guesses lock a name out for fifteen minutes (`MAX_FAILURES` in
-`server/src/auth/service.ts`), and that count lives in the server process's
+`server/src/auth/service.ts`; twenty from one computer, across any names, lock that
+computer out too — `MAX_IP_FAILURES`), and that count lives in the server process's
 memory, where no database tool can reach it. Somebody who has forgotten their
 password has usually collected the lock on the way here, so without the restart
 the new password would be refused too, with a message about waiting — which

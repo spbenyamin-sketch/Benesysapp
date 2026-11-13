@@ -1,4 +1,5 @@
-import { Hono } from 'hono';
+import { getConnInfo } from '@hono/node-server/conninfo';
+import { Hono, type Context } from 'hono';
 import {
   canRegisterShop,
   changePassword,
@@ -14,6 +15,19 @@ import {
   readUsername,
 } from '../auth/validate';
 import { body, requireAuth, type AppEnv } from '../http/middleware';
+
+/**
+ * The caller's socket address, for the per-computer sign-in limit. Outside a
+ * real Node server (app.request in the tests, with no env) there is no socket,
+ * and every such caller shares one bucket.
+ */
+function clientIp(c: Context): string {
+  try {
+    return getConnInfo(c).remote.address ?? 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
 
 export const authRoutes = new Hono<AppEnv>()
   // Whether the sign-in page should offer "Register your shop" at all — only on
@@ -37,7 +51,7 @@ export const authRoutes = new Hono<AppEnv>()
     const b = await body(c);
     const identifier = typeof b.identifier === 'string' ? b.identifier : '';
     const password = typeof b.password === 'string' ? b.password : '';
-    return c.json(await signIn(identifier, password));
+    return c.json(await signIn(identifier, password, clientIp(c)));
   })
 
   .post('/logout', requireAuth, async (c) => {

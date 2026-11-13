@@ -7,12 +7,12 @@
 // modules/license/serverLicense.ts, so there is one licence format and one key.
 
 import { randomBytes } from 'node:crypto';
-import { eq } from 'drizzle-orm';
+import { asc, eq } from 'drizzle-orm';
 import { todayISO } from '@/modules/license/dates';
 import { acceptServerLicense, evaluateServerLicense } from '@/modules/license/serverLicense';
 import type { LicenseStatus } from '@/modules/license/status';
 import { control } from '../db/client';
-import { serverLicense } from '../db/control-schema';
+import { serverLicense, shops } from '../db/control-schema';
 import { badRequest } from '../http/errors';
 
 /** The one row. See control-schema.ts for why there is exactly one. */
@@ -33,9 +33,36 @@ async function installRow() {
   // rather than raising, and both then read the same seed back.
   await control
     .insert(serverLicense)
-    .values({ id: ROW, seed: randomBytes(16).toString('hex'), trialStart: todayISO() })
+    .values({ id: ROW, seed: randomBytes(16).toString('hex'), trialStart: await trialStartFor() })
     .onConflictDoNothing();
   return read();
+}
+
+/**
+ * Day one of the trial for a row being (re)created: today, unless this server
+ * already has a shop — then the day the oldest one was registered.
+ *
+ * Why the shop and not a second "first seen" row: deleting `server_license` is
+ * the obvious way to try for a fresh 7 days, and a second row in the same
+ * database would go with one more DELETE. The shop cannot be deleted without
+ * taking the books with it — which is the thing the trial exists to let people
+ * try — so its date is the one record of "this install has been in use since"
+ * that is not worth wiping. No migration, and nothing new to keep in step.
+ *
+ * Only for a missing row. A row that exists but predates the trial (trial_start
+ * still null) keeps getting today, below — those installs were promised a trial
+ * starting from the update, not from the day they first registered.
+ */
+async function trialStartFor(): Promise<string> {
+  const today = todayISO();
+  const [oldest] = await control
+    .select({ createdAt: shops.createdAt })
+    .from(shops)
+    .orderBy(asc(shops.createdAt))
+    .limit(1);
+  if (!oldest) return today;
+  const since = todayISO(oldest.createdAt);
+  return since < today ? since : today;
 }
 
 /** Where this server stands today, and the Server ID the owner sends the vendor. */

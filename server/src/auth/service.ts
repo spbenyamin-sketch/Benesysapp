@@ -159,10 +159,46 @@ function noteFailure(key: string) {
   else failures.set(key, { count: 1, since: Date.now() });
 }
 
-/** Accepts the username or the email, like the app's own sign-in. */
-export async function signIn(identifier: string, password: string): Promise<SignedIn> {
+// Wrong passwords per computer, for whoever tries many names rather than many
+// passwords for one name — four guesses each at a list of usernames never trips
+// the lock above. Looser, because several people may share one counter PC and
+// mistype; a wrong guess still counts on both. Kept apart from `failures` so a
+// username can never collide with an address.
+export const MAX_IP_FAILURES = 20;
+const ipFailures = new Map<string, { count: number; since: number }>();
+
+function checkIpThrottle(ip: string) {
+  const f = ipFailures.get(ip);
+  if (!f) return;
+  if (Date.now() - f.since > LOCK_MS) {
+    ipFailures.delete(ip);
+    return;
+  }
+  if (f.count >= MAX_IP_FAILURES) {
+    throw new ApiError(429, 'Too many wrong attempts from this computer. Try again in 15 minutes.');
+  }
+}
+
+function noteIpFailure(ip: string) {
+  const f = ipFailures.get(ip);
+  if (f && Date.now() - f.since <= LOCK_MS) f.count += 1;
+  else ipFailures.set(ip, { count: 1, since: Date.now() });
+  // Bounded: a flood of spoofed-looking addresses cannot grow this forever.
+  if (ipFailures.size > 10_000) {
+    const now = Date.now();
+    for (const [k, v] of ipFailures) if (now - v.since > LOCK_MS) ipFailures.delete(k);
+  }
+}
+
+/**
+ * Accepts the username or the email, like the app's own sign-in. `ip` is the
+ * caller's socket address (never a forwarded header — nothing sits in front of
+ * this server, so such a header would just be whatever the guesser typed).
+ */
+export async function signIn(identifier: string, password: string, ip = 'unknown'): Promise<SignedIn> {
   const key = identifier.trim().toLowerCase();
   if (!key || !password) throw badRequest('Enter your username and password.');
+  checkIpThrottle(ip);
   checkThrottle(key);
 
   const [row] = await control
@@ -174,6 +210,7 @@ export async function signIn(identifier: string, password: string): Promise<Sign
   const ok = await verifyPassword(password, row?.user.passwordHash ?? (await DUMMY_HASH));
   if (!row || !ok) {
     noteFailure(key);
+    noteIpFailure(ip);
     throw new ApiError(401, 'Wrong username or password.');
   }
   // Checked only after the password, so it can't be used to probe usernames.

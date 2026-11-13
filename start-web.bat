@@ -260,7 +260,7 @@ if errorlevel 1 (
 )
 set "PGPASSWORD="
 
-node -e "require('fs').writeFileSync('server/.env', 'DATABASE_URL=postgres://benesys_billing:' + process.env.APP_PW + '@localhost:5432/benesys_billing\nPORT=4747\nCORS_ORIGINS=*\n')"
+node -e "require('fs').writeFileSync('server/.env', 'DATABASE_URL=postgres://benesys_billing:' + process.env.APP_PW + '@localhost:5432/benesys_billing\nPORT=4747\n')"
 if errorlevel 1 exit /b 1
 echo       Database created.
 exit /b 0
