@@ -310,6 +310,9 @@ export default function InvoiceDetailScreen() {
           </View>
           <Text style={styles.invoiceNo}>{invoice.invoiceNo}</Text>
           <Text style={styles.date}>{formatDate(invoice.date)}</Text>
+          {invoice.supplierInvoiceNo ? (
+            <Text style={styles.date}>Supplier bill no. {invoice.supplierInvoiceNo}</Text>
+          ) : null}
           {invoice.dueDate ? (
             <Text style={[styles.date, late && styles.overdue]}>
               Due {formatDate(invoice.dueDate)}

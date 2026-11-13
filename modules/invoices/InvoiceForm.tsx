@@ -183,6 +183,8 @@ export default function InvoiceForm({
   // on the day it was made.
   const [dueDate, setDueDate] = useState('');
   const [showDue, setShowDue] = useState(false);
+  // The number on the supplier's own bill — a purchase only, and optional.
+  const [supplierNo, setSupplierNo] = useState('');
   const [discountStr, setDiscountStr] = useState('');
   const [discountMode, setDiscountMode] = useState<DiscountMode>('amount');
   const [lines, setLines] = useState<LineDraft[]>([]);
@@ -252,6 +254,7 @@ export default function InvoiceForm({
       setAccounted(source.invoice.accounted);
       if (isEdit) {
         setDate(source.invoice.date);
+        setSupplierNo(source.invoice.supplierInvoiceNo ?? '');
         // Correcting a bill must not quietly drop the credit it was given.
         if (source.invoice.dueDate) {
           setDueDate(source.invoice.dueDate);
@@ -478,7 +481,16 @@ export default function InvoiceForm({
       const inv = isEdit
         ? await updateInvoiceWithItems(
             editInvoiceId,
-            { partyId, date, discount, discountPercent, taxMode, dueDate: due, accounted },
+            {
+              partyId,
+              date,
+              discount,
+              discountPercent,
+              taxMode,
+              dueDate: due,
+              accounted,
+              ...(isPurchase ? { supplierInvoiceNo: supplierNo } : {}),
+            },
             parsedLines,
           )
         : await createInvoiceWithItems(
@@ -497,6 +509,7 @@ export default function InvoiceForm({
               // without the shop being told.
               sourceInvoiceId: isReturn ? sourceInvoiceId ?? null : null,
               accounted,
+              supplierInvoiceNo: isPurchase ? supplierNo : null,
             },
             parsedLines,
           );
@@ -604,6 +617,22 @@ export default function InvoiceForm({
           emptyText="No parties yet — add one from the Parties tab."
           searchPlaceholder="Search by name, phone, town or GSTIN"
         />
+
+        {/* What the supplier printed on their bill — the number GSTR-2B lists and
+            the accountant matches on. Ours is still generated as usual. */}
+        {isPurchase ? (
+          <View style={styles.field}>
+            <Text style={styles.label}>Supplier bill no. (optional)</Text>
+            <TextInput
+              style={styles.dateInput}
+              value={supplierNo}
+              onChangeText={setSupplierNo}
+              placeholder="As printed on their bill"
+              placeholderTextColor="#aaa"
+              autoCapitalize="characters"
+            />
+          </View>
+        ) : null}
 
         <View style={styles.field}>
           <View style={styles.sectionRow}>

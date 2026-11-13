@@ -23,6 +23,8 @@ export default function AdjustStockScreen() {
   const [item, setItem] = useState<Item | null | undefined>(undefined);
   const [mode, setMode] = useState<Mode>('add');
   const [qty, setQty] = useState('');
+  // Why the count changed — optional, kept on the item's history.
+  const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -49,7 +51,7 @@ export default function AdjustStockScreen() {
     }
     setSaving(true);
     try {
-      await adjustStock(itemId, nextStock);
+      await adjustStock(itemId, nextStock, note);
       router.back();
     } catch (e) {
       setSaving(false);
@@ -135,6 +137,13 @@ export default function AdjustStockScreen() {
       <Text style={styles.preview}>
         New stock: <Text style={styles.previewValue}>{formatQty(Math.max(nextStock, 0))} {item.unit}</Text>
       </Text>
+
+      <TextField
+        label="Reason (optional)"
+        value={note}
+        onChangeText={setNote}
+        placeholder="Recount, damaged, gift…"
+      />
 
       <Button label="Apply adjustment" onPress={apply} loading={saving} style={styles.apply} />
     </View>

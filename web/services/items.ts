@@ -17,3 +17,4 @@ export const findItemByBarcode: typeof local.findItemByBarcode = rpc('items', 'f
 export const updateItem: typeof local.updateItem = rpc('items', 'updateItem');
 export const deleteItem: typeof local.deleteItem = rpc('items', 'deleteItem');
 export const adjustStock: typeof local.adjustStock = rpc('items', 'adjustStock');
+export const listStockAdjustments: typeof local.listStockAdjustments = rpc('items', 'listStockAdjustments');

@@ -10,9 +10,10 @@ import {
   parties,
   payments,
   settings,
+  stockAdjustments,
 } from '@/db/schema';
 
-// Full-database JSON backup. All 8 tables are dumped verbatim (ids and
+// Full-database JSON backup. Every table are dumped verbatim (ids and
 // timestamps preserved) so a restore reproduces the DB exactly, including the
 // foreign-key graph. Bump BACKUP_VERSION if the shape ever changes.
 const BACKUP_VERSION = 1;
@@ -25,7 +26,7 @@ interface BackupFile {
 }
 
 export async function buildBackup(nowIso: string): Promise<BackupFile> {
-  const [p, it, inv, invIt, pay, exp, bank, set] = await Promise.all([
+  const [p, it, inv, invIt, pay, exp, bank, set, adj] = await Promise.all([
     db.select().from(parties),
     db.select().from(items),
     db.select().from(invoices),
@@ -34,6 +35,7 @@ export async function buildBackup(nowIso: string): Promise<BackupFile> {
     db.select().from(expenses),
     db.select().from(bankAccounts),
     db.select().from(settings),
+    db.select().from(stockAdjustments),
   ]);
   return {
     app: 'billing-app',
@@ -48,6 +50,7 @@ export async function buildBackup(nowIso: string): Promise<BackupFile> {
       expenses: exp,
       bank_accounts: bank,
       settings: set,
+      stock_adjustments: adj,
     },
   };
 }
@@ -110,6 +113,7 @@ export function restoreBackupFromJson(text: string): RestoreCounts {
 
   db.transaction((tx) => {
     // Delete children before parents.
+    tx.delete(stockAdjustments).run();
     tx.delete(invoiceItems).run();
     tx.delete(payments).run();
     tx.delete(invoices).run();
@@ -131,6 +135,8 @@ export function restoreBackupFromJson(text: string): RestoreCounts {
     insertAll(expenses, rows('expenses'));
     insertAll(bankAccounts, rows('bank_accounts'));
     insertAll(settings, rows('settings'));
+    // Missing from backups made before 0011 — rows() then gives [], which is right.
+    insertAll(stockAdjustments, rows('stock_adjustments'));
   });
 
   return {

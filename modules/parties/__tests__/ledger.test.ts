@@ -71,6 +71,7 @@ function invoice(over: Partial<Invoice> = {}): Invoice {
     taxTotal: 1800,
     discount: 0,
     discountPercent: null,
+    supplierInvoiceNo: null,
     grandTotal: 11800,
     paymentStatus: 'unpaid',
     taxMode: 'exclusive',

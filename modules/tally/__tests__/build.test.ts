@@ -530,3 +530,43 @@ describe('the file itself', () => {
     expect(vouchers(xml)).toHaveLength(0);
   });
 });
+
+describe('the supplier’s bill number', () => {
+  const supplier = party({ id: 2, name: 'Metro Traders', type: 'supplier' });
+
+  it('is the purchase voucher’s reference, so GSTR-2B matching finds it', () => {
+    const xml = buildTallyXml(
+      payload({
+        parties: [supplier],
+        invoices: [
+          invoice({
+            type: 'purchase',
+            partyId: 2,
+            invoiceNo: 'PUR/2026-27/004',
+            supplierInvoiceNo: 'MT/889',
+          }),
+        ],
+      }),
+    );
+    const [v] = vouchers(xml);
+    expect(v).toContain('<REFERENCE>MT/889</REFERENCE>');
+    // Our own number is still the voucher number and the bill payments meet.
+    expect(v).toContain('<VOUCHERNUMBER>PUR/2026-27/004</VOUCHERNUMBER>');
+    expect(v).toMatch(/<NAME>PUR\/2026-27\/004<\/NAME>/);
+  });
+
+  it('falls back to our own number when none was typed', () => {
+    const xml = buildTallyXml(
+      payload({
+        parties: [supplier],
+        invoices: [invoice({ type: 'purchase', partyId: 2, invoiceNo: 'PUR/2026-27/005' })],
+      }),
+    );
+    expect(vouchers(xml)[0]).toContain('<REFERENCE>PUR/2026-27/005</REFERENCE>');
+  });
+
+  it('never leaks onto a sale', () => {
+    const xml = buildTallyXml(payload({ invoices: [invoice({ supplierInvoiceNo: 'X/1' })] }));
+    expect(vouchers(xml)[0]).toContain('<REFERENCE>INV/2026-27/001</REFERENCE>');
+  });
+});

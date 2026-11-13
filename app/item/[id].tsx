@@ -4,11 +4,19 @@ import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View
 import Button from '@/components/Button';
 import ItemPhoto from '@/components/ItemPhoto';
 import { deleteItemPhoto } from '@/modules/items/images';
-import { deleteItem, getItem } from '@/modules/items/service';
+import { deleteItem, getItem, listStockAdjustments } from '@/modules/items/service';
 import { stockLevel, STOCK_LABEL, STOCK_TONE } from '@/modules/items/stockLevel';
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
-import { formatMoney, formatQty, formatTaxRate } from '@/utils/format';
-import type { Item } from '@/db/schema';
+import { formatDate, formatMoney, formatQty, formatTaxRate } from '@/utils/format';
+import type { Item, StockAdjustment } from '@/db/schema';
+
+/** A stored UTC timestamp as the shop's own calendar day. */
+function localDay(createdAt: string): string {
+  const d = new Date(createdAt);
+  if (Number.isNaN(d.getTime())) return createdAt.slice(0, 10);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
 
 export default function ItemDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -16,6 +24,7 @@ export default function ItemDetailScreen() {
   const router = useRouter();
   const { lang } = useVoice();
   const [item, setItem] = useState<Item | null | undefined>(undefined);
+  const [adjustments, setAdjustments] = useState<StockAdjustment[]>([]);
 
   // Voice: "மொத்தம்" reads stock + price · "எடிட்" opens the edit form ·
   // "ஸ்டாக் மாத்து" the adjust screen · "டெலிட்" removes the item.
@@ -51,6 +60,9 @@ export default function ItemDetailScreen() {
       let active = true;
       getItem(itemId).then((i) => {
         if (active) setItem(i ?? null);
+      });
+      listStockAdjustments(itemId, 10).then((rows) => {
+        if (active) setAdjustments(rows);
       });
       return () => {
         active = false;
@@ -151,6 +163,30 @@ export default function ItemDetailScreen() {
           onPress={() => router.push({ pathname: '/item/adjust/[id]', params: { id: itemId } })}
         />
 
+        {/* Only once a count has been corrected by hand — most items never are. */}
+        {adjustments.length > 0 ? (
+          <View style={styles.history}>
+            <Text style={styles.historyTitle}>Stock adjustments</Text>
+            {adjustments.map((a) => (
+              <View key={a.id} style={styles.historyRow}>
+                <View style={styles.historyLeft}>
+                  <Text style={styles.historyDate}>{formatDate(localDay(a.createdAt))}</Text>
+                  {a.note ? <Text style={styles.historyNote}>{a.note}</Text> : null}
+                </View>
+                <View style={styles.historyRight}>
+                  <Text style={[styles.historyDelta, { color: a.delta < 0 ? '#c0392b' : '#1e8e3e' }]}>
+                    {a.delta > 0 ? '+' : '−'}
+                    {formatQty(Math.abs(a.delta))} {item.unit}
+                  </Text>
+                  <Text style={styles.historyFromTo}>
+                    {formatQty(a.oldStock)} → {formatQty(a.newStock)}
+                  </Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        ) : null}
+
         <Pressable style={styles.deleteBtn} onPress={confirmDelete}>
           <Text style={styles.deleteText}>Delete item</Text>
         </Pressable>
@@ -188,6 +224,15 @@ const styles = StyleSheet.create({
   detailRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 16 },
   detailLabel: { color: '#888', fontSize: 14 },
   detailValue: { color: '#111', fontSize: 14, fontWeight: '500', flex: 1, textAlign: 'right' },
+  history: { gap: 10, borderTopWidth: 1, borderTopColor: '#eee', paddingTop: 14 },
+  historyTitle: { fontSize: 13, color: '#666', fontWeight: '600' },
+  historyRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 12 },
+  historyLeft: { flex: 1, gap: 2 },
+  historyRight: { alignItems: 'flex-end', gap: 2 },
+  historyDate: { fontSize: 14, color: '#111' },
+  historyNote: { fontSize: 12, color: '#888' },
+  historyDelta: { fontSize: 14, fontWeight: '700' },
+  historyFromTo: { fontSize: 12, color: '#888' },
   deleteBtn: { marginTop: 8, alignItems: 'center', padding: 12 },
   deleteText: { color: '#c0392b', fontWeight: '600', fontSize: 15 },
 });

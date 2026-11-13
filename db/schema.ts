@@ -109,6 +109,10 @@ export const invoices = sqliteTable('invoices', {
   // marked otherwise stays out of the Tally export and out of the GST return,
   // while every one of the shop's own reports still counts it.
   accounted: integer('accounted', { mode: 'boolean' }).notNull().default(true),
+  // The supplier's OWN number for a purchase bill — the one printed on their
+  // paper. Ours stays in invoice_no; this is what GSTR-2B lists, so it is what
+  // the accountant matches on. NULL on every other kind of document.
+  supplierInvoiceNo: text('supplier_invoice_no'),
   createdAt: createdAt(),
 });
 
@@ -186,6 +190,22 @@ export const bankAccounts = sqliteTable('bank_accounts', {
   createdAt: createdAt(),
 });
 
+// A manual stock correction, kept so a changed count can always be explained.
+// Bills move stock too, but each bill is its own record; this is only what the
+// Adjust Stock screen did. Written in the same transaction as the overwrite.
+// Cascade: an item that can be deleted at all takes its corrections with it.
+export const stockAdjustments = sqliteTable('stock_adjustments', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  itemId: integer('item_id')
+    .notNull()
+    .references(() => items.id, { onDelete: 'cascade' }),
+  oldStock: integer('old_stock').notNull(), // thousandths
+  newStock: integer('new_stock').notNull(), // thousandths
+  delta: integer('delta').notNull(), // thousandths, new − old
+  note: text('note'),
+  createdAt: createdAt(),
+});
+
 export const settings = sqliteTable('settings', {
   key: text('key').primaryKey(),
   value: text('value'),
@@ -206,5 +226,7 @@ export type Expense = typeof expenses.$inferSelect;
 export type NewExpense = typeof expenses.$inferInsert;
 export type BankAccount = typeof bankAccounts.$inferSelect;
 export type NewBankAccount = typeof bankAccounts.$inferInsert;
+export type StockAdjustment = typeof stockAdjustments.$inferSelect;
+export type NewStockAdjustment = typeof stockAdjustments.$inferInsert;
 export type Setting = typeof settings.$inferSelect;
 export type NewSetting = typeof settings.$inferInsert;

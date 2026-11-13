@@ -53,6 +53,12 @@ export interface TallyInvoice {
   /** The bill a credit/debit note reverses, when it could be found. */
   sourceInvoiceNo?: string | null;
   sourceDate?: string | null;
+  /**
+   * The supplier's own number for a purchase — what GSTR-2B lists, so it is
+   * what the voucher's reference must carry for the accountant's matching. On a
+   * debit note, the supplier's number of the purchase it reverses.
+   */
+  supplierInvoiceNo?: string | null;
   accounted: boolean;
 }
 

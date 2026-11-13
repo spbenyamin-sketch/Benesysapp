@@ -12,6 +12,7 @@ import m0007 from './0007_organic_the_twelve.sql';
 import m0008 from './0008_salty_donald_blake.sql';
 import m0009 from './0009_medical_tusk.sql';
 import m0010 from './0010_steep_gertrude_yorkes.sql';
+import m0011 from './0011_broken_jack_murdock.sql';
 
   export default {
     journal,
@@ -26,7 +27,8 @@ m0006,
 m0007,
 m0008,
 m0009,
-m0010
+m0010,
+m0011
     }
   }
   

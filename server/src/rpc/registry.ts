@@ -63,6 +63,7 @@ export const registry: Record<string, Record<string, RpcFunction>> = {
     updateItem: items.updateItem,
     deleteItem: items.deleteItem,
     adjustStock: items.adjustStock,
+    listStockAdjustments: items.listStockAdjustments,
   },
   parties: {
     getOrCreateWalkInParty: parties.getOrCreateWalkInParty,
@@ -117,6 +118,8 @@ export const registry: Record<string, Record<string, RpcFunction>> = {
     setVoiceSpeak: settings.setVoiceSpeak,
     getVoiceOn: settings.getVoiceOn,
     setVoiceOn: settings.setVoiceOn,
+    getSaleStartNo: settings.getSaleStartNo,
+    setSaleStartNo: settings.setSaleStartNo,
   },
   tally: {
     loadTallyExport: tally.loadTallyExport,

@@ -137,3 +137,37 @@ export async function getVoiceOn(): Promise<boolean> {
 export async function setVoiceOn(on: boolean): Promise<void> {
   await setSetting(VOICE_ON_KEY, on ? '1' : '0');
 }
+
+/**
+ * Where this year's sale numbering carries on from, for a shop that moved here
+ * from another app mid-year: its last bill there was 500, so the first one here
+ * should be 501, not 001. Stored with the financial year it was set in
+ * ("2026-27:501") because numbering restarts every April — a starting number
+ * meant for one year must not reappear in the next.
+ */
+export const SALE_START_KEY = 'sale_start_no';
+
+export interface SaleStartNo {
+  fy: string; // financial-year label, '2026-27'
+  from: number; // the lowest sequence the next sale may take
+}
+
+export function parseSaleStartNo(value: string | undefined | null): SaleStartNo | null {
+  const m = /^(\d{4}-\d{2}):(\d+)$/.exec(value?.trim() ?? '');
+  if (!m) return null;
+  const from = Number(m[2]);
+  return from > 1 ? { fy: m[1], from } : null;
+}
+
+export async function getSaleStartNo(): Promise<SaleStartNo | null> {
+  return parseSaleStartNo(await getSetting(SALE_START_KEY));
+}
+
+/** `from` of 1 or less (or blank) clears it: plain numbering from 001. */
+export async function setSaleStartNo(fy: string, from: number | null): Promise<void> {
+  if (!from || !Number.isInteger(from) || from <= 1) {
+    await deleteSetting(SALE_START_KEY);
+    return;
+  }
+  await setSetting(SALE_START_KEY, `${fy}:${from}`);
+}

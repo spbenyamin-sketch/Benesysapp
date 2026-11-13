@@ -52,9 +52,12 @@ import {
   getDefaultTaxMode,
   getPrintFormat,
   listSettings,
+  parseSaleStartNo,
   PRINT_FORMAT_LABEL,
+  SALE_START_KEY,
   setDefaultTaxMode,
   setPrintFormat,
+  setSaleStartNo,
   setSetting,
   type PrintFormat,
 } from '@/modules/settings/service';
@@ -63,6 +66,7 @@ import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
 import { VOICE_LANG_LABEL, type VoiceLang } from '@/modules/voice/types';
 import { INDIAN_STATES } from '@/utils/constants';
 import { TAX_MODE_LABEL, type TaxMode } from '@/utils/gst';
+import { financialYear } from '@/utils/invoiceNumber';
 
 // Keys persisted in the settings key/value table.
 /** The web app is Online mode: no phone lock, licence file, backups or voice. */
@@ -93,6 +97,8 @@ export default function SettingsScreen() {
   const [bizState, setBizState] = useState('');
   const [phone, setPhone] = useState('');
   const [prefix, setPrefix] = useState('');
+  // Where this year's sale numbers carry on from — '' = from 001 as usual.
+  const [startNo, setStartNo] = useState('');
   const [logo, setLogo] = useState('');
   const [signature, setSignature] = useState('');
   const [terms, setTerms] = useState('');
@@ -220,6 +226,10 @@ export default function SettingsScreen() {
         setBizState(map.get(KEYS.state) ?? '');
         setPhone(map.get(KEYS.phone) ?? '');
         setPrefix(map.get(KEYS.prefix) ?? '');
+        // A starting number set for an earlier year no longer applies, so it
+        // is not shown either.
+        const start = parseSaleStartNo(map.get(SALE_START_KEY));
+        setStartNo(start && start.fy === financialYear(new Date()).label ? String(start.from) : '');
         setLogo(map.get(KEYS.logo) ?? '');
         setSignature(map.get(KEYS.signature) ?? '');
         setTerms(map.get(KEYS.terms) ?? '');
@@ -268,6 +278,7 @@ export default function SettingsScreen() {
         setSetting(KEYS.state, bizState.trim()),
         setSetting(KEYS.phone, phone.trim()),
         setSetting(KEYS.prefix, prefix.trim()),
+        setSaleStartNo(financialYear(new Date()).label, parseInt(startNo.trim(), 10) || null),
         setSetting(KEYS.logo, logo),
         setSetting(KEYS.signature, signature),
         setSetting(KEYS.terms, terms.trim()),
@@ -515,6 +526,17 @@ export default function SettingsScreen() {
         />
         <Text style={styles.sectionHint}>
           Sale invoices are numbered like {`{prefix}`}/2026-27/001. Leave blank for “INV”.
+        </Text>
+        <TextField
+          label="Start sale numbers from"
+          value={startNo}
+          onChangeText={(v) => setStartNo(v.replace(/[^0-9]/g, ''))}
+          placeholder="1"
+          keyboardType="number-pad"
+        />
+        <Text style={styles.sectionHint}>
+          Moving from another app? Enter your next bill number (e.g. 501) and this year’s sales carry
+          on from there. Numbering starts again at 001 next April.
         </Text>
 
         {/* Everything below is optional and prints only when it is filled in —

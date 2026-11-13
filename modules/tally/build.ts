@@ -238,6 +238,12 @@ function invoiceEntries(inv: TallyInvoice, party: TallyParty, bizState: string):
 
 function invoiceVoucher(inv: TallyInvoice, party: TallyParty, bizState: string): string {
   const isNote = inv.type === 'saleReturn' || inv.type === 'purchaseReturn';
+  // On the buying side the reference is the SUPPLIER's bill number when the
+  // shop typed it in: that is the number GSTR-2B lists, and what Tally's 2B
+  // reconciliation matches on. Our own number stays the voucher number and the
+  // bill-wise reference, which payments are set against.
+  const supplierNo =
+    inv.type === 'purchase' || inv.type === 'purchaseReturn' ? inv.supplierInvoiceNo?.trim() : '';
   return voucherXml({
     vchType: VCH_TYPE[inv.type],
     date: inv.date,
@@ -246,7 +252,7 @@ function invoiceVoucher(inv: TallyInvoice, party: TallyParty, bizState: string):
     party: party.name,
     partyGstin: party.gstin,
     placeOfSupply: placeOfSupplyOf(inv.placeOfSupply, party.state, bizState),
-    reference: isNote ? inv.sourceInvoiceNo ?? inv.invoiceNo : inv.invoiceNo,
+    reference: supplierNo || (isNote ? inv.sourceInvoiceNo ?? inv.invoiceNo : inv.invoiceNo),
     referenceDate: isNote ? inv.sourceDate ?? inv.date : inv.date,
     entries: invoiceEntries(inv, party, bizState),
   });

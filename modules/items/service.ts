@@ -1,7 +1,14 @@
-import { eq, isNotNull } from 'drizzle-orm';
+import { desc, eq, isNotNull } from 'drizzle-orm';
+import { atomic } from '@/db/atomic';
 import { db } from '@/db/client';
 import { normaliseBarcode } from '@/modules/items/barcode';
-import { items, type Item, type NewItem } from '@/db/schema';
+import {
+  items,
+  stockAdjustments,
+  type Item,
+  type NewItem,
+  type StockAdjustment,
+} from '@/db/schema';
 
 export type ItemInput = Omit<NewItem, 'id' | 'createdAt'>;
 
@@ -62,14 +69,47 @@ export async function deleteItem(id: number): Promise<void> {
   await db.delete(items).where(eq(items.id, id));
 }
 
-// Manual stock correction: sets currentStock directly (thousandths). Phase 4+
-// will move most stock movement to invoice-driven auto in/decrements; this stays
-// the escape hatch for manual counts/corrections.
-export async function adjustStock(id: number, newStock: number): Promise<Item | undefined> {
-  const [row] = await db
-    .update(items)
-    .set({ currentStock: newStock })
-    .where(eq(items.id, id))
-    .returning();
-  return row;
+// Manual stock correction: sets currentStock directly (thousandths). Bills move
+// stock on their own; this is the escape hatch for a recount or a breakage. The
+// overwrite and its record land together or not at all, and the old figure is
+// read INSIDE that same transaction, so the history always adds up.
+export async function adjustStock(
+  id: number,
+  newStock: number,
+  note?: string | null,
+): Promise<Item | undefined> {
+  return atomic(function* (tx) {
+    const [current]: { currentStock: number }[] = yield tx
+      .select({ currentStock: items.currentStock })
+      .from(items)
+      .where(eq(items.id, id));
+    if (!current) return undefined;
+    const [row]: Item[] = yield tx
+      .update(items)
+      .set({ currentStock: newStock })
+      .where(eq(items.id, id))
+      .returning();
+    const delta = newStock - current.currentStock;
+    // "Set to" the figure already on the shelf changed nothing worth recording.
+    if (delta !== 0) {
+      yield tx.insert(stockAdjustments).values({
+        itemId: id,
+        oldStock: current.currentStock,
+        newStock,
+        delta,
+        note: note?.trim() || null,
+      });
+    }
+    return row;
+  });
+}
+
+/** The manual corrections made to one item, newest first. */
+export async function listStockAdjustments(itemId: number, limit = 20): Promise<StockAdjustment[]> {
+  return db
+    .select()
+    .from(stockAdjustments)
+    .where(eq(stockAdjustments.itemId, itemId))
+    .orderBy(desc(stockAdjustments.createdAt), desc(stockAdjustments.id))
+    .limit(limit);
 }

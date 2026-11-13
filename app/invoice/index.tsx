@@ -90,7 +90,12 @@ export default function InvoiceListScreen() {
       if (from && r.date < from) return false;
       if (to && r.date > to) return false;
       if (!q) return true;
-      return r.invoiceNo.toLowerCase().includes(q) || r.partyName.toLowerCase().includes(q);
+      return (
+        r.invoiceNo.toLowerCase().includes(q) ||
+        r.partyName.toLowerCase().includes(q) ||
+        // A purchase is found by the number on the supplier's own paper too.
+        (r.supplierInvoiceNo?.toLowerCase().includes(q) ?? false)
+      );
     });
   }, [rows, type, query, from, to]);
 

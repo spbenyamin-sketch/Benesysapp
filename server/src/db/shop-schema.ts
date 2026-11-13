@@ -90,6 +90,7 @@ export const invoices = pgTable('invoices', {
     .notNull()
     .default('exclusive'),
   accounted: boolean('accounted').notNull().default(true),
+  supplierInvoiceNo: text('supplier_invoice_no'),
   createdAt: createdAt(),
 });
 
@@ -147,6 +148,18 @@ export const bankAccounts = pgTable('bank_accounts', {
   createdAt: createdAt(),
 });
 
+export const stockAdjustments = pgTable('stock_adjustments', {
+  id: id(),
+  itemId: integer('item_id')
+    .notNull()
+    .references(() => items.id, { onDelete: 'cascade' }),
+  oldStock: bigint('old_stock', { mode: 'number' }).notNull(),
+  newStock: bigint('new_stock', { mode: 'number' }).notNull(),
+  delta: bigint('delta', { mode: 'number' }).notNull(),
+  note: text('note'),
+  createdAt: createdAt(),
+});
+
 export const settings = pgTable('settings', {
   key: text('key').primaryKey(),
   value: text('value'),
@@ -167,5 +180,7 @@ export type Expense = typeof expenses.$inferSelect;
 export type NewExpense = typeof expenses.$inferInsert;
 export type BankAccount = typeof bankAccounts.$inferSelect;
 export type NewBankAccount = typeof bankAccounts.$inferInsert;
+export type StockAdjustment = typeof stockAdjustments.$inferSelect;
+export type NewStockAdjustment = typeof stockAdjustments.$inferInsert;
 export type Setting = typeof settings.$inferSelect;
 export type NewSetting = typeof settings.$inferInsert;

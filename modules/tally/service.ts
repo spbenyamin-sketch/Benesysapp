@@ -51,6 +51,7 @@ export async function loadTallyExport(from: string, to: string): Promise<TallyPa
       placeOfSupply: invoices.placeOfSupply,
       sourceInvoiceId: invoices.sourceInvoiceId,
       accounted: invoices.accounted,
+      supplierInvoiceNo: invoices.supplierInvoiceNo,
     })
     .from(invoices)
     .where(
@@ -81,7 +82,12 @@ export async function loadTallyExport(from: string, to: string): Promise<TallyPa
   ];
   const sources = sourceIds.length
     ? await db
-        .select({ id: invoices.id, invoiceNo: invoices.invoiceNo, date: invoices.date })
+        .select({
+          id: invoices.id,
+          invoiceNo: invoices.invoiceNo,
+          date: invoices.date,
+          supplierInvoiceNo: invoices.supplierInvoiceNo,
+        })
         .from(invoices)
         .where(inArray(invoices.id, sourceIds))
     : [];
@@ -109,6 +115,10 @@ export async function loadTallyExport(from: string, to: string): Promise<TallyPa
       lines: linesByInvoice.get(h.id) ?? [],
       sourceInvoiceNo: source?.invoiceNo ?? null,
       sourceDate: source?.date ?? null,
+      // A debit note is matched against the supplier's number of the purchase
+      // it sends goods back on.
+      supplierInvoiceNo:
+        h.type === 'purchaseReturn' ? source?.supplierInvoiceNo ?? null : h.supplierInvoiceNo,
       accounted: h.accounted,
     };
   });

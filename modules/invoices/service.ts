@@ -14,9 +14,15 @@ import {
   type Party,
 } from '@/db/schema';
 import { recomputeInvoiceStatus } from '@/modules/payments/service';
-import { getSetting } from '@/modules/settings/service';
+import { getSaleStartNo, getSetting, type SaleStartNo } from '@/modules/settings/service';
 import { computeTotals, type TaxMode } from '@/utils/gst';
-import { nextInvoiceNo, type InvoiceType } from '@/utils/invoiceNumber';
+import {
+  financialYear,
+  formatInvoiceNo,
+  nextSequence,
+  prefixFor,
+  type InvoiceType,
+} from '@/utils/invoiceNumber';
 
 export type InvoiceInput = Omit<NewInvoice, 'id' | 'createdAt'>;
 export type InvoiceItemInput = Omit<NewInvoiceItem, 'id'>;
@@ -116,6 +122,37 @@ export interface InvoiceHeaderInput {
    * an edit that does not mention it leaves the bill as the counter marked it.
    */
   accounted?: boolean;
+  /**
+   * The supplier's own number for a purchase bill, as printed on their paper.
+   * Only a purchase carries one; on anything else it is ignored. An edit that
+   * leaves it out keeps whatever was saved.
+   */
+  supplierInvoiceNo?: string | null;
+}
+
+/** A supplier bill number worth storing, or NULL — and only ever on a purchase. */
+const storedSupplierNo = (type: InvoiceType, no?: string | null): string | null =>
+  type === 'purchase' ? no?.trim() || null : null;
+
+/**
+ * The next document number. Normally the highest number this financial year
+ * plus one; for sales, a shop that moved here from another app can ask for the
+ * year's numbering to carry on from where the old app stopped (Settings), and
+ * then the next sale is whichever is higher. The starting number only ever
+ * applies in the financial year it was set for — next April starts at 001.
+ */
+export function nextDocumentNo(
+  type: InvoiceType,
+  existingNos: string[],
+  now: Date,
+  salePrefix?: string | null,
+  saleStart?: SaleStartNo | null,
+): string {
+  const prefix = prefixFor(type, salePrefix);
+  const { label } = financialYear(now);
+  let seq = nextSequence(existingNos, prefix, label);
+  if (type === 'sale' && saleStart && saleStart.fy === label) seq = Math.max(seq, saleStart.from);
+  return formatInvoiceNo(prefix, label, seq);
 }
 
 /**
@@ -168,7 +205,14 @@ export async function createInvoiceWithItems(
     .from(invoices)
     .where(eq(invoices.type, header.type));
   const salePrefix = header.type === 'sale' ? await getSetting('sale_prefix') : undefined;
-  const invoiceNo = nextInvoiceNo(header.type, existing.map((e) => e.invoiceNo), now, salePrefix);
+  const saleStart = header.type === 'sale' ? await getSaleStartNo() : null;
+  const invoiceNo = nextDocumentNo(
+    header.type,
+    existing.map((e) => e.invoiceNo),
+    now,
+    salePrefix,
+    saleStart,
+  );
 
   // The cost of the goods, frozen at billing time. Re-pricing an item next month
   // must not change what a bill already given to a customer earned — so the
@@ -231,6 +275,7 @@ export async function createInvoiceWithItems(
         // this a single sale could be returned again and again.
         sourceInvoiceId: header.sourceInvoiceId ?? null,
         accounted: header.accounted ?? true,
+        supplierInvoiceNo: storedSupplierNo(header.type, header.supplierInvoiceNo),
       })
       .returning();
 
@@ -367,6 +412,10 @@ export async function updateInvoiceWithItems(
         : existing.placeOfSupply;
   const dueDate = header.dueDate !== undefined ? header.dueDate : existing.dueDate;
   const accounted = header.accounted !== undefined ? header.accounted : existing.accounted;
+  const supplierInvoiceNo =
+    header.supplierInvoiceNo !== undefined
+      ? storedSupplierNo(existing.type, header.supplierInvoiceNo)
+      : existing.supplierInvoiceNo;
 
   const taxMode: TaxMode = header.taxMode ?? existing.taxMode;
   const { lines: computed, totals } = computeTotals(
@@ -415,6 +464,7 @@ export async function updateInvoiceWithItems(
         dueDate,
         placeOfSupply,
         accounted,
+        supplierInvoiceNo,
       })
       .where(eq(invoices.id, id));
 
@@ -645,6 +695,7 @@ export async function listInvoicesWithParty(limit?: number): Promise<InvoiceWith
       roundOff: invoices.roundOff,
       sourceInvoiceId: invoices.sourceInvoiceId,
       accounted: invoices.accounted,
+      supplierInvoiceNo: invoices.supplierInvoiceNo,
       createdAt: invoices.createdAt,
       partyName: parties.name,
     })

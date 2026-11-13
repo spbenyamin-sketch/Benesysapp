@@ -24,3 +24,5 @@ export const getVoiceSpeak: typeof local.getVoiceSpeak = rpc('settings', 'getVoi
 export const setVoiceSpeak: typeof local.setVoiceSpeak = rpc('settings', 'setVoiceSpeak');
 export const getVoiceOn: typeof local.getVoiceOn = rpc('settings', 'getVoiceOn');
 export const setVoiceOn: typeof local.setVoiceOn = rpc('settings', 'setVoiceOn');
+export const getSaleStartNo: typeof local.getSaleStartNo = rpc('settings', 'getSaleStartNo');
+export const setSaleStartNo: typeof local.setSaleStartNo = rpc('settings', 'setSaleStartNo');
