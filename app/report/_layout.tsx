@@ -15,7 +15,7 @@ export default function ReportLayout() {
       <Stack.Screen name="itemsales" options={{ title: 'Item-wise Sales' }} />
       <Stack.Screen name="purchase" options={{ title: 'Purchase Report' }} />
       <Stack.Screen name="outstanding" options={{ title: 'Party Outstanding' }} />
-      <Stack.Screen name="aging" options={{ title: 'Receivables Aging' }} />
+      <Stack.Screen name="aging" options={{ title: 'Aging' }} />
       <Stack.Screen name="stock" options={{ title: 'Stock Summary' }} />
       <Stack.Screen name="profit" options={{ title: 'Profit Report' }} />
       <Stack.Screen name="gst" options={{ title: 'GST Summary' }} />

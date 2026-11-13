@@ -1,5 +1,5 @@
-// Receivables aging: not just "how much is owed" but "how long has it been
-// owed". The Outstanding report answers the first question; this one is what a
+// Receivables (and payables) aging: not just "how much is owed" but "how long
+// has it been owed". The Outstanding report answers the first question; this one is what a
 // shopkeeper needs before deciding whose door to knock on.
 //
 // The money is aged by allocating everything that has been settled against the
@@ -11,7 +11,11 @@
 
 import { listInvoices } from '@/modules/invoices/service';
 import { dueDayOf } from '@/modules/invoices/due';
-import { invoiceDelta, listPartiesWithBalance } from '@/modules/parties/ledger';
+import {
+  invoiceDelta,
+  listPartiesWithBalance,
+  type PartyWithBalance,
+} from '@/modules/parties/ledger';
 import { daysBetween } from '@/utils/format';
 import type { Party } from '@/db/schema';
 
@@ -85,27 +89,43 @@ export interface AgingRow extends AgedParty {
   party: Party;
 }
 
+/**
+ * Which way the money runs. Receivable: what parties owe the shop. Payable:
+ * what the shop owes its suppliers (or anyone it holds a credit for).
+ */
+export type AgingSide = 'receivable' | 'payable';
+
 export interface AgingReport {
   asOf: string;
+  side: AgingSide;
   rows: AgingRow[]; // most owed first
   buckets: number[]; // column totals
   total: number;
 }
 
+/** The fields of an invoice the allocation needs — kept narrow so it is testable. */
+export type AgeableInvoice = Parameters<typeof invoiceDelta>[0];
+
 /**
- * Everyone who owes the shop money, with that money split by age. Suppliers and
- * anyone already settled drop out: this report exists to be worked through, and
- * a row with nothing to chase is a row in the way.
+ * The pure half of the report: age every party whose derived balance runs the
+ * chosen way. A payable is the exact mirror of a receivable — the sign is
+ * flipped once, here, and everything below is the same oldest-charge-first
+ * rule, so the buckets add back to the ledger balance on either side.
  */
-export async function agingReport(asOf?: string): Promise<AgingReport> {
-  const day = asOf ?? new Date().toISOString().slice(0, 10);
-  const [balances, invoices] = await Promise.all([listPartiesWithBalance(), listInvoices()]);
+export function buildAging(
+  balances: PartyWithBalance[],
+  invoices: AgeableInvoice[],
+  asOf: string,
+  side: AgingSide = 'receivable',
+): AgingReport {
+  const sign = side === 'receivable' ? 1 : -1;
 
   const chargesByParty = new Map<number, AgingCharge[]>();
   for (const inv of invoices) {
-    const delta = invoiceDelta(inv);
-    // Only what INCREASED the debt is a charge to age; returns and purchases run
-    // the other way and are counted as settlement below.
+    const delta = sign * invoiceDelta(inv);
+    // Only what INCREASED the debt is a charge to age — sales for a receivable,
+    // purchases for a payable. Everything running the other way (returns,
+    // payments) is counted as settlement below.
     if (delta <= 0) continue;
     const list = chargesByParty.get(inv.partyId) ?? [];
     list.push({ day: dueDayOf(inv), amount: delta });
@@ -113,16 +133,18 @@ export async function agingReport(asOf?: string): Promise<AgingReport> {
   }
 
   const rows: AgingRow[] = [];
-  for (const { party, balance } of balances) {
+  for (const { party, balance: signed } of balances) {
+    const balance = sign * signed;
     if (balance <= 0) continue;
     const charges = [...(chargesByParty.get(party.id) ?? [])];
     // A balance carried in from the old book is the oldest debt there is, dated
     // from the day the party was added.
-    if (party.openingBalance > 0) {
-      charges.push({ day: party.createdAt.slice(0, 10), amount: party.openingBalance });
+    const opening = sign * party.openingBalance;
+    if (opening > 0) {
+      charges.push({ day: party.createdAt.slice(0, 10), amount: opening });
     }
     const chargeTotal = charges.reduce((s, c) => s + c.amount, 0);
-    const aged = ageCharges(charges, chargeTotal - balance, day);
+    const aged = ageCharges(charges, chargeTotal - balance, asOf);
     // Money owed with no bill behind it — cash handed back to a customer, say.
     // It is owed as of now, so it goes in the newest bucket rather than being
     // dropped: the row must always add up to the balance the ledger shows.
@@ -136,9 +158,25 @@ export async function agingReport(asOf?: string): Promise<AgingReport> {
 
   rows.sort((a, b) => b.total - a.total);
   return {
-    asOf: day,
+    asOf,
+    side,
     rows,
     buckets: AGING_BUCKETS.map((_, i) => rows.reduce((s, r) => s + r.buckets[i], 0)),
     total: rows.reduce((s, r) => s + r.total, 0),
   };
+}
+
+/**
+ * Everyone who owes the shop money (receivable), or everyone the shop owes
+ * (payable), with that money split by age. Anyone settled, or whose balance
+ * runs the other way, drops out: this report exists to be worked through, and
+ * a row with nothing to chase is a row in the way.
+ */
+export async function agingReport(
+  asOf?: string,
+  side: AgingSide = 'receivable',
+): Promise<AgingReport> {
+  const day = asOf ?? new Date().toISOString().slice(0, 10);
+  const [balances, invoices] = await Promise.all([listPartiesWithBalance(), listInvoices()]);
+  return buildAging(balances, invoices, day, side);
 }

@@ -3,6 +3,10 @@
 // it to the OS share sheet — so it can go to WhatsApp, Drive, Gmail or the CA in
 // one tap, with no server and no internet.
 //
+// Each report is first built as a ReportBook — title, period line and sheets —
+// and that one book is what both the Excel export and the PDF (modules/reports/
+// pdf.ts) print, so the two can never disagree about a figure.
+//
 // Money is exported as RUPEE NUMBERS (paise ÷ 100), never as pre-formatted
 // strings: the whole point of Excel is that the accountant can sum the column.
 
@@ -11,7 +15,7 @@ import * as Sharing from 'expo-sharing';
 import { getSetting } from '@/modules/settings/service';
 import { accountBook } from '@/modules/bankAccounts/ledger';
 import { STOCK_LABEL } from '@/modules/items/stockLevel';
-import { agingReport, AGING_BUCKETS } from '@/modules/reports/aging';
+import { agingReport, AGING_BUCKETS, type AgingSide } from '@/modules/reports/aging';
 import { dayBook, DAY_BOOK_LABEL } from '@/modules/reports/daybook';
 import {
   gstRateBreakup,
@@ -26,7 +30,7 @@ import {
   stockSummary,
 } from '@/modules/reports/service';
 import { buildXlsx, type SheetSpec } from '@/utils/xlsx';
-import { formatTaxRate } from '@/utils/format';
+import { formatDate, formatTaxRate } from '@/utils/format';
 import { downloadFile, isWeb } from '@/utils/webFile';
 import type { InvoiceWithParty } from '@/modules/invoices/service';
 
@@ -42,14 +46,27 @@ const STATUS_LABEL: Record<string, string> = {
   unpaid: 'Unpaid',
 };
 
-async function preambleFor(title: string, range?: { from: string; to: string }): Promise<string[]> {
-  const business = (await getSetting('business_name')) ?? 'Billing App';
-  const gstin = await getSetting('business_gstin');
-  const lines = [business, title];
-  if (gstin) lines.push(`GSTIN: ${gstin}`);
-  if (range) lines.push(`Period: ${range.from} to ${range.to}`);
-  return lines;
+/**
+ * One report, ready to print or export: what it is called, the period line, and
+ * its tables. Sheets carry no preamble — the business header is added by
+ * whichever format the book goes out in.
+ */
+export interface ReportBook {
+  title: string;
+  /** "Period: 1 Apr 2026 to 30 Apr 2026", "As of: …" — already worded. */
+  subtitle?: string;
+  /** File name without extension. */
+  filename: string;
+  sheets: SheetSpec[];
 }
+
+/** The shop's name and GSTIN, as every report heads itself. */
+export async function reportBusiness(): Promise<{ name: string; gstin: string | null }> {
+  const [name, gstin] = await Promise.all([getSetting('business_name'), getSetting('business_gstin')]);
+  return { name: name || 'Billing App', gstin: gstin || null };
+}
+
+const periodLine = (from: string, to: string) => `Period: ${formatDate(from)} to ${formatDate(to)}`;
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
@@ -75,13 +92,22 @@ async function shareWorkbook(sheets: SheetSpec[], filename: string): Promise<str
   return file.uri;
 }
 
+/** A book as an .xlsx: the business header goes above the first sheet. */
+export async function shareBookExcel(book: ReportBook): Promise<string> {
+  const biz = await reportBusiness();
+  const preamble = [biz.name, book.title];
+  if (biz.gstin) preamble.push(`GSTIN: ${biz.gstin}`);
+  if (book.subtitle) preamble.push(book.subtitle);
+  const sheets = book.sheets.map((s, i) => (i === 0 ? { ...s, preamble } : s));
+  return shareWorkbook(sheets, `${book.filename}.xlsx`);
+}
+
 const stamp = (from?: string, to?: string) => (from && to ? `_${from}_to_${to}` : '');
 
 // ── Invoice list sheet, reused by the sales and GST exports ───────────────────
-function invoiceSheet(name: string, rows: InvoiceWithParty[], preamble?: string[]): SheetSpec {
+function invoiceSheet(name: string, rows: InvoiceWithParty[]): SheetSpec {
   return {
     name,
-    preamble,
     columns: [
       { header: 'Invoice No', width: 20 },
       { header: 'Date', width: 12 },
@@ -153,13 +179,13 @@ function rateSheet(name: string, rows: Awaited<ReturnType<typeof gstRateBreakup>
   };
 }
 
-// ── Public exports, one per report screen ─────────────────────────────────────
+
+// ── Report books, one per report screen ───────────────────────────────────────
 
 /** The purchase side: the bills, and a sheet of who the money went to. */
-export async function exportPurchaseReportExcel(from: string, to: string): Promise<string> {
+export async function purchaseReportBook(from: string, to: string): Promise<ReportBook> {
   const report = await purchaseReport(from, to);
-  const preamble = await preambleFor('Purchase Report', { from, to });
-  const sheets: SheetSpec[] = [invoiceSheet('Purchases', report.rows, preamble)];
+  const sheets: SheetSpec[] = [invoiceSheet('Purchases', report.rows)];
   // Debit notes get their own sheet rather than negative rows among the bills:
   // the accountant wants them as documents in their own right.
   if (report.returns.length) sheets.push(invoiceSheet('Purchase returns', report.returns));
@@ -181,18 +207,24 @@ export async function exportPurchaseReportExcel(from: string, to: string): Promi
       totals: ['TOTAL', report.count, 100, money(report.grandTotal)],
     });
   }
-  return shareWorkbook(sheets, `purchase-report${stamp(from, to)}.xlsx`);
+  return {
+    title: 'Purchase Report',
+    subtitle: periodLine(from, to),
+    filename: `purchase-report${stamp(from, to)}`,
+    sheets,
+  };
 }
 
 /** What moved off the shelf, biggest first — quantity and value, net of returns. */
-export async function exportItemSalesExcel(from: string, to: string): Promise<string> {
+export async function itemSalesBook(from: string, to: string): Promise<ReportBook> {
   const report = await itemSalesReport(from, to);
-  const preamble = await preambleFor('Item-wise Sales', { from, to });
-  return shareWorkbook(
-    [
+  return {
+    title: 'Item-wise Sales',
+    subtitle: periodLine(from, to),
+    filename: `item-sales${stamp(from, to)}`,
+    sheets: [
       {
         name: 'Item-wise sales',
-        preamble,
         columns: [
           { header: 'Item', width: 30 },
           { header: 'Unit', width: 10 },
@@ -212,8 +244,7 @@ export async function exportItemSalesExcel(from: string, to: string): Promise<st
         totals: ['TOTAL', '', '', '', 100, money(report.totalValue)],
       },
     ],
-    `item-sales${stamp(from, to)}.xlsx`,
-  );
+  };
 }
 
 /**
@@ -221,15 +252,15 @@ export async function exportItemSalesExcel(from: string, to: string): Promise<st
  * on the page but contributes nothing to it, so the sheet cannot be read as
  * takings the shop never received.
  */
-export async function exportDayBookExcel(day: string): Promise<string> {
+export async function dayBookBook(day: string): Promise<ReportBook> {
   const book = await dayBook(day);
-  const preamble = await preambleFor('Day Book');
-  preamble.push(`Day: ${day}`);
-  return shareWorkbook(
-    [
+  return {
+    title: 'Day Book',
+    subtitle: `Day: ${formatDate(day)}`,
+    filename: `day-book-${day}`,
+    sheets: [
       {
         name: 'Day book',
-        preamble,
         columns: [
           { header: 'Type', width: 14 },
           { header: 'Reference', width: 20 },
@@ -264,35 +295,38 @@ export async function exportDayBookExcel(day: string): Promise<string> {
         totals: ['NET CASH', money(book.summary.netCash)],
       },
     ],
-    `day-book-${day}.xlsx`,
-  );
+  };
 }
 
-export async function exportSalesReportExcel(from: string, to: string): Promise<string> {
+export async function salesReportBook(from: string, to: string): Promise<ReportBook> {
   const report = await salesReport(from, to);
-  const preamble = await preambleFor('Sales Report', { from, to });
-  const sheets = [invoiceSheet('Sales', report.rows, preamble)];
+  const sheets = [invoiceSheet('Sales', report.rows)];
   // Returns get their own sheet rather than negative rows among the sales: the
   // accountant wants to see the credit notes as documents in their own right.
   if (report.returns.length) sheets.push(invoiceSheet('Sale returns', report.returns));
-  return shareWorkbook(sheets, `sales-report${stamp(from, to)}.xlsx`);
+  return {
+    title: 'Sales Report',
+    subtitle: periodLine(from, to),
+    filename: `sales-report${stamp(from, to)}`,
+    sheets,
+  };
 }
 
 /**
- * The chase list, oldest money to the right. One row per party, with the
- * columns adding across to the party's balance and down to the report total —
- * so the accountant's copy says exactly what the screen says.
+ * The chase list (or the pay list), oldest money to the right. One row per
+ * party, with the columns adding across to the party's balance and down to the
+ * report total — so the accountant's copy says exactly what the screen says.
  */
-export async function exportAgingExcel(): Promise<string> {
-  const data = await agingReport();
-  const preamble = await preambleFor('Receivables Aging');
-  preamble.push(`As of: ${data.asOf}`);
-
-  return shareWorkbook(
-    [
+export async function agingBook(side: AgingSide = 'receivable'): Promise<ReportBook> {
+  const data = await agingReport(undefined, side);
+  const payable = side === 'payable';
+  return {
+    title: payable ? 'Payables Aging' : 'Receivables Aging',
+    subtitle: `As of: ${formatDate(data.asOf)}`,
+    filename: payable ? 'payables-aging-report' : 'aging-report',
+    sheets: [
       {
-        name: 'Aging',
-        preamble,
+        name: payable ? 'Payables aging' : 'Aging',
         columns: [
           { header: 'Party', width: 28 },
           { header: 'Phone', width: 16 },
@@ -310,13 +344,11 @@ export async function exportAgingExcel(): Promise<string> {
         totals: ['TOTAL', '', '', ...data.buckets.map(money), money(data.total)],
       },
     ],
-    'aging-report.xlsx',
-  );
+  };
 }
 
-export async function exportOutstandingExcel(): Promise<string> {
+export async function outstandingBook(): Promise<ReportBook> {
   const data = await partyOutstanding();
-  const preamble = await preambleFor('Outstanding Report');
   const columns = [
     { header: 'Party', width: 28 },
     { header: 'Type', width: 12 },
@@ -325,87 +357,42 @@ export async function exportOutstandingExcel(): Promise<string> {
     { header: 'Amount', width: 16, money: true },
   ];
 
-  const sheets: SheetSpec[] = [
-    {
-      name: 'To collect',
-      preamble,
-      columns,
-      rows: data.receivables.map(({ party, balance }) => [
-        party.name,
-        party.type === 'customer' ? 'Customer' : 'Supplier',
-        party.phone ?? '',
-        party.city ?? '',
-        money(balance),
-      ]),
-      totals: ['TOTAL RECEIVABLE', '', '', '', money(data.totalReceivable)],
-    },
-    {
-      name: 'To pay',
-      columns,
-      rows: data.payables.map(({ party, balance }) => [
-        party.name,
-        party.type === 'customer' ? 'Customer' : 'Supplier',
-        party.phone ?? '',
-        party.city ?? '',
-        money(-balance),
-      ]),
-      totals: ['TOTAL PAYABLE', '', '', '', money(data.totalPayable)],
-    },
-  ];
-  return shareWorkbook(sheets, 'outstanding-report.xlsx');
-}
-
-/**
- * One account's cash book. The balance column is carried through, so the sheet
- * can be reconciled against a passbook line by line rather than only in total.
- */
-export async function exportCashBookExcel(accountId: number | null): Promise<string> {
-  const book = await accountBook(accountId);
-  if (!book) throw new Error('That account no longer exists.');
-  const name = book.account?.name ?? 'Not assigned';
-  const preamble = await preambleFor(`Cash Book — ${name}`);
-
-  return shareWorkbook(
-    [
+  return {
+    title: 'Outstanding Report',
+    filename: 'outstanding-report',
+    sheets: [
       {
-        name: 'Cash book',
-        preamble,
-        columns: [
-          { header: 'Date', width: 12 },
-          { header: 'Particulars', width: 26 },
-          { header: 'Details', width: 26 },
-          { header: 'In', width: 14, money: true },
-          { header: 'Out', width: 14, money: true },
-          { header: 'Balance', width: 15, money: true },
-        ],
-        rows: book.entries.map((e) => [
-          e.date,
-          e.label,
-          e.sub,
-          e.delta > 0 ? money(e.delta) : '',
-          e.delta < 0 ? money(-e.delta) : '',
-          money(e.balance),
+        name: 'To collect',
+        columns,
+        rows: data.receivables.map(({ party, balance }) => [
+          party.name,
+          party.type === 'customer' ? 'Customer' : 'Supplier',
+          party.phone ?? '',
+          party.city ?? '',
+          money(balance),
         ]),
-        totals: [
-          'CLOSING BALANCE',
-          '',
-          '',
-          money(book.entries.reduce((s, e) => s + (e.delta > 0 ? e.delta : 0), 0)),
-          money(book.entries.reduce((s, e) => s + (e.delta < 0 ? -e.delta : 0), 0)),
-          money(book.balance),
-        ],
+        totals: ['TOTAL RECEIVABLE', '', '', '', money(data.totalReceivable)],
+      },
+      {
+        name: 'To pay',
+        columns,
+        rows: data.payables.map(({ party, balance }) => [
+          party.name,
+          party.type === 'customer' ? 'Customer' : 'Supplier',
+          party.phone ?? '',
+          party.city ?? '',
+          money(-balance),
+        ]),
+        totals: ['TOTAL PAYABLE', '', '', '', money(data.totalPayable)],
       },
     ],
-    `cash-book-${name.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.xlsx`,
-  );
+  };
 }
 
-export async function exportStockExcel(): Promise<string> {
+export async function stockBook(): Promise<ReportBook> {
   const data = await stockSummary();
-  const preamble = await preambleFor('Stock Summary');
   const sheet: SheetSpec = {
     name: 'Stock',
-    preamble,
     columns: [
       { header: 'Item', width: 28 },
       { header: 'Category', width: 16 },
@@ -446,7 +433,7 @@ export async function exportStockExcel(): Promise<string> {
       money(data.totalValue),
     ],
   };
-  return shareWorkbook([sheet], 'stock-report.xlsx');
+  return { title: 'Stock Summary', filename: 'stock-report', sheets: [sheet] };
 }
 
 /**
@@ -454,13 +441,11 @@ export async function exportStockExcel(): Promise<string> {
  * overheads → net), then the item rows behind it and the overheads they were
  * charged against.
  */
-export async function exportProfitExcel(from: string, to: string): Promise<string> {
+export async function profitBook(from: string, to: string): Promise<ReportBook> {
   const report = await profitReport(from, to);
-  const preamble = await preambleFor('Profit Report', { from, to });
 
   const summary: SheetSpec = {
     name: 'Summary',
-    preamble,
     columns: [
       { header: 'Particulars', width: 32 },
       { header: 'Amount', width: 18, money: true },
@@ -471,11 +456,13 @@ export async function exportProfitExcel(from: string, to: string): Promise<strin
       ['Net sales', money(report.netSaleValue)],
       ['Less: cost of goods sold', money(-report.costValue)],
       ['GROSS PROFIT', money(report.grossProfit)],
-      ['Gross margin %', marginPercent(report.grossProfit, report.netSaleValue)],
+      // A percentage and a count are text in the money column, so neither can
+      // be printed (or summed) as rupees.
+      ['Gross margin %', `${marginPercent(report.grossProfit, report.netSaleValue)}%`],
       ['', ''],
       ['Less: expenses', money(-report.expenses)],
       ['', ''],
-      ['Sale invoices', report.invoiceCount],
+      ['Sale invoices', String(report.invoiceCount)],
     ],
     totals: ['NET PROFIT', money(report.netProfit)],
   };
@@ -522,23 +509,23 @@ export async function exportProfitExcel(from: string, to: string): Promise<strin
     totals: ['TOTAL', '', money(report.expenses)],
   };
 
-  return shareWorkbook([summary, itemSheet, expenseSheet], `profit-report${stamp(from, to)}.xlsx`);
+  return {
+    title: 'Profit Report',
+    subtitle: periodLine(from, to),
+    filename: `profit-report${stamp(from, to)}`,
+    sheets: [summary, itemSheet, expenseSheet],
+  };
 }
 
 /**
  * The richest export — this is the one that goes to the accountant: a summary
  * block, the rate-wise slab tables, and the full sales/purchase invoice lists.
  */
-export async function exportGstExcel(from: string, to: string): Promise<string> {
-  const [data, rates, preamble] = await Promise.all([
-    gstSummary(from, to),
-    gstRateBreakup(from, to),
-    preambleFor('GST Summary', { from, to }),
-  ]);
+export async function gstBook(from: string, to: string): Promise<ReportBook> {
+  const [data, rates] = await Promise.all([gstSummary(from, to), gstRateBreakup(from, to)]);
 
   const summary: SheetSpec = {
     name: 'Summary',
-    preamble,
     columns: [
       { header: 'Particulars', width: 30 },
       { header: 'Amount', width: 18, money: true },
@@ -550,10 +537,11 @@ export async function exportGstExcel(from: string, to: string): Promise<string> 
       ['Taxable purchases (input, net of returns)', money(data.taxablePurchases)],
       ['GST paid on purchases (net of returns)', money(data.inputTax)],
       ['', ''],
-      ['Sale invoices', data.salesRows.length],
-      ['Sale returns (credit notes)', data.saleReturnRows.length],
-      ['Purchase bills', data.purchaseRows.length],
-      ['Purchase returns (debit notes)', data.purchaseReturnRows.length],
+      // Counts are text in the money column, so they never print as rupees.
+      ['Sale invoices', String(data.salesRows.length)],
+      ['Sale returns (credit notes)', String(data.saleReturnRows.length)],
+      ['Purchase bills', String(data.purchaseRows.length)],
+      ['Purchase returns (debit notes)', String(data.purchaseReturnRows.length)],
     ],
     totals: [
       data.netPayable >= 0 ? 'NET GST PAYABLE' : 'NET INPUT CREDIT',
@@ -572,5 +560,72 @@ export async function exportGstExcel(from: string, to: string): Promise<string> 
   if (data.purchaseReturnRows.length) {
     sheets.push(invoiceSheet('Purchase returns', data.purchaseReturnRows));
   }
-  return shareWorkbook(sheets, `gst-report${stamp(from, to)}.xlsx`);
+  return {
+    title: 'GST Summary',
+    subtitle: periodLine(from, to),
+    filename: `gst-report${stamp(from, to)}`,
+    sheets,
+  };
+}
+
+// ── Excel exports, kept by name for the screens that call them ────────────────
+
+export const exportPurchaseReportExcel = async (from: string, to: string) =>
+  shareBookExcel(await purchaseReportBook(from, to));
+export const exportItemSalesExcel = async (from: string, to: string) =>
+  shareBookExcel(await itemSalesBook(from, to));
+export const exportDayBookExcel = async (day: string) => shareBookExcel(await dayBookBook(day));
+export const exportSalesReportExcel = async (from: string, to: string) =>
+  shareBookExcel(await salesReportBook(from, to));
+export const exportAgingExcel = async (side: AgingSide = 'receivable') =>
+  shareBookExcel(await agingBook(side));
+export const exportOutstandingExcel = async () => shareBookExcel(await outstandingBook());
+export const exportStockExcel = async () => shareBookExcel(await stockBook());
+export const exportProfitExcel = async (from: string, to: string) =>
+  shareBookExcel(await profitBook(from, to));
+export const exportGstExcel = async (from: string, to: string) =>
+  shareBookExcel(await gstBook(from, to));
+
+/**
+ * One account's cash book. The balance column is carried through, so the sheet
+ * can be reconciled against a passbook line by line rather than only in total.
+ */
+export async function exportCashBookExcel(accountId: number | null): Promise<string> {
+  const book = await accountBook(accountId);
+  if (!book) throw new Error('That account no longer exists.');
+  const name = book.account?.name ?? 'Not assigned';
+
+  return shareBookExcel({
+    title: `Cash Book — ${name}`,
+    filename: `cash-book-${name.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}`,
+    sheets: [
+      {
+        name: 'Cash book',
+        columns: [
+          { header: 'Date', width: 12 },
+          { header: 'Particulars', width: 26 },
+          { header: 'Details', width: 26 },
+          { header: 'In', width: 14, money: true },
+          { header: 'Out', width: 14, money: true },
+          { header: 'Balance', width: 15, money: true },
+        ],
+        rows: book.entries.map((e) => [
+          e.date,
+          e.label,
+          e.sub,
+          e.delta > 0 ? money(e.delta) : '',
+          e.delta < 0 ? money(-e.delta) : '',
+          money(e.balance),
+        ]),
+        totals: [
+          'CLOSING BALANCE',
+          '',
+          '',
+          money(book.entries.reduce((s, e) => s + (e.delta > 0 ? e.delta : 0), 0)),
+          money(book.entries.reduce((s, e) => s + (e.delta < 0 ? -e.delta : 0), 0)),
+          money(book.balance),
+        ],
+      },
+    ],
+  });
 }

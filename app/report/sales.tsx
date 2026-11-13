@@ -2,9 +2,9 @@ import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import DateRange, { defaultRange } from '@/components/DateRange';
-import ExcelExportButton from '@/components/ExcelExportButton';
 import { accountedNote, splitAccounted } from '@/modules/reports/accounted';
-import { exportSalesReportExcel } from '@/modules/reports/excel';
+import { salesReportBook } from '@/modules/reports/excel';
+import ReportExportButtons from '@/modules/reports/ReportExportButtons';
 import { salesReport, type SalesReport } from '@/modules/reports/service';
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
 import { formatDate, formatMoney } from '@/utils/format';
@@ -65,7 +65,7 @@ export default function SalesReportScreen() {
             </Text>
           )}
           {booksNote ? <Text style={styles.booksNote}>{booksNote}</Text> : null}
-          <ExcelExportButton onExport={() => exportSalesReportExcel(from, to)} />
+          <ReportExportButtons book={() => salesReportBook(from, to)} />
           <Text style={styles.sectionTitle}>Invoices</Text>
         </View>
       }

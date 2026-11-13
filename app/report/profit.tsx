@@ -8,8 +8,8 @@
 import { useEffect, useState } from 'react';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
 import DateRange, { defaultRange } from '@/components/DateRange';
-import ExcelExportButton from '@/components/ExcelExportButton';
-import { exportProfitExcel } from '@/modules/reports/excel';
+import { profitBook } from '@/modules/reports/excel';
+import ReportExportButtons from '@/modules/reports/ReportExportButtons';
 import { marginPercent, profitReport, type ProfitReport } from '@/modules/reports/service';
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
 import { formatMoney, formatQty } from '@/utils/format';
@@ -86,7 +86,7 @@ export default function ProfitReportScreen() {
             </View>
           )}
 
-          <ExcelExportButton onExport={() => exportProfitExcel(from, to)} />
+          <ReportExportButtons book={() => profitBook(from, to)} />
 
           {!!report && (report.estimatedLines > 0 || report.zeroCostLines > 0) && (
             <Text style={styles.warn}>

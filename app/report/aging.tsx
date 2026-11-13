@@ -1,10 +1,16 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
-import ExcelExportButton from '@/components/ExcelExportButton';
 import { sendWhatsAppReminder } from '@/modules/parties/reminder';
-import { exportAgingExcel } from '@/modules/reports/excel';
-import { agingReport, AGING_BUCKETS, type AgingReport, type AgingRow } from '@/modules/reports/aging';
+import { agingBook } from '@/modules/reports/excel';
+import ReportExportButtons from '@/modules/reports/ReportExportButtons';
+import {
+  agingReport,
+  AGING_BUCKETS,
+  type AgingReport,
+  type AgingRow,
+  type AgingSide,
+} from '@/modules/reports/aging';
 import { getSetting } from '@/modules/settings/service';
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
 import { formatMoney } from '@/utils/format';
@@ -18,11 +24,14 @@ export default function AgingReportScreen() {
   const [data, setData] = useState<AgingReport | null>(null);
   const [businessName, setBusinessName] = useState('My Business');
   const [reminding, setReminding] = useState<number | null>(null);
+  // Money owed TO the shop, or money the shop owes its suppliers — same buckets.
+  const [side, setSide] = useState<AgingSide>('receivable');
+  const payable = side === 'payable';
 
   useFocusEffect(
     useCallback(() => {
       let active = true;
-      Promise.all([agingReport(), getSetting('business_name')]).then(([d, name]) => {
+      Promise.all([agingReport(undefined, side), getSetting('business_name')]).then(([d, name]) => {
         if (!active) return;
         setData(d);
         setBusinessName(name || 'My Business');
@@ -30,13 +39,18 @@ export default function AgingReportScreen() {
       return () => {
         active = false;
       };
-    }, []),
+    }, [side]),
   );
 
   // "மொத்தம்" → the total to collect, and how much of it has gone stale.
   useVoiceCommands((intent) => {
     if (intent.kind !== 'total' || !data) return false;
     const old = data.buckets[2] + data.buckets[3];
+    if (data.side === 'payable') {
+      return lang === 'ta-IN'
+        ? `கொடுக்க வேண்டியது ${formatMoney(data.total)}, இதில் ${formatMoney(old)} அறுபது நாட்களுக்கு மேல்`
+        : `To pay ${formatMoney(data.total)}, of which ${formatMoney(old)} is over 60 days old`;
+    }
     return lang === 'ta-IN'
       ? `வசூலிக்க வேண்டியது ${formatMoney(data.total)}, இதில் ${formatMoney(old)} அறுபது நாட்களுக்கு மேல்`
       : `To collect ${formatMoney(data.total)}, of which ${formatMoney(old)} is over 60 days old`;
@@ -69,8 +83,22 @@ export default function AgingReportScreen() {
       contentContainerStyle={styles.content}
       ListHeaderComponent={
         <View style={styles.header}>
+          <View style={styles.chips}>
+            {(['receivable', 'payable'] as const).map((s) => (
+              <Pressable
+                key={s}
+                style={[styles.chip, side === s && styles.chipOn]}
+                onPress={() => setSide(s)}
+              >
+                <Text style={[styles.chipText, side === s && styles.chipTextOn]}>
+                  {s === 'receivable' ? 'Receivable' : 'Payable'}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+
           <View style={styles.totalCard}>
-            <Text style={styles.totalLabel}>To collect</Text>
+            <Text style={styles.totalLabel}>{payable ? 'To pay' : 'To collect'}</Text>
             <Text style={styles.totalValue}>{formatMoney(data?.total ?? 0)}</Text>
             <Text style={styles.totalHint}>Aged from each bill's due date</Text>
           </View>
@@ -86,8 +114,8 @@ export default function AgingReportScreen() {
             ))}
           </View>
 
-          <ExcelExportButton onExport={exportAgingExcel} />
-          <Text style={styles.sectionTitle}>Who owes what</Text>
+          <ReportExportButtons book={() => agingBook(side)} />
+          <Text style={styles.sectionTitle}>{payable ? 'Who you owe' : 'Who owes what'}</Text>
         </View>
       }
       renderItem={({ item }) => (
@@ -107,7 +135,7 @@ export default function AgingReportScreen() {
               {formatMoney(item.total)}
             </Text>
           </Pressable>
-          {item.party.phone ? (
+          {item.party.phone && !payable ? (
             <Pressable
               style={styles.remindBtn}
               onPress={() => remind(item)}
@@ -122,7 +150,11 @@ export default function AgingReportScreen() {
       )}
       ListEmptyComponent={
         <Text style={styles.empty}>
-          {data === null ? '' : 'Nobody owes you anything right now.'}
+          {data === null
+            ? ''
+            : payable
+              ? 'You do not owe anyone right now.'
+              : 'Nobody owes you anything right now.'}
         </Text>
       }
     />
@@ -141,6 +173,17 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#fff' },
   content: { paddingBottom: 32 },
   header: { padding: 16, gap: 14 },
+  chips: { flexDirection: 'row', gap: 8 },
+  chip: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+  },
+  chipOn: { backgroundColor: '#208AEF', borderColor: '#208AEF' },
+  chipText: { fontSize: 13, color: '#444', fontWeight: '600' },
+  chipTextOn: { color: '#fff' },
   totalCard: { backgroundColor: '#f4f8fe', borderRadius: 14, padding: 18, alignItems: 'center', gap: 2 },
   totalLabel: { fontSize: 13, color: '#666', fontWeight: '600' },
   totalValue: { fontSize: 28, fontWeight: '700', color: '#111' },

@@ -4,8 +4,8 @@ import { useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Button from '@/components/Button';
 import DateRange, { defaultRange } from '@/components/DateRange';
-import ExcelExportButton from '@/components/ExcelExportButton';
-import { exportGstExcel } from '@/modules/reports/excel';
+import { gstBook } from '@/modules/reports/excel';
+import ReportExportButtons from '@/modules/reports/ReportExportButtons';
 import {
   gstr1Filename,
   reconcileTaxHeads,
@@ -124,7 +124,7 @@ export default function GstReportScreen() {
         </Text>
       ) : null}
 
-      <ExcelExportButton onExport={() => exportGstExcel(from, to)} />
+      <ReportExportButtons book={() => gstBook(from, to)} />
       <Text style={styles.disclaimer}>
         The Excel file has 5 sheets: summary, sales &amp; purchase rate-wise slabs, and the
         invoice lists. Summary figures for reference only — not a filed GSTR return.

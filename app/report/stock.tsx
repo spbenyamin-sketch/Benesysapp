@@ -1,9 +1,9 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
-import ExcelExportButton from '@/components/ExcelExportButton';
 import { STOCK_LABEL, STOCK_TONE } from '@/modules/items/stockLevel';
-import { exportStockExcel } from '@/modules/reports/excel';
+import { stockBook } from '@/modules/reports/excel';
+import ReportExportButtons from '@/modules/reports/ReportExportButtons';
 import { stockSummary, type StockSummary } from '@/modules/reports/service';
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
 import { formatMoney, formatQty } from '@/utils/format';
@@ -67,7 +67,7 @@ export default function StockReportScreen() {
               </Text>
             </Pressable>
           ) : null}
-          <ExcelExportButton onExport={exportStockExcel} />
+          <ReportExportButtons book={stockBook} />
           <Text style={styles.sectionTitle}>{reorderOnly ? 'To reorder' : 'Items'}</Text>
         </View>
       }

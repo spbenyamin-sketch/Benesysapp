@@ -1,9 +1,9 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
-import ExcelExportButton from '@/components/ExcelExportButton';
 import { partyDetailLines } from '@/modules/parties/describe';
-import { exportOutstandingExcel } from '@/modules/reports/excel';
+import { outstandingBook } from '@/modules/reports/excel';
+import ReportExportButtons from '@/modules/reports/ReportExportButtons';
 import { partyOutstanding, type Outstanding } from '@/modules/reports/service';
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
 import { formatMoney } from '@/utils/format';
@@ -51,7 +51,7 @@ export default function OutstandingReportScreen() {
       contentContainerStyle={styles.content}
       ListHeaderComponent={
         <View style={styles.exportWrap}>
-          <ExcelExportButton onExport={exportOutstandingExcel} />
+          <ReportExportButtons book={outstandingBook} />
         </View>
       }
       renderItem={({ item: section }) => (

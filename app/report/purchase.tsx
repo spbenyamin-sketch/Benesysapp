@@ -4,9 +4,9 @@ import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import DateRange, { defaultRange } from '@/components/DateRange';
-import ExcelExportButton from '@/components/ExcelExportButton';
 import { accountedNote, splitAccounted } from '@/modules/reports/accounted';
-import { exportPurchaseReportExcel } from '@/modules/reports/excel';
+import { purchaseReportBook } from '@/modules/reports/excel';
+import ReportExportButtons from '@/modules/reports/ReportExportButtons';
 import { percentOf, purchaseReport, type PurchaseReport } from '@/modules/reports/service';
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
 import { formatDate, formatMoney } from '@/utils/format';
@@ -89,7 +89,7 @@ export default function PurchaseReportScreen() {
           ) : null}
 
           {booksNote ? <Text style={styles.booksNote}>{booksNote}</Text> : null}
-          <ExcelExportButton onExport={() => exportPurchaseReportExcel(from, to)} />
+          <ReportExportButtons book={() => purchaseReportBook(from, to)} />
           <Text style={styles.sectionTitle}>Purchase bills</Text>
         </View>
       }

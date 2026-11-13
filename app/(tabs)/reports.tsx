@@ -36,8 +36,8 @@ const REPORTS: { href: Href; emoji: string; title: string; sub: string }[] = [
   {
     href: '/report/aging',
     emoji: '⏳',
-    title: 'Receivables Aging',
-    sub: 'How long the money has been owed, and who to remind',
+    title: 'Aging',
+    sub: 'How long money has been owed — to you, or by you',
   },
   { href: '/report/stock', emoji: '📦', title: 'Stock Summary', sub: 'On-hand quantity and value' },
   {

@@ -4,8 +4,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import DateRange, { defaultRange } from '@/components/DateRange';
-import ExcelExportButton from '@/components/ExcelExportButton';
-import { exportItemSalesExcel } from '@/modules/reports/excel';
+import { itemSalesBook } from '@/modules/reports/excel';
+import ReportExportButtons from '@/modules/reports/ReportExportButtons';
 import { itemSalesReport, percentOf, type ItemSalesReport } from '@/modules/reports/service';
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
 import { formatMoney, formatQty } from '@/utils/format';
@@ -76,7 +76,7 @@ export default function ItemSalesReportScreen() {
             ))}
           </View>
 
-          <ExcelExportButton onExport={() => exportItemSalesExcel(from, to)} />
+          <ReportExportButtons book={() => itemSalesBook(from, to)} />
           <Text style={styles.note}>Returns are already netted off both columns.</Text>
         </View>
       }

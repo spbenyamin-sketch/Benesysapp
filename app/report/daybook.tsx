@@ -3,9 +3,9 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import ExcelExportButton from '@/components/ExcelExportButton';
 import { dayBook, DAY_BOOK_LABEL, type DayBook, type DayBookKind } from '@/modules/reports/daybook';
-import { exportDayBookExcel } from '@/modules/reports/excel';
+import { dayBookBook } from '@/modules/reports/excel';
+import ReportExportButtons from '@/modules/reports/ReportExportButtons';
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
 import { addDays, formatDate, formatMoney } from '@/utils/format';
 
@@ -126,7 +126,7 @@ export default function DayBookScreen() {
             Billed figures include credit — only the cash row above is money that moved.
           </Text>
 
-          <ExcelExportButton onExport={() => exportDayBookExcel(day)} />
+          <ReportExportButtons book={() => dayBookBook(day)} />
         </View>
       }
       renderItem={({ item }) => (
