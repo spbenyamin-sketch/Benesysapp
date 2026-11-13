@@ -26,9 +26,30 @@ export async function getPayment(id: number): Promise<Payment | undefined> {
   return row;
 }
 
+/**
+ * Change a payment and refresh the paid status of every invoice it touches —
+ * the one it was against before AND the one it is against now, since moving or
+ * resizing a payment changes what both bills have received. Party balances are
+ * never stored, so nothing else needs fixing up.
+ */
 export async function updatePayment(id: number, data: Partial<PaymentInput>): Promise<Payment | undefined> {
+  const before = await getPayment(id);
   const [row] = await db.update(payments).set(data).where(eq(payments.id, id)).returning();
+  for (const invoiceId of invoicesToRefresh(before?.invoiceId, row?.invoiceId)) {
+    await recomputeInvoiceStatus(invoiceId);
+  }
   return row;
+}
+
+/** The invoices whose paid status an edit can change: the old link and the new one, once each. */
+export function invoicesToRefresh(
+  before: number | null | undefined,
+  after: number | null | undefined,
+): number[] {
+  const ids: number[] = [];
+  if (before != null) ids.push(before);
+  if (after != null && after !== before) ids.push(after);
+  return ids;
 }
 
 export async function deletePayment(id: number): Promise<void> {
@@ -130,4 +151,32 @@ export async function recordPayment(data: PaymentInput): Promise<Payment> {
   const row = await createPayment(data);
   if (data.invoiceId != null) await recomputeInvoiceStatus(data.invoiceId);
   return row;
+}
+
+// ── Search (pure — the list is already loaded, so it filters on the client) ──
+
+/**
+ * Does one typed word match an amount? Read as rupees and matched from the
+ * front, so "500" finds ₹500 and ₹500.50 but not ₹1,500. "₹1,500" works too.
+ */
+export function amountMatchesTerm(paise: number, term: string): boolean {
+  const n = term.replace(/[₹,]/g, '');
+  if (!/^\d+(\.\d*)?$/.test(n)) return false;
+  const rupees = paise % 100 === 0 ? String(paise / 100) : (paise / 100).toFixed(2);
+  return rupees.startsWith(n);
+}
+
+/**
+ * Every word typed must hit something: the party, the note, the bill number,
+ * the mode, or the amount.
+ */
+export function searchPayments<
+  T extends Pick<PaymentWithParty, 'amount' | 'partyName' | 'notes' | 'invoiceNo' | 'mode'>,
+>(rows: T[], query: string): T[] {
+  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return rows;
+  return rows.filter((r) => {
+    const text = [r.partyName, r.notes ?? '', r.invoiceNo ?? '', r.mode].join(' ').toLowerCase();
+    return terms.every((t) => text.includes(t) || amountMatchesTerm(r.amount, t));
+  });
 }

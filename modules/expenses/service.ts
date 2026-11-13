@@ -90,3 +90,25 @@ export function summariseExpenses(rows: Expense[]): ExpenseSummary {
 export function filterExpensesByRange(rows: Expense[], from: string, to: string): Expense[] {
   return rows.filter((r) => r.date >= from && r.date <= to);
 }
+
+/**
+ * Every word typed must hit the category, the note, or the amount — read as
+ * rupees and matched from the front, so "500" finds ₹500 but not ₹1,500.
+ * Pure: the list is already loaded, so it filters on the client.
+ */
+export function searchExpenses<T extends Pick<Expense, 'amount' | 'category' | 'notes'>>(
+  rows: T[],
+  query: string,
+): T[] {
+  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return rows;
+  return rows.filter((r) => {
+    const text = `${r.category} ${r.notes ?? ''}`.toLowerCase();
+    const rupees = r.amount % 100 === 0 ? String(r.amount / 100) : (r.amount / 100).toFixed(2);
+    return terms.every((t) => {
+      if (text.includes(t)) return true;
+      const n = t.replace(/[₹,]/g, '');
+      return /^\d+(\.\d*)?$/.test(n) && rupees.startsWith(n);
+    });
+  });
+}

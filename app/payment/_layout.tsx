@@ -12,6 +12,7 @@ export default function PaymentLayout() {
     >
       <Stack.Screen name="index" options={{ title: 'Payments' }} />
       <Stack.Screen name="new" options={{ title: 'Record Payment', presentation: 'modal' }} />
+      <Stack.Screen name="edit/[id]" options={{ title: 'Edit Payment' }} />
     </Stack>
   );
 }

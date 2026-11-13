@@ -18,11 +18,16 @@ import AccountPicker from '@/modules/bankAccounts/AccountPicker';
 import { listInvoicesByParty } from '@/modules/invoices/service';
 import { partyDetailLines } from '@/modules/parties/describe';
 import { listParties } from '@/modules/parties/service';
-import { recordPayment, type Direction } from '@/modules/payments/service';
+import {
+  deletePayment,
+  recordPayment,
+  updatePayment,
+  type Direction,
+} from '@/modules/payments/service';
 import { bestMatch, spokenNames } from '@/modules/voice/match';
 import { t } from '@/modules/voice/phrases';
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
-import { formatDate, formatMoney, parseRupeesToPaise } from '@/utils/format';
+import { formatDate, formatMoney, paiseToRupeeInput, parseRupeesToPaise } from '@/utils/format';
 import type { Invoice, Party, Payment } from '@/db/schema';
 
 const DIRECTIONS: { key: Direction; label: string }[] = [
@@ -45,9 +50,16 @@ export default function PaymentForm({
   presetPartyId,
   presetInvoiceId,
   direction,
+  payment,
 }: {
   presetPartyId?: number;
   presetInvoiceId?: number;
+  /**
+   * Editing: every field starts from what this payment already says — its
+   * direction (a refund stays a refund), account, bill link and books flag —
+   * never from the defaults.
+   */
+  payment?: Payment;
   /**
    * Fixes which way the money runs and narrows the party picker to that side.
    * Left out when the screen was opened from a party or an invoice — there the
@@ -58,19 +70,24 @@ export default function PaymentForm({
   const router = useRouter();
   const { lang } = useVoice();
   const [allParties, setAllParties] = useState<Party[]>([]);
-  const [dir, setDir] = useState<Direction>(direction ?? 'in');
+  const editing = !!payment;
+  // An old row with no stored direction gets one from its party once the
+  // parties load (see the effect below) — the same rule the list shows.
+  const [dir, setDir] = useState<Direction>(payment?.direction ?? direction ?? 'in');
   const [invoicesForParty, setInvoicesForParty] = useState<Invoice[]>([]);
-  const [partyId, setPartyId] = useState<number | null>(presetPartyId ?? null);
-  const [invoiceId, setInvoiceId] = useState<number | null>(presetInvoiceId ?? null);
-  const [amount, setAmount] = useState('');
-  const [mode, setMode] = useState<Payment['mode']>('cash');
+  const [partyId, setPartyId] = useState<number | null>(payment?.partyId ?? presetPartyId ?? null);
+  const [invoiceId, setInvoiceId] = useState<number | null>(
+    payment ? payment.invoiceId : (presetInvoiceId ?? null),
+  );
+  const [amount, setAmount] = useState(payment ? paiseToRupeeInput(payment.amount) : '');
+  const [mode, setMode] = useState<Payment['mode']>(payment?.mode ?? 'cash');
   // Which cash box or bank account the money moved through. Stays null — and
   // the field stays hidden — until the shop has set accounts up.
-  const [accountId, setAccountId] = useState<number | null>(null);
-  const [date, setDate] = useState(todayISO());
-  const [notes, setNotes] = useState('');
+  const [accountId, setAccountId] = useState<number | null>(payment?.accountId ?? null);
+  const [date, setDate] = useState(payment?.date ?? todayISO());
+  const [notes, setNotes] = useState(payment?.notes ?? '');
   // In the books unless said otherwise — see components/BooksToggle.
-  const [accounted, setAccounted] = useState(true);
+  const [accounted, setAccounted] = useState(payment?.accounted ?? true);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -93,11 +110,13 @@ export default function PaymentForm({
   // Without a fixed direction the party decides it: a customer normally pays in,
   // a supplier is normally paid out. The toggle below can still override it —
   // that's how a refund gets recorded.
+  // An edit keeps the direction it was saved with while the party is unchanged.
   useEffect(() => {
     if (direction || partyId == null) return;
+    if (payment && payment.direction != null && partyId === payment.partyId) return;
     const p = allParties.find((x) => x.id === partyId);
     if (p) setDir(p.type === 'supplier' ? 'out' : 'in');
-  }, [allParties, partyId, direction]);
+  }, [allParties, partyId, direction, payment]);
 
   // Load the chosen party's unpaid sale/purchase invoices for optional linking.
   useEffect(() => {
@@ -108,16 +127,20 @@ export default function PaymentForm({
     let active = true;
     listInvoicesByParty(partyId).then((rows) => {
       if (!active) return;
+      // The bill an edited payment is already against always stays offered —
+      // it may show as paid (by this very payment) or be a return note.
       setInvoicesForParty(
         rows.filter(
-          (r) => (r.type === 'sale' || r.type === 'purchase') && r.paymentStatus !== 'paid',
+          (r) =>
+            r.id === payment?.invoiceId ||
+            ((r.type === 'sale' || r.type === 'purchase') && r.paymentStatus !== 'paid'),
         ),
       );
     });
     return () => {
       active = false;
     };
-  }, [partyId]);
+  }, [partyId, payment?.invoiceId]);
 
   // Name, then mobile, town and GST number — the bill is often made while the
   // customer is standing there, and picking the wrong namesake is only caught
@@ -180,8 +203,12 @@ export default function PaymentForm({
         setNotes('');
         return t('cleared', lang);
       case 'action':
-        // Nothing to delete here — clear what has been typed instead.
         if (intent.action !== 'delete') return false;
+        if (editing) {
+          confirmDelete();
+          return true;
+        }
+        // Nothing saved to delete yet — clear what has been typed instead.
         setAmount('');
         setNotes('');
         return t('cleared', lang);
@@ -205,7 +232,7 @@ export default function PaymentForm({
     }
     setSaving(true);
     try {
-      await recordPayment({
+      const data = {
         partyId,
         invoiceId: invoiceId ?? null,
         amount: paise,
@@ -215,12 +242,34 @@ export default function PaymentForm({
         date,
         notes: notes.trim() || null,
         accounted,
-      });
+      };
+      // updatePayment refreshes the paid status of the old and the new bill.
+      if (payment) await updatePayment(payment.id, data);
+      else await recordPayment(data);
       router.back();
     } catch (e) {
       setSaving(false);
       Alert.alert('Could not save', (e as Error)?.message ?? String(e));
     }
+  };
+
+  const confirmDelete = () => {
+    if (!payment) return;
+    Alert.alert(
+      'Delete payment?',
+      `${formatMoney(payment.amount)}. The invoice's paid status will be recalculated.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            await deletePayment(payment.id);
+            router.back();
+          },
+        },
+      ],
+    );
   };
 
   return (
@@ -333,7 +382,13 @@ export default function PaymentForm({
 
         <BooksToggle value={accounted} onChange={setAccounted} />
 
-        <Button label="Record payment" onPress={save} loading={saving} style={styles.save} />
+        <Button
+          label={editing ? 'Save changes' : 'Record payment'}
+          onPress={save}
+          loading={saving}
+          style={styles.save}
+        />
+        {editing ? <Button label="Delete payment" tone="danger" onPress={confirmDelete} /> : null}
       </ScrollView>
     </KeyboardAvoidingView>
   );

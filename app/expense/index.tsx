@@ -1,10 +1,11 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import {
   deleteExpense,
   filterExpensesByRange,
   listExpenses,
+  searchExpenses,
   summariseExpenses,
 } from '@/modules/expenses/service';
 import { NotInBooks } from '@/components/BooksToggle';
@@ -39,6 +40,7 @@ export default function ExpensesScreen() {
   const { lang } = useVoice();
   const [rows, setRows] = useState<Expense[]>([]);
   const [period, setPeriod] = useState<Period>('month');
+  const [query, setQuery] = useState('');
 
   const load = useCallback(() => {
     let active = true;
@@ -59,6 +61,8 @@ export default function ExpensesScreen() {
 
   const summary = useMemo(() => summariseExpenses(visible), [visible]);
   const topCategory = summary.byCategory[0];
+  // Search only narrows the list — the totals above stay those of the period.
+  const shown = useMemo(() => searchExpenses(visible, query), [visible, query]);
 
   // Voice: "மொத்தம்" reads out what has been spent in the chosen period.
   useVoiceCommands((intent) => {
@@ -108,17 +112,29 @@ export default function ExpensesScreen() {
             Biggest: {topCategory.category} · {formatMoney(topCategory.total)}
           </Text>
         ) : null}
+        <TextInput
+          style={styles.search}
+          value={query}
+          onChangeText={setQuery}
+          placeholder="Search category, note or amount"
+          placeholderTextColor="#999"
+          autoCapitalize="none"
+          clearButtonMode="while-editing"
+        />
       </View>
 
       <FlatList
-        data={visible}
+        data={shown}
         keyExtractor={(r) => String(r.id)}
-        contentContainerStyle={visible.length === 0 ? styles.emptyWrap : styles.listContent}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={shown.length === 0 ? styles.emptyWrap : styles.listContent}
         ListEmptyComponent={
           <Text style={styles.empty}>
             {rows.length === 0
               ? 'No expenses yet.\nTap + to record rent, power, wages…'
-              : 'Nothing spent in this period.'}
+              : query.trim()
+                ? 'No expenses match.'
+                : 'Nothing spent in this period.'}
           </Text>
         }
         renderItem={({ item }) => (
@@ -188,6 +204,14 @@ const styles = StyleSheet.create({
   chipText: { fontWeight: '600', color: '#666', fontSize: 14 },
   chipTextActive: { color: '#fff' },
   topLine: { fontSize: 12, color: '#888' },
+  search: {
+    backgroundColor: '#f2f2f4',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
+    color: '#111',
+  },
   listContent: { paddingBottom: 96 },
   emptyWrap: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
   empty: { color: '#999', textAlign: 'center', lineHeight: 22 },

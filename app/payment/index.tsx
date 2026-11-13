@@ -1,10 +1,11 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import {
   deletePayment,
   listPaymentsWithParty,
   paymentDirection,
+  searchPayments,
   type PaymentWithParty,
 } from '@/modules/payments/service';
 import { NotInBooks } from '@/components/BooksToggle';
@@ -24,6 +25,7 @@ export default function PaymentsScreen() {
   const { lang } = useVoice();
   const [rows, setRows] = useState<PaymentWithParty[]>([]);
   const [filter, setFilter] = useState<Filter>('all');
+  const [query, setQuery] = useState('');
 
   const load = useCallback(() => {
     let active = true;
@@ -37,10 +39,11 @@ export default function PaymentsScreen() {
 
   useFocusEffect(load);
 
-  const filtered = useMemo(
-    () => (filter === 'all' ? rows : rows.filter((r) => paymentDirection(r, r.partyType) === filter)),
-    [rows, filter],
-  );
+  const filtered = useMemo(() => {
+    const byDir =
+      filter === 'all' ? rows : rows.filter((r) => paymentDirection(r, r.partyType) === filter);
+    return searchPayments(byDir, query);
+  }, [rows, filter, query]);
 
   const totals = useMemo(() => {
     let inSum = 0;
@@ -99,9 +102,19 @@ export default function PaymentsScreen() {
             );
           })}
         </View>
+        <TextInput
+          style={styles.search}
+          value={query}
+          onChangeText={setQuery}
+          placeholder="Search party, note, bill no or amount"
+          placeholderTextColor="#999"
+          autoCapitalize="none"
+          clearButtonMode="while-editing"
+        />
       </View>
 
       <FlatList
+        keyboardShouldPersistTaps="handled"
         data={filtered}
         keyExtractor={(r) => String(r.id)}
         contentContainerStyle={filtered.length === 0 ? styles.emptyWrap : styles.listContent}
@@ -109,7 +122,7 @@ export default function PaymentsScreen() {
           <Text style={styles.empty}>
             {rows.length === 0
               ? 'No payments yet.\nTap + to record one.'
-              : 'No payments in this filter.'}
+              : 'No payments match.'}
           </Text>
         }
         renderItem={({ item }) => {
@@ -117,7 +130,7 @@ export default function PaymentsScreen() {
           return (
             <Pressable
               style={styles.row}
-              onPress={() => router.push({ pathname: '/party/[id]', params: { id: item.partyId } })}
+              onPress={() => router.push({ pathname: '/payment/edit/[id]', params: { id: item.id } })}
               onLongPress={() => confirmDelete(item)}
             >
               <View style={styles.rowLeft}>
@@ -191,6 +204,14 @@ const styles = StyleSheet.create({
   chipActive: { backgroundColor: '#208AEF', borderColor: '#208AEF' },
   chipText: { fontWeight: '600', color: '#666', fontSize: 14 },
   chipTextActive: { color: '#fff' },
+  search: {
+    backgroundColor: '#f2f2f4',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
+    color: '#111',
+  },
   listContent: { paddingBottom: 96 },
   emptyWrap: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
   empty: { color: '#999', textAlign: 'center', lineHeight: 22 },

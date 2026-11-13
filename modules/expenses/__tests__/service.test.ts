@@ -5,7 +5,12 @@ import type { Expense } from '@/db/schema';
 // backed OUT of it and the category totals must add back up to that same total.
 jest.mock('@/db/client', () => ({ db: {}, sqlite: {} }));
 
-import { expenseTax, filterExpensesByRange, summariseExpenses } from '@/modules/expenses/service';
+import {
+  expenseTax,
+  filterExpensesByRange,
+  searchExpenses,
+  summariseExpenses,
+} from '@/modules/expenses/service';
 
 function expense(over: Partial<Expense> = {}): Expense {
   return {
@@ -105,5 +110,33 @@ describe('filterExpensesByRange', () => {
 
   it('returns nothing for an empty window', () => {
     expect(filterExpensesByRange(rows, '2026-10-01', '2026-10-31')).toEqual([]);
+  });
+});
+
+describe('searchExpenses', () => {
+  const rows = [
+    expense({ id: 1, category: 'Rent', amount: 1500000, notes: 'shop, October' }),
+    expense({ id: 2, category: 'Electricity', amount: 150000, notes: null }),
+    expense({ id: 3, category: 'Tea & snacks', amount: 15050, notes: 'staff' }),
+  ];
+  const ids = (q: string) => searchExpenses(rows, q).map((r) => r.id);
+
+  it('returns everything for a blank query', () => {
+    expect(ids('')).toEqual([1, 2, 3]);
+  });
+
+  it('matches category and note, ignoring case', () => {
+    expect(ids('rent')).toEqual([1]);
+    expect(ids('STAFF')).toEqual([3]);
+    expect(ids('tea staff')).toEqual([3]);
+  });
+
+  it('matches amounts in rupees from the front', () => {
+    expect(ids('1500')).toEqual([1, 2]);
+    expect(ids('15,000')).toEqual([1]);
+    expect(ids('150.5')).toEqual([3]);
+    expect(ids('150')).toEqual([1, 2, 3]);
+    expect(ids('rent 150')).toEqual([1]);
+    expect(ids('rent 99')).toEqual([]);
   });
 });
