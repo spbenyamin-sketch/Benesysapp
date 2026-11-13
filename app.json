@@ -20,7 +20,7 @@
     },
     "android": {
       "package": "com.benesys.billingapp",
-      "versionCode": 20,
+      "versionCode": 21,
       "adaptiveIcon": {
         "backgroundColor": "#D5076A",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
