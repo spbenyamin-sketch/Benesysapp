@@ -13,12 +13,13 @@ import {
   View,
 } from 'react-native';
 import ItemPhoto from '@/components/ItemPhoto';
+import { t } from '@/i18n';
 import { listItems } from '@/modules/items/service';
 import { pickSearchHit } from '@/modules/pos/search';
 import { createQuickBill, type QuickCartLine } from '@/modules/pos/service';
 import { getDefaultTaxMode } from '@/modules/settings/service';
 import { bestMatch, spokenNames } from '@/modules/voice/match';
-import { addedLine, removedLine, setQtyLine, t, totalLine } from '@/modules/voice/phrases';
+import { addedLine, removedLine, setQtyLine, t as say, totalLine } from '@/modules/voice/phrases';
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
 import { computeTotals, TAX_MODE_LABEL, type TaxMode } from '@/utils/gst';
 import { formatMoney, parseRupeesToPaise, parseTaxRateToBasisPoints } from '@/utils/format';
@@ -82,11 +83,11 @@ export default function QuickBillScreen() {
     if (!q) return;
     const hit = pickSearchHit(items, filtered, q);
     if (!hit) {
-      setNotice(`Nothing matches “${q}”.`);
+      setNotice(t('Nothing matches “{q}”.', { q }));
       return;
     }
     bump(hit, 1);
-    setNotice(`Added ${hit.name}.`);
+    setNotice(t('Added {name}.', { name: hit.name }));
     setQuery('');
   };
 
@@ -135,9 +136,9 @@ export default function QuickBillScreen() {
 
   // Emptying a half-built bill by mistake is the one un-undoable tap here.
   const confirmClear = () => {
-    Alert.alert('Clear the bill?', 'All selected items will be removed.', [
-      { text: 'No', style: 'cancel' },
-      { text: 'Clear', style: 'destructive', onPress: clear },
+    Alert.alert(t('Clear the bill?'), t('All selected items will be removed.'), [
+      { text: t('No'), style: 'cancel' },
+      { text: t('Clear'), style: 'destructive', onPress: clear },
     ]);
   };
 
@@ -176,7 +177,7 @@ export default function QuickBillScreen() {
       router.push({ pathname: '/invoice/[id]', params: { id: detail.invoice.id } });
     } catch (e) {
       setBilling(false);
-      Alert.alert('Could not bill', (e as Error)?.message ?? String(e));
+      Alert.alert(t('Could not bill'), (e as Error)?.message ?? String(e));
       return false;
     }
     setBilling(false);
@@ -193,7 +194,7 @@ export default function QuickBillScreen() {
     switch (intent.kind) {
       case 'addLine': {
         const hit = bestMatch(intent.itemQuery, items);
-        if (!hit) return t('noMatch', lang);
+        if (!hit) return say('noMatch', lang);
         // "அரை கிலோ சர்க்கரை" is half a kilo — fractions are kept as spoken.
         const qty = intent.qty > 0 ? intent.qty : 1;
         add(hit.value.id, qty);
@@ -201,14 +202,14 @@ export default function QuickBillScreen() {
       }
       case 'removeLine': {
         const hit = bestMatch(intent.itemQuery, items);
-        if (!hit) return t('noMatch', lang);
+        if (!hit) return say('noMatch', lang);
         if (intent.qty) add(hit.value.id, -intent.qty);
         else drop(hit.value.id);
         return removedLine(hit.value.name, lang);
       }
       case 'setQty': {
         const hit = bestMatch(intent.itemQuery, items);
-        if (!hit) return t('noMatch', lang);
+        if (!hit) return say('noMatch', lang);
         setQty(hit.value.id, intent.qty);
         return setQtyLine(intent.qty, hit.value.name, lang);
       }
@@ -218,24 +219,24 @@ export default function QuickBillScreen() {
       case 'clear':
         clear();
         setQuery('');
-        return t('cleared', lang);
+        return say('cleared', lang);
       case 'action':
         // No record to delete here — "நீக்கு" on the counter means empty the cart.
         if (intent.action !== 'delete') return false;
         clear();
         setQuery('');
-        return t('cleared', lang);
+        return say('cleared', lang);
       case 'total':
-        if (cartLines.length === 0) return t('cartEmpty', lang);
+        if (cartLines.length === 0) return say('cartEmpty', lang);
         setCartOpen(true);
         return totalLine(formatMoney(totals.grandTotal), lang);
       case 'setTaxMode':
         setTaxMode(intent.mode);
-        return t(intent.mode === 'inclusive' ? 'taxIncl' : 'taxExcl', lang);
+        return say(intent.mode === 'inclusive' ? 'taxIncl' : 'taxExcl', lang);
       case 'submit':
-        if (cartLines.length === 0) return t('cartEmpty', lang);
+        if (cartLines.length === 0) return say('cartEmpty', lang);
         void bill();
-        return t('billed', lang);
+        return say('billed', lang);
       default:
         return false;
     }
@@ -254,7 +255,7 @@ export default function QuickBillScreen() {
           onSubmitEditing={submitSearch}
           returnKeyType="done"
           blurOnSubmit={false}
-          placeholder="Search and press Enter — or tap 🎙 and say “ரெண்டு டீ”"
+          placeholder={t('Search and press Enter — or tap 🎙 and say “ரெண்டு டீ”')}
           placeholderTextColor="#999"
           autoCapitalize="none"
           clearButtonMode="while-editing"
@@ -264,7 +265,7 @@ export default function QuickBillScreen() {
           onPress={() => setTaxMode((m) => (m === 'inclusive' ? 'exclusive' : 'inclusive'))}
         >
           <Text style={styles.taxChipText}>
-            {taxMode === 'inclusive' ? 'GST incl.' : 'GST extra'}
+            {taxMode === 'inclusive' ? t('GST incl.') : t('GST extra')}
           </Text>
         </Pressable>
       </View>
@@ -282,8 +283,8 @@ export default function QuickBillScreen() {
         ListEmptyComponent={
           <Text style={styles.empty}>
             {items.length === 0
-              ? 'No items yet.\nAdd items in the Items tab first.'
-              : 'No matches.'}
+              ? t('No items yet.\nAdd items in the Items tab first.')
+              : t('No matches.')}
           </Text>
         }
         renderItem={({ item }) => {
@@ -330,7 +331,7 @@ export default function QuickBillScreen() {
                 </View>
               ) : (
                 <View style={styles.tileAdd}>
-                  <Text style={styles.tileAddText}>+ Add</Text>
+                  <Text style={styles.tileAddText}>+ {t('Add')}</Text>
                 </View>
               )}
             </Pressable>
@@ -342,17 +343,19 @@ export default function QuickBillScreen() {
         <View style={styles.bar}>
           <Pressable style={styles.barClear} onPress={confirmClear}>
             <Text style={styles.barClearIcon}>🗑</Text>
-            <Text style={styles.barClearText}>Clear</Text>
+            <Text style={styles.barClearText}>{t('Clear')}</Text>
           </Pressable>
           <Pressable style={styles.barInfo} onPress={() => setCartOpen(true)}>
-            <Text style={styles.barCount}>{lineCount} item{lineCount > 1 ? 's' : ''} · view</Text>
+            <Text style={styles.barCount}>
+              {lineCount > 1 ? t('{n} items · view', { n: lineCount }) : t('1 item · view')}
+            </Text>
             <Text style={styles.barTotal}>{formatMoney(totals.grandTotal)}</Text>
           </Pressable>
           <Pressable style={styles.barBtn} onPress={bill} disabled={billing}>
             {billing ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.barBtnText}>Bill</Text>
+              <Text style={styles.barBtnText}>{t('Bill')}</Text>
             )}
           </Pressable>
         </View>
@@ -362,9 +365,9 @@ export default function QuickBillScreen() {
         <Pressable style={styles.backdrop} onPress={() => setCartOpen(false)}>
           <Pressable style={styles.sheet} onPress={() => {}}>
             <View style={styles.sheetHead}>
-              <Text style={styles.sheetTitle}>Cart</Text>
+              <Text style={styles.sheetTitle}>{t('Cart')}</Text>
               <Pressable onPress={confirmClear} hitSlop={8}>
-                <Text style={styles.clearText}>🗑  Clear all</Text>
+                <Text style={styles.clearText}>🗑  {t('Clear all')}</Text>
               </Pressable>
             </View>
             <FlatList
@@ -399,7 +402,7 @@ export default function QuickBillScreen() {
               )}
             />
             <View style={styles.discountRow}>
-              <Text style={styles.discountLabel}>Discount</Text>
+              <Text style={styles.discountLabel}>{t('Discount')}</Text>
               <Pressable
                 style={styles.discountUnit}
                 onPress={() => setDiscountPct((on) => !on)}
@@ -422,9 +425,12 @@ export default function QuickBillScreen() {
 
             <View style={styles.sheetTotals}>
               <Text style={styles.sheetSubtotal}>
-                Subtotal {formatMoney(totals.subtotal)} · Tax {formatMoney(totals.taxTotal)}
+                {t('Subtotal {sub} · Tax {tax}', {
+                  sub: formatMoney(totals.subtotal),
+                  tax: formatMoney(totals.taxTotal),
+                })}
                 {'\n'}
-                {TAX_MODE_LABEL[taxMode]}
+                {t(TAX_MODE_LABEL[taxMode])}
               </Text>
               <Text style={styles.sheetGrand}>{formatMoney(totals.grandTotal)}</Text>
             </View>
@@ -432,7 +438,9 @@ export default function QuickBillScreen() {
               {billing ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={styles.chargeText}>Bill &amp; print — {formatMoney(totals.grandTotal)}</Text>
+                <Text style={styles.chargeText}>
+                  {t('Bill & print — {amount}', { amount: formatMoney(totals.grandTotal) })}
+                </Text>
               )}
             </Pressable>
           </Pressable>

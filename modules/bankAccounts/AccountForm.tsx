@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import Button from '@/components/Button';
 import TextField from '@/components/TextField';
+import { t } from '@/i18n';
 import {
   createBankAccount,
   deleteBankAccount,
@@ -39,7 +40,7 @@ export default function AccountForm({ account }: { account?: BankAccount }) {
   const save = async () => {
     const trimmed = name.trim();
     if (!trimmed) {
-      Alert.alert('Name required', 'Give the account a name you will recognise.');
+      Alert.alert(t('Name required'), t('Give the account a name you will recognise.'));
       return;
     }
     setSaving(true);
@@ -50,16 +51,16 @@ export default function AccountForm({ account }: { account?: BankAccount }) {
       router.back();
     } catch (e) {
       setSaving(false);
-      Alert.alert('Could not save', (e as Error)?.message ?? String(e));
+      Alert.alert(t('Could not save'), (e as Error)?.message ?? String(e));
     }
   };
 
   const confirmDelete = () => {
     if (!account) return;
-    Alert.alert('Delete this account?', `"${account.name}" will be removed.`, [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert(t('Delete this account?'), t('"{name}" will be removed.', { name: account.name }), [
+      { text: t('Cancel'), style: 'cancel' },
       {
-        text: 'Delete',
+        text: t('Delete'),
         style: 'destructive',
         onPress: async () => {
           try {
@@ -69,8 +70,8 @@ export default function AccountForm({ account }: { account?: BankAccount }) {
             // The foreign key holds: money already recorded against this account
             // must not be left pointing at nothing.
             Alert.alert(
-              'Cannot delete',
-              'Payments or expenses have already gone through this account. Move them first.',
+              t('Cannot delete'),
+              t('Payments or expenses have already gone through this account. Move them first.'),
             );
           }
         },
@@ -85,46 +86,47 @@ export default function AccountForm({ account }: { account?: BankAccount }) {
     >
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
         <TextField
-          label="Name"
+          label={t('Name')}
           value={name}
           onChangeText={setName}
-          placeholder="Counter cash / SBI current"
+          placeholder={t('Counter cash / SBI current')}
           required
         />
 
         <View>
-          <Text style={styles.label}>Type</Text>
+          <Text style={styles.label}>{t('Type')}</Text>
           <View style={styles.typeRow}>
-            {TYPES.map((t) => {
-              const active = type === t.key;
+            {TYPES.map((kind) => {
+              const active = type === kind.key;
               return (
                 <Pressable
-                  key={t.key}
+                  key={kind.key}
                   style={[styles.typeBtn, active && styles.typeOn]}
-                  onPress={() => setType(t.key)}
+                  onPress={() => setType(kind.key)}
                 >
-                  <Text style={[styles.typeText, active && styles.typeTextOn]}>{t.label}</Text>
+                  <Text style={[styles.typeText, active && styles.typeTextOn]}>{t(kind.label)}</Text>
                 </Pressable>
               );
             })}
           </View>
-          <Text style={styles.hint}>{TYPES.find((t) => t.key === type)?.hint}</Text>
+          <Text style={styles.hint}>{t(TYPES.find((kind) => kind.key === type)?.hint ?? '')}</Text>
         </View>
 
         <TextField
-          label="Opening balance (₹)"
+          label={t('Opening balance (₹)')}
           value={opening}
           onChangeText={setOpening}
           placeholder="0"
           keyboardType="numeric"
         />
         <Text style={styles.hint}>
-          What is in it today, before the app starts tracking. Everything recorded from now on moves
-          the balance from here.
+          {t(
+            'What is in it today, before the app starts tracking. Everything recorded from now on moves the balance from here.',
+          )}
         </Text>
 
         <Button
-          label={account ? 'Save changes' : 'Add account'}
+          label={account ? t('Save changes') : t('Add account')}
           onPress={save}
           loading={saving}
           style={styles.save}
@@ -132,7 +134,7 @@ export default function AccountForm({ account }: { account?: BankAccount }) {
 
         {account ? (
           <Pressable style={styles.deleteBtn} onPress={confirmDelete}>
-            <Text style={styles.deleteText}>Delete account</Text>
+            <Text style={styles.deleteText}>{t('Delete account')}</Text>
           </Pressable>
         ) : null}
       </ScrollView>

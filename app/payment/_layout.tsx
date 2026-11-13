@@ -1,4 +1,5 @@
 import { Stack } from 'expo-router';
+import { t } from '@/i18n';
 
 // The payment module runs its own header-ful stack (the root stack hides headers).
 export default function PaymentLayout() {
@@ -10,9 +11,9 @@ export default function PaymentLayout() {
         headerTitleStyle: { color: '#111' },
       }}
     >
-      <Stack.Screen name="index" options={{ title: 'Payments' }} />
-      <Stack.Screen name="new" options={{ title: 'Record Payment', presentation: 'modal' }} />
-      <Stack.Screen name="edit/[id]" options={{ title: 'Edit Payment' }} />
+      <Stack.Screen name="index" options={{ title: t('Payments') }} />
+      <Stack.Screen name="new" options={{ title: t('Record Payment'), presentation: 'modal' }} />
+      <Stack.Screen name="edit/[id]" options={{ title: t('Edit Payment') }} />
     </Stack>
   );
 }

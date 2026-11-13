@@ -4,12 +4,13 @@ import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import DateRange, { defaultRange } from '@/components/DateRange';
-import { accountedNote, splitAccounted } from '@/modules/reports/accounted';
+import { splitAccounted } from '@/modules/reports/accounted';
 import { purchaseReportBook } from '@/modules/reports/excel';
 import ReportExportButtons from '@/modules/reports/ReportExportButtons';
 import { percentOf, purchaseReport, type PurchaseReport } from '@/modules/reports/service';
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
 import { formatDate, formatMoney } from '@/utils/format';
+import { t } from '@/i18n';
 
 export default function PurchaseReportScreen() {
   const router = useRouter();
@@ -37,9 +38,21 @@ export default function PurchaseReportScreen() {
   });
 
   // What of this spend the accountant will never see.
-  const booksNote = report
-    ? accountedNote(splitAccounted(report.rows, (r) => r.grandTotal, report.returns), 'bill')
-    : '';
+  // Same sentence as accountedNote(), built here so it can be shown in Tamil.
+  const split = report ? splitAccounted(report.rows, (r) => r.grandTotal, report.returns) : null;
+  const booksNote =
+    split && split.nonAccountedCount > 0
+      ? t(
+          split.nonAccountedCount === 1
+            ? "{amount} across {n} bill is not in the books — your accountant's copy shows {kept}."
+            : "{amount} across {n} bills is not in the books — your accountant's copy shows {kept}.",
+          {
+            amount: formatMoney(split.nonAccounted),
+            n: split.nonAccountedCount,
+            kept: formatMoney(split.accounted),
+          },
+        )
+      : '';
 
   return (
     <FlatList
@@ -51,22 +64,24 @@ export default function PurchaseReportScreen() {
         <View style={styles.header}>
           <DateRange from={from} to={to} onFrom={setFrom} onTo={setTo} />
           <View style={styles.summary}>
-            <Stat label="Bills" value={String(report?.count ?? 0)} />
-            <Stat label="Before GST" value={formatMoney(report?.subtotal ?? 0)} />
-            <Stat label="Input GST" value={formatMoney(report?.taxTotal ?? 0)} />
-            <Stat label="Total spent" value={formatMoney(report?.grandTotal ?? 0)} strong />
+            <Stat label={t('Bills')} value={String(report?.count ?? 0)} />
+            <Stat label={t('Before GST')} value={formatMoney(report?.subtotal ?? 0)} />
+            <Stat label={t('Input GST')} value={formatMoney(report?.taxTotal ?? 0)} />
+            <Stat label={t('Total spent')} value={formatMoney(report?.grandTotal ?? 0)} strong />
           </View>
 
           {report?.returnCount ? (
             <Text style={styles.returnNote}>
-              Less {report.returnCount} purchase return(s) worth {formatMoney(report.returnTotal)} —
-              already taken off the totals above.
+              {t('Less {n} purchase return(s) worth {amount} — already taken off the totals above.', {
+                n: report.returnCount,
+                amount: formatMoney(report.returnTotal),
+              })}
             </Text>
           ) : null}
 
           {report?.suppliers.length ? (
             <View style={styles.block}>
-              <Text style={styles.blockTitle}>Where it went</Text>
+              <Text style={styles.blockTitle}>{t('Where it went')}</Text>
               {report.suppliers.slice(0, 8).map((s) => (
                 <Pressable
                   key={s.partyId}
@@ -83,14 +98,14 @@ export default function PurchaseReportScreen() {
                 </Pressable>
               ))}
               {report.suppliers.length > 8 ? (
-                <Text style={styles.more}>+ {report.suppliers.length - 8} more suppliers</Text>
+                <Text style={styles.more}>{t('+ {n} more suppliers', { n: report.suppliers.length - 8 })}</Text>
               ) : null}
             </View>
           ) : null}
 
           {booksNote ? <Text style={styles.booksNote}>{booksNote}</Text> : null}
           <ReportExportButtons book={() => purchaseReportBook(from, to)} />
-          <Text style={styles.sectionTitle}>Purchase bills</Text>
+          <Text style={styles.sectionTitle}>{t('Purchase bills')}</Text>
         </View>
       }
       renderItem={({ item }) => (
@@ -107,7 +122,7 @@ export default function PurchaseReportScreen() {
           <Text style={styles.rowAmount}>{formatMoney(item.grandTotal)}</Text>
         </Pressable>
       )}
-      ListEmptyComponent={<Text style={styles.empty}>No purchases in this range.</Text>}
+      ListEmptyComponent={<Text style={styles.empty}>{t('No purchases in this range.')}</Text>}
     />
   );
 }

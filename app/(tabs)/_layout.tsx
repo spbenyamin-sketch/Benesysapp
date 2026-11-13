@@ -1,6 +1,7 @@
 import { Tabs } from 'expo-router';
 import { Text, type ColorValue } from 'react-native';
 import HeaderSignOut from '@/components/HeaderSignOut';
+import { t } from '@/i18n';
 import { useAllowedScreens } from '@/modules/auth/allowed';
 import { SCREEN_LABEL, SCREENS, type Screen } from '@/modules/auth/screens';
 
@@ -40,7 +41,7 @@ export default function TabsLayout() {
           key={screen}
           name={screen}
           options={{
-            title: SCREEN_LABEL[screen],
+            title: t(SCREEN_LABEL[screen]),
             tabBarIcon: ({ color }) => <TabIcon emoji={TAB_ICON[screen]} color={color} />,
             // `null` keeps the route registered but off the bar, so the address
             // still resolves and ScreenGuard is the one that turns it away.
@@ -51,7 +52,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="settings"
         options={{
-          title: 'Settings',
+          title: t('Settings'),
           tabBarIcon: ({ color }) => <TabIcon emoji="⚙️" color={color} />,
         }}
       />

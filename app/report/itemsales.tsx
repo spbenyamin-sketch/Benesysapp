@@ -9,6 +9,7 @@ import ReportExportButtons from '@/modules/reports/ReportExportButtons';
 import { itemSalesReport, percentOf, type ItemSalesReport } from '@/modules/reports/service';
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
 import { formatMoney, formatQty } from '@/utils/format';
+import { t } from '@/i18n';
 
 type Sort = 'value' | 'qty';
 
@@ -58,8 +59,8 @@ export default function ItemSalesReportScreen() {
           <DateRange from={from} to={to} onFrom={setFrom} onTo={setTo} />
 
           <View style={styles.summary}>
-            <Stat label="Items sold" value={String(report?.totalItems ?? 0)} />
-            <Stat label="Sale value (before GST)" value={formatMoney(report?.totalValue ?? 0)} strong />
+            <Stat label={t('Items sold')} value={String(report?.totalItems ?? 0)} />
+            <Stat label={t('Sale value (before GST)')} value={formatMoney(report?.totalValue ?? 0)} strong />
           </View>
 
           <View style={styles.sortRow}>
@@ -70,14 +71,14 @@ export default function ItemSalesReportScreen() {
                 onPress={() => setSort(s)}
               >
                 <Text style={[styles.sortText, sort === s && styles.sortTextOn]}>
-                  {s === 'value' ? 'By value' : 'By quantity'}
+                  {s === 'value' ? t('By value') : t('By quantity')}
                 </Text>
               </Pressable>
             ))}
           </View>
 
           <ReportExportButtons book={() => itemSalesBook(from, to)} />
-          <Text style={styles.note}>Returns are already netted off both columns.</Text>
+          <Text style={styles.note}>{t('Returns are already netted off both columns.')}</Text>
         </View>
       }
       renderItem={({ item, index }) => {
@@ -90,7 +91,8 @@ export default function ItemSalesReportScreen() {
                 {item.name}
               </Text>
               <Text style={styles.rowSub}>
-                {formatQty(item.qty)} {item.unit} · {item.bills} bill{item.bills === 1 ? '' : 's'}
+                {formatQty(item.qty)} {item.unit} ·{' '}
+                {t(item.bills === 1 ? '{n} bill' : '{n} bills', { n: item.bills })}
               </Text>
               {/* The bar is the share of the period's sales — a shelf ranking
                   reads faster as a length than as another number. */}
@@ -105,7 +107,7 @@ export default function ItemSalesReportScreen() {
           </View>
         );
       }}
-      ListEmptyComponent={<Text style={styles.empty}>Nothing sold in this range.</Text>}
+      ListEmptyComponent={<Text style={styles.empty}>{t('Nothing sold in this range.')}</Text>}
     />
   );
 }

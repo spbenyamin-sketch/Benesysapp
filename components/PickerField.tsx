@@ -9,6 +9,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import { t } from '@/i18n';
 
 // Like SelectField, but the options carry an id and the callback returns that id
 // (SelectField only deals in strings). Used for the party/item pickers on the
@@ -35,10 +36,10 @@ export default function PickerField({
   value,
   onSelect,
   options,
-  placeholder = 'Select…',
+  placeholder = t('Select…'),
   required = false,
-  emptyText = 'Nothing to choose from yet.',
-  searchPlaceholder = 'Search',
+  emptyText = t('Nothing to choose from yet.'),
+  searchPlaceholder = t('Search'),
 }: {
   label: string;
   value: number | null;
@@ -149,11 +150,11 @@ export default function PickerField({
                 );
               }}
               ListEmptyComponent={
-                <Text style={styles.emptyText}>{options.length === 0 ? emptyText : 'No matches'}</Text>
+                <Text style={styles.emptyText}>{options.length === 0 ? emptyText : t('No matches')}</Text>
               }
             />
             <Pressable style={styles.closeBtn} onPress={close}>
-              <Text style={styles.closeText}>Close</Text>
+              <Text style={styles.closeText}>{t('Close')}</Text>
             </Pressable>
           </View>
         </View>

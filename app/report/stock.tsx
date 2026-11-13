@@ -7,6 +7,7 @@ import ReportExportButtons from '@/modules/reports/ReportExportButtons';
 import { stockSummary, type StockSummary } from '@/modules/reports/service';
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
 import { formatMoney, formatQty } from '@/utils/format';
+import { t } from '@/i18n';
 
 export default function StockReportScreen() {
   const router = useRouter();
@@ -50,10 +51,10 @@ export default function StockReportScreen() {
       ListHeaderComponent={
         <View style={styles.header}>
           <View style={styles.summary}>
-            <Stat label="Items" value={String(data?.totalItems ?? 0)} />
-            <Stat label="Out of stock" value={String(data?.outOfStockCount ?? 0)} />
-            <Stat label="Running low" value={String(data?.lowStockCount ?? 0)} />
-            <Stat label="Stock value (cost)" value={formatMoney(data?.totalValue ?? 0)} strong />
+            <Stat label={t('Items')} value={String(data?.totalItems ?? 0)} />
+            <Stat label={t('Out of stock')} value={String(data?.outOfStockCount ?? 0)} />
+            <Stat label={t('Running low')} value={String(data?.lowStockCount ?? 0)} />
+            <Stat label={t('Stock value (cost)')} value={formatMoney(data?.totalValue ?? 0)} strong />
           </View>
           {data?.reorderCount ? (
             <Pressable
@@ -62,13 +63,13 @@ export default function StockReportScreen() {
             >
               <Text style={[styles.reorderText, reorderOnly && styles.reorderTextOn]}>
                 {reorderOnly
-                  ? `Showing ${data.reorderCount} to reorder — show all`
-                  : `${data.reorderCount} item(s) need reordering`}
+                  ? t('Showing {n} to reorder — show all', { n: data.reorderCount })
+                  : t('{n} item(s) need reordering', { n: data.reorderCount })}
               </Text>
             </Pressable>
           ) : null}
           <ReportExportButtons book={stockBook} />
-          <Text style={styles.sectionTitle}>{reorderOnly ? 'To reorder' : 'Items'}</Text>
+          <Text style={styles.sectionTitle}>{reorderOnly ? t('To reorder') : t('Items')}</Text>
         </View>
       }
       renderItem={({ item: r }) => (
@@ -79,8 +80,8 @@ export default function StockReportScreen() {
           <View style={styles.rowLeft}>
             <Text style={styles.name}>{r.item.name}</Text>
             <Text style={styles.sub}>
-              {formatMoney(r.stockValue)} at cost
-              {r.level !== 'ok' ? ` · ${STOCK_LABEL[r.level]}` : ''}
+              {t('{amount} at cost', { amount: formatMoney(r.stockValue) })}
+              {r.level !== 'ok' ? ` · ${t(STOCK_LABEL[r.level])}` : ''}
             </Text>
           </View>
           <Text style={[styles.stock, { color: STOCK_TONE[r.level] }]}>
@@ -90,7 +91,7 @@ export default function StockReportScreen() {
       )}
       ListEmptyComponent={
         <Text style={styles.empty}>
-          {reorderOnly ? 'Nothing needs reordering.' : 'No items yet.'}
+          {reorderOnly ? t('Nothing needs reordering.') : t('No items yet.')}
         </Text>
       }
     />

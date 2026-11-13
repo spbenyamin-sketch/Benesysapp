@@ -22,6 +22,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { t } from '@/i18n';
 import { getAutoBackupConfig, runBackupNow } from '@/modules/backup/auto';
 import { BACKUP_UPLOADERS } from '@/modules/backup/useAutoBackup';
 
@@ -66,8 +67,8 @@ export default function BackupOnExit() {
     const finishOrStay = (title: string, message: string) => {
       setBusy(false);
       Alert.alert(title, message, [
-        { text: 'Stay in the app', style: 'cancel', onPress: () => (asking.current = false) },
-        { text: 'Close anyway', style: 'destructive', onPress: exit },
+        { text: t('Stay in the app'), style: 'cancel', onPress: () => (asking.current = false) },
+        { text: t('Close anyway'), style: 'destructive', onPress: exit },
       ]);
     };
 
@@ -80,13 +81,13 @@ export default function BackupOnExit() {
         // a failed upload without saying so is how a backup silently stops
         // existing, so it is surfaced here.
         if (result.message.includes('failed:')) {
-          finishOrStay('Backed up on the phone only', result.message);
+          finishOrStay(t('Backed up on the phone only'), result.message);
           return;
         }
         setBusy(false);
         exit();
       } catch (e) {
-        finishOrStay('Backup failed', (e as Error)?.message ?? String(e));
+        finishOrStay(t('Backup failed'), (e as Error)?.message ?? String(e));
       }
     };
 
@@ -103,12 +104,12 @@ export default function BackupOnExit() {
         return;
       }
       Alert.alert(
-        'Close Billing App?',
-        'Do you want to back up everything before closing?',
+        t('Close Billing App?'),
+        t('Do you want to back up everything before closing?'),
         [
-          { text: 'Cancel', style: 'cancel', onPress: () => (asking.current = false) },
-          { text: 'Close', style: 'destructive', onPress: exit },
-          { text: 'Back up & close', onPress: () => void backupThenExit() },
+          { text: t('Cancel'), style: 'cancel', onPress: () => (asking.current = false) },
+          { text: t('Close'), style: 'destructive', onPress: exit },
+          { text: t('Back up & close'), onPress: () => void backupThenExit() },
         ],
         { cancelable: true, onDismiss: () => (asking.current = false) },
       );
@@ -132,7 +133,7 @@ export default function BackupOnExit() {
       <View style={styles.backdrop}>
         <View style={styles.card}>
           <ActivityIndicator size="large" />
-          <Text style={styles.text}>Backing up before closing…</Text>
+          <Text style={styles.text}>{t('Backing up before closing…')}</Text>
         </View>
       </View>
     </Modal>

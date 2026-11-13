@@ -4,6 +4,7 @@ import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import PaymentForm from '@/modules/payments/PaymentForm';
 import { getPayment } from '@/modules/payments/service';
 import type { Payment } from '@/db/schema';
+import { t } from '@/i18n';
 
 export default function EditPaymentScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -24,7 +25,7 @@ export default function EditPaymentScreen() {
   if (payment === null) {
     return (
       <View style={styles.center}>
-        <Text style={styles.missing}>Payment not found.</Text>
+        <Text style={styles.missing}>{t('Payment not found.')}</Text>
       </View>
     );
   }

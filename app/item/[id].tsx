@@ -3,6 +3,7 @@ import { useCallback, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Button from '@/components/Button';
 import ItemPhoto from '@/components/ItemPhoto';
+import { t } from '@/i18n';
 import { deleteItemPhoto } from '@/modules/items/images';
 import { deleteItem, getItem, listStockAdjustments } from '@/modules/items/service';
 import { stockLevel, STOCK_LABEL, STOCK_TONE } from '@/modules/items/stockLevel';
@@ -72,10 +73,10 @@ export default function ItemDetailScreen() {
 
   const confirmDelete = () => {
     if (!item) return;
-    Alert.alert('Delete item?', `"${item.name}" will be permanently removed.`, [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert(t('Delete item?'), t('"{name}" will be permanently removed.', { name: item.name }), [
+      { text: t('Cancel'), style: 'cancel' },
       {
-        text: 'Delete',
+        text: t('Delete'),
         style: 'destructive',
         onPress: async () => {
           try {
@@ -84,8 +85,8 @@ export default function ItemDetailScreen() {
             router.back();
           } catch {
             Alert.alert(
-              'Cannot delete',
-              'This item is used on one or more invoices. Remove those first.',
+              t('Cannot delete'),
+              t('This item is used on one or more invoices. Remove those first.'),
             );
           }
         },
@@ -103,8 +104,8 @@ export default function ItemDetailScreen() {
   if (item === null) {
     return (
       <View style={styles.center}>
-        <Stack.Screen options={{ title: 'Item' }} />
-        <Text style={styles.missing}>Item not found.</Text>
+        <Stack.Screen options={{ title: t('Item') }} />
+        <Text style={styles.missing}>{t('Item not found.')}</Text>
       </View>
     );
   }
@@ -121,7 +122,7 @@ export default function ItemDetailScreen() {
               hitSlop={8}
               onPress={() => router.push({ pathname: '/item/edit/[id]', params: { id: itemId } })}
             >
-              <Text style={styles.headerAction}>Edit</Text>
+              <Text style={styles.headerAction}>{t('Edit')}</Text>
             </Pressable>
           ),
         }}
@@ -132,33 +133,35 @@ export default function ItemDetailScreen() {
         </View>
 
         <View style={styles.stockCard}>
-          <Text style={styles.stockLabel}>In stock</Text>
+          <Text style={styles.stockLabel}>{t('In stock')}</Text>
           <Text style={[styles.stockValue, level !== 'ok' && { color: STOCK_TONE[level] }]}>
             {formatQty(item.currentStock)} {item.unit}
           </Text>
           {level !== 'ok' ? (
             <Text style={[styles.stockWarn, { color: STOCK_TONE[level] }]}>
-              {STOCK_LABEL[level]}
-              {level === 'low' ? ` — reorder at ${formatQty(item.minStock)} ${item.unit}` : ''}
+              {t(STOCK_LABEL[level])}
+              {level === 'low'
+                ? t(' — reorder at {qty} {unit}', { qty: formatQty(item.minStock), unit: item.unit })
+                : ''}
             </Text>
           ) : null}
         </View>
 
         <View style={styles.details}>
-          {item.category ? <Detail label="Category" value={item.category} /> : null}
-          {item.hsnCode ? <Detail label="HSN / SAC" value={item.hsnCode} /> : null}
-          <Detail label="Sale price" value={formatMoney(item.salePrice)} />
-          <Detail label="Purchase price" value={formatMoney(item.purchasePrice)} />
-          <Detail label="Tax rate" value={formatTaxRate(item.taxRate)} />
-          <Detail label="Unit" value={item.unit} />
-          <Detail label="Opening stock" value={`${formatQty(item.openingStock)} ${item.unit}`} />
+          {item.category ? <Detail label={t('Category')} value={item.category} /> : null}
+          {item.hsnCode ? <Detail label={t('HSN / SAC')} value={item.hsnCode} /> : null}
+          <Detail label={t('Sale price')} value={formatMoney(item.salePrice)} />
+          <Detail label={t('Purchase price')} value={formatMoney(item.purchasePrice)} />
+          <Detail label={t('Tax rate')} value={formatTaxRate(item.taxRate)} />
+          <Detail label={t('Unit')} value={item.unit} />
+          <Detail label={t('Opening stock')} value={`${formatQty(item.openingStock)} ${item.unit}`} />
           {item.minStock > 0 ? (
-            <Detail label="Alert at" value={`${formatQty(item.minStock)} ${item.unit}`} />
+            <Detail label={t('Alert at')} value={`${formatQty(item.minStock)} ${item.unit}`} />
           ) : null}
         </View>
 
         <Button
-          label="Adjust stock"
+          label={t('Adjust stock')}
           tone="ghost"
           onPress={() => router.push({ pathname: '/item/adjust/[id]', params: { id: itemId } })}
         />
@@ -166,7 +169,7 @@ export default function ItemDetailScreen() {
         {/* Only once a count has been corrected by hand — most items never are. */}
         {adjustments.length > 0 ? (
           <View style={styles.history}>
-            <Text style={styles.historyTitle}>Stock adjustments</Text>
+            <Text style={styles.historyTitle}>{t('Stock adjustments')}</Text>
             {adjustments.map((a) => (
               <View key={a.id} style={styles.historyRow}>
                 <View style={styles.historyLeft}>
@@ -188,7 +191,7 @@ export default function ItemDetailScreen() {
         ) : null}
 
         <Pressable style={styles.deleteBtn} onPress={confirmDelete}>
-          <Text style={styles.deleteText}>Delete item</Text>
+          <Text style={styles.deleteText}>{t('Delete item')}</Text>
         </Pressable>
       </ScrollView>
     </>

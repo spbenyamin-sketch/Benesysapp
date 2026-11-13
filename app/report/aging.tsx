@@ -14,6 +14,7 @@ import {
 import { getSetting } from '@/modules/settings/service';
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
 import { formatMoney } from '@/utils/format';
+import { t } from '@/i18n';
 
 /** Older money is redder — the column a shopkeeper's eye should go to first. */
 const BUCKET_TONE = ['#1a9d5a', '#b8860b', '#e07b39', '#c0392b'];
@@ -66,9 +67,9 @@ export default function AgingReportScreen() {
         oldestDays: row.oldestDays,
       });
       if (result === 'no-phone') {
-        Alert.alert('No phone number', `Add a phone number for ${row.party.name} first.`);
+        Alert.alert(t('No phone number'), t('Add a phone number for {name} first.', { name: row.party.name }));
       } else if (result === 'failed') {
-        Alert.alert('Could not open WhatsApp', 'WhatsApp does not seem to be available here.');
+        Alert.alert(t('Could not open WhatsApp'), t('WhatsApp does not seem to be available here.'));
       }
     } finally {
       setReminding(null);
@@ -91,22 +92,22 @@ export default function AgingReportScreen() {
                 onPress={() => setSide(s)}
               >
                 <Text style={[styles.chipText, side === s && styles.chipTextOn]}>
-                  {s === 'receivable' ? 'Receivable' : 'Payable'}
+                  {s === 'receivable' ? t('Receivable') : t('Payable')}
                 </Text>
               </Pressable>
             ))}
           </View>
 
           <View style={styles.totalCard}>
-            <Text style={styles.totalLabel}>{payable ? 'To pay' : 'To collect'}</Text>
+            <Text style={styles.totalLabel}>{payable ? t('To pay') : t('To collect')}</Text>
             <Text style={styles.totalValue}>{formatMoney(data?.total ?? 0)}</Text>
-            <Text style={styles.totalHint}>Aged from each bill's due date</Text>
+            <Text style={styles.totalHint}>{t("Aged from each bill's due date")}</Text>
           </View>
 
           <View style={styles.buckets}>
             {AGING_BUCKETS.map((b, i) => (
               <View key={b.key} style={styles.bucketCard}>
-                <Text style={styles.bucketLabel}>{b.label}</Text>
+                <Text style={styles.bucketLabel}>{t(b.label)}</Text>
                 <Text style={[styles.bucketValue, { color: BUCKET_TONE[i] }]}>
                   {formatMoney(data?.buckets[i] ?? 0)}
                 </Text>
@@ -115,7 +116,7 @@ export default function AgingReportScreen() {
           </View>
 
           <ReportExportButtons book={() => agingBook(side)} />
-          <Text style={styles.sectionTitle}>{payable ? 'Who you owe' : 'Who owes what'}</Text>
+          <Text style={styles.sectionTitle}>{payable ? t('Who you owe') : t('Who owes what')}</Text>
         </View>
       }
       renderItem={({ item }) => (
@@ -127,8 +128,8 @@ export default function AgingReportScreen() {
             <View style={styles.rowLeft}>
               <Text style={styles.rowName}>{item.party.name}</Text>
               <Text style={styles.rowAge}>
-                {item.oldestDays > 0 ? `Oldest ${item.oldestDays} days` : 'Not due yet'}
-                {item.party.phone ? '' : ' · no phone'}
+                {item.oldestDays > 0 ? t('Oldest {n} days', { n: item.oldestDays }) : t('Not due yet')}
+                {item.party.phone ? '' : ` · ${t('no phone')}`}
               </Text>
             </View>
             <Text style={[styles.rowAmount, { color: BUCKET_TONE[oldestBucket(item)] }]}>
@@ -142,7 +143,7 @@ export default function AgingReportScreen() {
               disabled={reminding !== null}
             >
               <Text style={styles.remindText}>
-                {reminding === item.party.id ? 'Opening…' : 'Remind'}
+                {reminding === item.party.id ? t('Opening…') : t('Remind')}
               </Text>
             </Pressable>
           ) : null}
@@ -153,8 +154,8 @@ export default function AgingReportScreen() {
           {data === null
             ? ''
             : payable
-              ? 'You do not owe anyone right now.'
-              : 'Nobody owes you anything right now.'}
+              ? t('You do not owe anyone right now.')
+              : t('Nobody owes you anything right now.')}
         </Text>
       }
     />

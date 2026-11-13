@@ -13,6 +13,7 @@ import ReportExportButtons from '@/modules/reports/ReportExportButtons';
 import { marginPercent, profitReport, type ProfitReport } from '@/modules/reports/service';
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
 import { formatMoney, formatQty } from '@/utils/format';
+import { t } from '@/i18n';
 
 export default function ProfitReportScreen() {
   const { lang } = useVoice();
@@ -54,32 +55,32 @@ export default function ProfitReportScreen() {
           <DateRange from={from} to={to} onFrom={setFrom} onTo={setTo} />
 
           <View style={styles.block}>
-            <Line label="Sale value (before GST)" value={formatMoney(report?.saleValue ?? 0)} />
-            <Line label="Less: discount given" value={`− ${formatMoney(report?.discount ?? 0)}`} />
-            <Line label="Net sales" value={formatMoney(report?.netSaleValue ?? 0)} strong />
-            <Line label="Less: cost of goods sold" value={`− ${formatMoney(report?.costValue ?? 0)}`} />
+            <Line label={t('Sale value (before GST)')} value={formatMoney(report?.saleValue ?? 0)} />
+            <Line label={t('Less: discount given')} value={`− ${formatMoney(report?.discount ?? 0)}`} />
+            <Line label={t('Net sales')} value={formatMoney(report?.netSaleValue ?? 0)} strong />
+            <Line label={t('Less: cost of goods sold')} value={`− ${formatMoney(report?.costValue ?? 0)}`} />
             <View style={styles.divider} />
             <Line
-              label={`Gross profit (${marginPercent(gross, report?.netSaleValue ?? 0)}%)`}
+              label={t('Gross profit ({pct}%)', { pct: marginPercent(gross, report?.netSaleValue ?? 0) })}
               value={formatMoney(gross)}
               strong
             />
-            <Line label="Less: expenses" value={`− ${formatMoney(report?.expenses ?? 0)}`} />
+            <Line label={t('Less: expenses')} value={`− ${formatMoney(report?.expenses ?? 0)}`} />
           </View>
 
           <View style={styles.netCard}>
-            <Text style={styles.netLabel}>{net >= 0 ? 'Net profit' : 'Net loss'}</Text>
+            <Text style={styles.netLabel}>{net >= 0 ? t('Net profit') : t('Net loss')}</Text>
             <Text style={[styles.netValue, { color: net >= 0 ? '#1a9d5a' : '#c0392b' }]}>
               {formatMoney(Math.abs(net))}
             </Text>
             <Text style={styles.netHint}>
-              {report?.invoiceCount ?? 0} sale bill(s) · gross profit − expenses
+              {t('{n} sale bill(s) · gross profit − expenses', { n: report?.invoiceCount ?? 0 })}
             </Text>
           </View>
 
           {!!report?.expenseRows.length && (
             <View style={styles.block}>
-              <Text style={styles.blockTitle}>Expenses in this period</Text>
+              <Text style={styles.blockTitle}>{t('Expenses in this period')}</Text>
               {report.expenseRows.map((e) => (
                 <Line key={e.category} label={`${e.category} (${e.count})`} value={formatMoney(e.total)} />
               ))}
@@ -91,13 +92,13 @@ export default function ProfitReportScreen() {
           {!!report && (report.estimatedLines > 0 || report.zeroCostLines > 0) && (
             <Text style={styles.warn}>
               {report.estimatedLines > 0 &&
-                `${report.estimatedLines} line(s) were billed before cost was recorded — valued at today's purchase price. `}
+                `${t("{n} line(s) were billed before cost was recorded — valued at today's purchase price.", { n: report.estimatedLines })} `}
               {report.zeroCostLines > 0 &&
-                `${report.zeroCostLines} line(s) have no purchase price on the item, so they read as pure profit.`}
+                t('{n} line(s) have no purchase price on the item, so they read as pure profit.', { n: report.zeroCostLines })}
             </Text>
           )}
 
-          <Text style={styles.sectionTitle}>Item-wise profit</Text>
+          <Text style={styles.sectionTitle}>{t('Item-wise profit')}</Text>
         </View>
       }
       renderItem={({ item }) => (
@@ -107,8 +108,11 @@ export default function ProfitReportScreen() {
               {item.name}
             </Text>
             <Text style={styles.rowSub}>
-              {formatQty(item.qty)} {item.unit} · sold {formatMoney(item.saleValue)} · cost{' '}
-              {formatMoney(item.costValue)}
+              {formatQty(item.qty)} {item.unit} ·{' '}
+              {t('sold {sale} · cost {cost}', {
+                sale: formatMoney(item.saleValue),
+                cost: formatMoney(item.costValue),
+              })}
             </Text>
           </View>
           <View style={styles.rowRight}>
@@ -119,7 +123,7 @@ export default function ProfitReportScreen() {
           </View>
         </View>
       )}
-      ListEmptyComponent={<Text style={styles.empty}>No sales in this range.</Text>}
+      ListEmptyComponent={<Text style={styles.empty}>{t('No sales in this range.')}</Text>}
     />
   );
 }

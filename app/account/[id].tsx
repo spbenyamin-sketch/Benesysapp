@@ -4,6 +4,7 @@ import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-rou
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import ExcelExportButton from '@/components/ExcelExportButton';
+import { t } from '@/i18n';
 import {
   accountBook,
   type AccountBook,
@@ -20,6 +21,10 @@ const KIND_LABEL: Record<AccountEntryKind, string> = {
   paymentOut: 'Paid',
   expense: 'Expense',
 };
+
+/** The ledger's own wording is translated; names, categories and notes are data. */
+const FIXED_TEXT = new Set(['On account', 'Opening balance', 'Cash in hand', 'Bank', 'Expense']);
+const shown = (text: string) => (FIXED_TEXT.has(text) ? t(text) : text);
 
 export default function AccountBookScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -58,13 +63,13 @@ export default function AccountBookScreen() {
   if (book === null) {
     return (
       <View style={styles.center}>
-        <Stack.Screen options={{ title: 'Account' }} />
-        <Text style={styles.missing}>Account not found.</Text>
+        <Stack.Screen options={{ title: t('Account') }} />
+        <Text style={styles.missing}>{t('Account not found.')}</Text>
       </View>
     );
   }
 
-  const title = book.account?.name ?? 'Not assigned';
+  const title = book.account?.name ?? t('Not assigned');
   const inTotal = book.entries.reduce((s, e) => s + (e.delta > 0 ? e.delta : 0), 0);
   const outTotal = book.entries.reduce((s, e) => s + (e.delta < 0 ? -e.delta : 0), 0);
 
@@ -81,7 +86,7 @@ export default function AccountBookScreen() {
                   router.push({ pathname: '/account/edit/[id]', params: { id: book.account!.id } })
                 }
               >
-                <Text style={styles.headerAction}>Edit</Text>
+                <Text style={styles.headerAction}>{t('Edit')}</Text>
               </Pressable>
             ) : null,
         }}
@@ -94,27 +99,28 @@ export default function AccountBookScreen() {
         ListHeaderComponent={
           <View style={styles.header}>
             <View style={styles.balanceCard}>
-              <Text style={styles.balanceLabel}>Balance</Text>
+              <Text style={styles.balanceLabel}>{t('Balance')}</Text>
               <Text style={[styles.balanceValue, book.balance < 0 && styles.negative]}>
                 {formatMoney(book.balance)}
               </Text>
             </View>
             <View style={styles.flowRow}>
-              <Flow label="In" value={inTotal} tone="#1a9d5a" />
-              <Flow label="Out" value={outTotal} tone="#c0392b" />
+              <Flow label={t('In')} value={inTotal} tone="#1a9d5a" />
+              <Flow label={t('Out')} value={outTotal} tone="#c0392b" />
             </View>
             {book.account ? null : (
               <Text style={styles.note}>
-                These were recorded before this shop had accounts, or without one being picked. Open
-                each and set an account to move it out of here.
+                {t(
+                  'These were recorded before this shop had accounts, or without one being picked. Open each and set an account to move it out of here.',
+                )}
               </Text>
             )}
             <ExcelExportButton onExport={() => exportCashBookExcel(accountId)} />
-            <Text style={styles.sectionTitle}>Cash book</Text>
+            <Text style={styles.sectionTitle}>{t('Cash book')}</Text>
           </View>
         }
         renderItem={({ item }) => <BookRow entry={item} />}
-        ListEmptyComponent={<Text style={styles.empty}>Nothing has moved through this yet.</Text>}
+        ListEmptyComponent={<Text style={styles.empty}>{t('Nothing has moved through this yet.')}</Text>}
       />
     </>
   );
@@ -136,12 +142,12 @@ function BookRow({ entry }: { entry: AccountEntry }) {
     <View style={styles.row}>
       <View style={styles.rowLeft}>
         <Text style={styles.rowLabel} numberOfLines={1}>
-          <Text style={styles.rowKind}>{KIND_LABEL[entry.kind]}</Text>
+          <Text style={styles.rowKind}>{t(KIND_LABEL[entry.kind])}</Text>
           {'  '}
-          {entry.label}
+          {shown(entry.label)}
         </Text>
         <Text style={styles.rowSub} numberOfLines={1}>
-          {entry.sub} · {formatDate(entry.date)}
+          {shown(entry.sub)} · {formatDate(entry.date)}
         </Text>
       </View>
       <View style={styles.rowRight}>

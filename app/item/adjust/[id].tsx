@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import Button from '@/components/Button';
 import TextField from '@/components/TextField';
+import { t } from '@/i18n';
 import { adjustStock, getItem } from '@/modules/items/service';
 import { useVoiceCommands } from '@/modules/voice/VoiceProvider';
 import { formatQty, parseQtyToThousandths } from '@/utils/format';
@@ -42,11 +43,14 @@ export default function AdjustStockScreen() {
   const apply = async () => {
     if (!item) return;
     if (amount <= 0) {
-      Alert.alert('Enter a quantity', 'Please enter a quantity greater than zero.');
+      Alert.alert(t('Enter a quantity'), t('Please enter a quantity greater than zero.'));
       return;
     }
     if (nextStock < 0) {
-      Alert.alert('Not enough stock', `Reducing by ${formatQty(amount)} would go below zero.`);
+      Alert.alert(
+        t('Not enough stock'),
+        t('Reducing by {qty} would go below zero.', { qty: formatQty(amount) }),
+      );
       return;
     }
     setSaving(true);
@@ -55,7 +59,7 @@ export default function AdjustStockScreen() {
       router.back();
     } catch (e) {
       setSaving(false);
-      Alert.alert('Could not adjust', (e as Error)?.message ?? String(e));
+      Alert.alert(t('Could not adjust'), (e as Error)?.message ?? String(e));
     }
   };
 
@@ -97,7 +101,7 @@ export default function AdjustStockScreen() {
   if (item === null) {
     return (
       <View style={styles.center}>
-        <Text style={styles.missing}>Item not found.</Text>
+        <Text style={styles.missing}>{t('Item not found.')}</Text>
       </View>
     );
   }
@@ -105,7 +109,7 @@ export default function AdjustStockScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.currentCard}>
-        <Text style={styles.currentLabel}>Current stock</Text>
+        <Text style={styles.currentLabel}>{t('Current stock')}</Text>
         <Text style={styles.currentValue}>
           {formatQty(item.currentStock)} {item.unit}
         </Text>
@@ -120,14 +124,14 @@ export default function AdjustStockScreen() {
               style={[styles.modeChip, active && styles.modeChipActive]}
               onPress={() => setMode(m.key)}
             >
-              <Text style={[styles.modeText, active && styles.modeTextActive]}>{m.label}</Text>
+              <Text style={[styles.modeText, active && styles.modeTextActive]}>{t(m.label)}</Text>
             </Pressable>
           );
         })}
       </View>
 
       <TextField
-        label={`Quantity (${item.unit})`}
+        label={t('Quantity ({unit})', { unit: item.unit })}
         value={qty}
         onChangeText={setQty}
         placeholder="0"
@@ -135,17 +139,17 @@ export default function AdjustStockScreen() {
       />
 
       <Text style={styles.preview}>
-        New stock: <Text style={styles.previewValue}>{formatQty(Math.max(nextStock, 0))} {item.unit}</Text>
+        {t('New stock:')} <Text style={styles.previewValue}>{formatQty(Math.max(nextStock, 0))} {item.unit}</Text>
       </Text>
 
       <TextField
-        label="Reason (optional)"
+        label={t('Reason (optional)')}
         value={note}
         onChangeText={setNote}
-        placeholder="Recount, damaged, gift…"
+        placeholder={t('Recount, damaged, gift…')}
       />
 
-      <Button label="Apply adjustment" onPress={apply} loading={saving} style={styles.apply} />
+      <Button label={t('Apply adjustment')} onPress={apply} loading={saving} style={styles.apply} />
     </View>
   );
 }

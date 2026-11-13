@@ -3,6 +3,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { NotInBooks } from '@/components/BooksToggle';
 import DateRange, { defaultRange } from '@/components/DateRange';
+import { t } from '@/i18n';
 import { daysOverdue, isOverdue } from '@/modules/invoices/due';
 import { listInvoicesWithParty, type InvoiceWithParty } from '@/modules/invoices/service';
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
@@ -133,7 +134,7 @@ export default function InvoiceListScreen() {
             style={styles.search}
             value={query}
             onChangeText={setQuery}
-            placeholder="Search invoice no or party"
+            placeholder={t('Search invoice no or party')}
             placeholderTextColor="#999"
             autoCapitalize="none"
             clearButtonMode="while-editing"
@@ -147,7 +148,7 @@ export default function InvoiceListScreen() {
                   style={[styles.chip, active && styles.chipActive]}
                   onPress={() => setType(f.key)}
                 >
-                  <Text style={[styles.chipText, active && styles.chipTextActive]}>{f.label}</Text>
+                  <Text style={[styles.chipText, active && styles.chipTextActive]}>{t(f.label)}</Text>
                 </Pressable>
               );
             })}
@@ -155,11 +156,11 @@ export default function InvoiceListScreen() {
           <DateRange from={from} to={to} onFrom={setFrom} onTo={setTo} />
           <View style={styles.summary}>
             <View style={styles.summaryCell}>
-              <Text style={styles.summaryLabel}>Documents</Text>
+              <Text style={styles.summaryLabel}>{t('Documents')}</Text>
               <Text style={styles.summaryValue}>{filtered.length}</Text>
             </View>
             <View style={styles.summaryCell}>
-              <Text style={styles.summaryLabel}>Net total</Text>
+              <Text style={styles.summaryLabel}>{t('Net total')}</Text>
               <Text
                 style={[styles.summaryValue, styles.summaryStrong]}
                 numberOfLines={1}
@@ -181,7 +182,7 @@ export default function InvoiceListScreen() {
           >
             <View style={styles.rowLeft}>
               <Text style={styles.rowNo}>
-                {item.invoiceNo} <Text style={styles.rowTag}>· {TYPE_TAG[item.type]}</Text>
+                {item.invoiceNo} <Text style={styles.rowTag}>· {t(TYPE_TAG[item.type])}</Text>
               </Text>
               <Text style={styles.rowSub}>
                 {item.partyName} · {formatDate(item.date)}
@@ -197,8 +198,8 @@ export default function InvoiceListScreen() {
                   instead of just "Unpaid" — that is the row worth chasing. */}
               <Text style={[styles.rowStatus, { color: late ? '#c0392b' : statusTone(item) }]}>
                 {late
-                  ? `Overdue ${daysOverdue(item, today)}d`
-                  : STATUS_LABEL[item.paymentStatus]}
+                  ? t('Overdue {n}d', { n: daysOverdue(item, today) })
+                  : t(STATUS_LABEL[item.paymentStatus])}
               </Text>
             </View>
           </Pressable>
@@ -207,8 +208,8 @@ export default function InvoiceListScreen() {
       ListEmptyComponent={
         <Text style={styles.empty}>
           {rows.length === 0
-            ? 'No invoices yet.\nCreate one from the dashboard.'
-            : 'No documents match this filter.'}
+            ? t('No invoices yet.\nCreate one from the dashboard.')
+            : t('No documents match this filter.')}
         </Text>
       }
     />

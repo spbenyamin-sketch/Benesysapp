@@ -10,6 +10,7 @@
 // anything, which is why only the other choice explains itself.
 
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { t } from '@/i18n';
 
 export default function BooksToggle({
   value,
@@ -20,7 +21,7 @@ export default function BooksToggle({
 }) {
   return (
     <View style={styles.wrap}>
-      <Text style={styles.label}>Books</Text>
+      <Text style={styles.label}>{t('Books')}</Text>
       <View style={styles.row}>
         {[true, false].map((on) => (
           <Pressable
@@ -31,14 +32,14 @@ export default function BooksToggle({
             accessibilityState={{ selected: value === on }}
           >
             <Text style={[styles.text, value === on && styles.textOn]}>
-              {on ? 'In books' : 'Not in books'}
+              {on ? t('In books') : t('Not in books')}
             </Text>
           </Pressable>
         ))}
       </View>
       {value ? null : (
         <Text style={styles.hint}>
-          Stays out of the Tally export and the GST return. Your own reports still count it.
+          {t('Stays out of the Tally export and the GST return. Your own reports still count it.')}
         </Text>
       )}
     </View>
@@ -81,10 +82,10 @@ const styles = StyleSheet.create({
  * of them: the marking is what is worth saying, not the normal.
  */
 export function NotInBooks({ inline = false }: { inline?: boolean }) {
-  if (inline) return <Text style={styles.inlineMark}> · Not in books</Text>;
+  if (inline) return <Text style={styles.inlineMark}> · {t('Not in books')}</Text>;
   return (
     <View style={styles.pill}>
-      <Text style={styles.pillText}>Not in books</Text>
+      <Text style={styles.pillText}>{t('Not in books')}</Text>
     </View>
   );
 }

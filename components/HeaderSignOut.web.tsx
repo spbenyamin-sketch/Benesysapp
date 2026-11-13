@@ -4,6 +4,7 @@
 
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { t } from '@/i18n';
 import { getAccount, signOut, type Account } from '@/modules/auth/service';
 
 export default function HeaderSignOut() {
@@ -24,7 +25,7 @@ export default function HeaderSignOut() {
   const doSignOut = () => {
     // react-native-web's Alert shows nothing, so the browser's own confirm asks
     // instead, and a reload brings the sign-in screen back.
-    if (window.confirm('Sign out? You will need your password to get back in.')) {
+    if (window.confirm(t('Sign out? You will need your password to get back in.'))) {
       void signOut().then(() => window.location.reload());
     }
   };
@@ -39,7 +40,7 @@ export default function HeaderSignOut() {
         </Text>
       ) : null}
       <Pressable style={styles.btn} onPress={doSignOut} accessibilityRole="button">
-        <Text style={styles.label}>Sign out</Text>
+        <Text style={styles.label}>{t('Sign out')}</Text>
       </Pressable>
     </View>
   );

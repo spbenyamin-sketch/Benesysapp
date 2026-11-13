@@ -8,6 +8,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import PickerField, { type PickerOption } from '@/components/PickerField';
+import { t } from '@/i18n';
 import { defaultAccount } from '@/modules/bankAccounts/ledger';
 import { listBankAccounts } from '@/modules/bankAccounts/service';
 import { formatMoney } from '@/utils/format';
@@ -48,16 +49,19 @@ export default function AccountPicker({
   const options: PickerOption[] = accounts.map((a) => ({
     id: a.id,
     label: a.name,
-    sublabel: `${a.type === 'cash' ? 'Cash' : 'Bank'} · opened at ${formatMoney(a.openingBalance)}`,
+    sublabel: t('{type} · opened at {amount}', {
+      type: a.type === 'cash' ? t('Cash') : t('Bank'),
+      amount: formatMoney(a.openingBalance),
+    }),
   }));
 
   return (
     <PickerField
-      label={label}
+      label={t(label)}
       value={value}
       onSelect={onChange}
       options={options}
-      placeholder="Select account"
+      placeholder={t('Select account')}
     />
   );
 }

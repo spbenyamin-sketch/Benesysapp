@@ -2,6 +2,7 @@ import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-rou
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { NotInBooks } from '@/components/BooksToggle';
+import { t } from '@/i18n';
 import Button from '@/components/Button';
 import {
   convertToInvoice,
@@ -19,10 +20,10 @@ import { printInvoice, shareInvoicePdf } from '@/modules/invoices/pdf';
 import { partyDetailLines } from '@/modules/parties/describe';
 import { defaultDirectionForInvoice } from '@/modules/payments/service';
 import { getSetting } from '@/modules/settings/service';
-import { t, totalLine } from '@/modules/voice/phrases';
+import { t as phrase, totalLine } from '@/modules/voice/phrases';
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
 import { formatDate, formatMoney, formatQty, formatTaxRate } from '@/utils/format';
-import { discountLabel, splitTaxForStates } from '@/utils/gst';
+import { splitTaxForStates } from '@/utils/gst';
 import type { InvoiceType } from '@/utils/invoiceNumber';
 import type { Invoice } from '@/db/schema';
 
@@ -100,7 +101,7 @@ export default function InvoiceDetailScreen() {
     try {
       await shareInvoicePdf(detail);
     } catch (e) {
-      Alert.alert('Could not share', (e as Error)?.message ?? String(e));
+      Alert.alert(t('Could not share'), (e as Error)?.message ?? String(e));
     } finally {
       setSharing(false);
     }
@@ -112,7 +113,7 @@ export default function InvoiceDetailScreen() {
     try {
       await printInvoice(detail);
     } catch (e) {
-      Alert.alert('Could not print', (e as Error)?.message ?? String(e));
+      Alert.alert(t('Could not print'), (e as Error)?.message ?? String(e));
     } finally {
       setPrinting(false);
     }
@@ -127,13 +128,13 @@ export default function InvoiceDetailScreen() {
     if (!detail) return;
     const quote = detail.invoice.type === 'quotation';
     Alert.alert(
-      lang === 'ta-IN' ? 'பில் ஆக்கலாமா?' : 'Convert to bill?',
-      lang === 'ta-IN'
-        ? `இந்த ${quote ? 'கோட்டேஷன்' : 'சலான்'}ல இருந்து புது விற்பனை பில் உருவாகும். ஸ்டாக் குறையும்.`
-        : `A new sale bill will be created from this ${quote ? 'quotation' : 'challan'}. Stock will move.`,
+      t('Convert to bill?'),
+      quote
+        ? t('A new sale bill will be created from this quotation. Stock will move.')
+        : t('A new sale bill will be created from this challan. Stock will move.'),
       [
-        { text: lang === 'ta-IN' ? 'வேண்டாம்' : 'Cancel', style: 'cancel' },
-        { text: lang === 'ta-IN' ? 'பில் ஆக்கு' : 'Convert', onPress: () => void convert() },
+        { text: t('Cancel'), style: 'cancel' },
+        { text: t('Convert'), onPress: () => void convert() },
       ],
     );
   };
@@ -146,7 +147,7 @@ export default function InvoiceDetailScreen() {
       // now shows the bill it became.
       router.push({ pathname: '/invoice/[id]', params: { id: bill.id } });
     } catch (e) {
-      Alert.alert('Could not convert', (e as Error)?.message ?? String(e));
+      Alert.alert(t('Could not convert'), t((e as Error)?.message ?? String(e)));
     } finally {
       setConverting(false);
     }
@@ -160,10 +161,10 @@ export default function InvoiceDetailScreen() {
     switch (intent.kind) {
       case 'print':
         void print();
-        return t('printing', lang);
+        return phrase('printing', lang);
       case 'share':
         void share();
-        return t('sharing', lang);
+        return phrase('sharing', lang);
       case 'total':
         return totalLine(formatMoney(detail.invoice.grandTotal), lang);
       case 'submit':
@@ -225,25 +226,38 @@ export default function InvoiceDetailScreen() {
     if (impact.paymentCount > 0) {
       extras.push(
         impact.paymentCount === 1
-          ? `The ${formatMoney(impact.paymentTotal)} payment recorded on it will also be deleted.`
-          : `${impact.paymentCount} payments totalling ${formatMoney(impact.paymentTotal)} recorded on it will also be deleted.`,
+          ? t('The {amount} payment recorded on it will also be deleted.', {
+              amount: formatMoney(impact.paymentTotal),
+            })
+          : t('{n} payments totalling {amount} recorded on it will also be deleted.', {
+              n: impact.paymentCount,
+              amount: formatMoney(impact.paymentTotal),
+            }),
       );
     }
     if (impact.returnCount > 0) {
       extras.push(
-        `${impact.returnCount} return note${impact.returnCount === 1 ? '' : 's'} raised against it will stay, but will no longer name this bill.`,
+        impact.returnCount === 1
+          ? t('1 return note raised against it will stay, but will no longer name this bill.')
+          : t('{n} return notes raised against it will stay, but will no longer name this bill.', {
+              n: impact.returnCount,
+            }),
       );
     }
     Alert.alert(
-      'Delete this document?',
+      t('Delete this document?'),
       [
-        `${detail.invoice.invoiceNo} will be permanently removed${isStock ? ' and its stock movement reversed' : ''}.`,
+        isStock
+          ? t('{no} will be permanently removed and its stock movement reversed.', {
+              no: detail.invoice.invoiceNo,
+            })
+          : t('{no} will be permanently removed.', { no: detail.invoice.invoiceNo }),
         ...extras,
       ].join('\n\n'),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('Cancel'), style: 'cancel' },
         {
-          text: 'Delete',
+          text: t('Delete'),
           style: 'destructive',
           onPress: async () => {
             try {
@@ -254,8 +268,8 @@ export default function InvoiceDetailScreen() {
               // so anything landing here is a storage failure, not a rule the
               // shop broke. Raw SQLite text helps nobody standing at a counter.
               Alert.alert(
-                'Could not delete',
-                'The bill could not be removed. Please try again.',
+                t('Could not delete'),
+                t('The bill could not be removed. Please try again.'),
               );
             }
           },
@@ -274,8 +288,8 @@ export default function InvoiceDetailScreen() {
   if (detail === null) {
     return (
       <View style={styles.center}>
-        <Stack.Screen options={{ title: 'Invoice' }} />
-        <Text style={styles.missing}>Invoice not found.</Text>
+        <Stack.Screen options={{ title: t('Invoice') }} />
+        <Text style={styles.missing}>{t('Invoice not found.')}</Text>
       </View>
     );
   }
@@ -286,7 +300,7 @@ export default function InvoiceDetailScreen() {
   // party lives today, exactly as the printed copy does.
   const placeOfSupply = invoice.placeOfSupply || party?.state || '';
   const tax = splitTaxForStates(invoice.taxTotal, bizState, placeOfSupply);
-  const inRate = invoice.taxMode === 'inclusive' ? ' (in rate)' : '';
+  const inRate = invoice.taxMode === 'inclusive' ? t(' (in rate)') : '';
   const today = new Date().toISOString().slice(0, 10);
   const late = isOverdue(invoice, today);
   const returnedSum = returns.reduce((s, r) => s + r.grandTotal, 0);
@@ -298,31 +312,33 @@ export default function InvoiceDetailScreen() {
       <ScrollView contentContainerStyle={styles.container}>
         <View style={styles.headerCard}>
           <View style={styles.headerTop}>
-            <Text style={styles.typeLabel}>{TYPE_LABEL[invoice.type]}</Text>
+            <Text style={styles.typeLabel}>{t(TYPE_LABEL[invoice.type])}</Text>
             <View style={styles.headerRight}>
               {/* Kept out of the accountant's books — said here because it is
                   the one thing about this bill that is not on the printed copy. */}
               {invoice.accounted ? null : <NotInBooks />}
               <View style={[styles.badge, { backgroundColor: statusTone }]}>
-                <Text style={styles.badgeText}>{invoice.paymentStatus.toUpperCase()}</Text>
+                <Text style={styles.badgeText}>{t(invoice.paymentStatus.toUpperCase())}</Text>
               </View>
             </View>
           </View>
           <Text style={styles.invoiceNo}>{invoice.invoiceNo}</Text>
           <Text style={styles.date}>{formatDate(invoice.date)}</Text>
           {invoice.supplierInvoiceNo ? (
-            <Text style={styles.date}>Supplier bill no. {invoice.supplierInvoiceNo}</Text>
+            <Text style={styles.date}>
+              {t('Supplier bill no. {no}', { no: invoice.supplierInvoiceNo })}
+            </Text>
           ) : null}
           {invoice.dueDate ? (
             <Text style={[styles.date, late && styles.overdue]}>
-              Due {formatDate(invoice.dueDate)}
-              {late ? ` · ${daysOverdue(invoice, today)} days late` : ''}
+              {t('Due {date}', { date: formatDate(invoice.dueDate) })}
+              {late ? ` · ${t('{n} days late', { n: daysOverdue(invoice, today) })}` : ''}
             </Text>
           ) : null}
           {/* Only worth saying when it changes the tax: a local bill's place of
               supply is the shop's own state and tells the counter nothing. */}
           {tax.supply === 'inter' && placeOfSupply ? (
-            <Text style={styles.date}>Place of supply: {placeOfSupply}</Text>
+            <Text style={styles.date}>{t('Place of supply: {state}', { state: placeOfSupply })}</Text>
           ) : null}
           {party ? (
             <Pressable
@@ -347,7 +363,10 @@ export default function InvoiceDetailScreen() {
               onPress={() => router.push({ pathname: '/invoice/[id]', params: { id: source.id } })}
             >
               <Text style={styles.linkLine}>
-                {isConvertible(source.type) ? 'From' : 'Against'} {source.invoiceNo} ›
+                {isConvertible(source.type)
+                  ? t('From {no}', { no: source.invoiceNo })
+                  : t('Against {no}', { no: source.invoiceNo })}{' '}
+                ›
               </Text>
             </Pressable>
           ) : null}
@@ -362,7 +381,7 @@ export default function InvoiceDetailScreen() {
                   {formatQty(l.qty)} {l.itemUnit} × {formatMoney(l.rate)}
                   {l.taxRate > 0 ? ` · ${formatTaxRate(l.taxRate)}` : ''}
                   {l.discount > 0
-                    ? ` · less ${formatMoney(l.discount)}${
+                    ? ` · ${t('less {amount}', { amount: formatMoney(l.discount) })}${
                         l.discountPercent ? ` (${formatTaxRate(l.discountPercent)})` : ''
                       }`
                     : ''}
@@ -375,7 +394,7 @@ export default function InvoiceDetailScreen() {
 
         <View style={styles.totals}>
           <TotalRow
-            label={invoice.taxMode === 'inclusive' ? 'Taxable value' : 'Subtotal'}
+            label={invoice.taxMode === 'inclusive' ? t('Taxable value') : t('Subtotal')}
             value={formatMoney(invoice.subtotal)}
           />
           {/* Nothing to split on a bill of exempt goods — a shop selling only
@@ -390,24 +409,28 @@ export default function InvoiceDetailScreen() {
           )}
           {invoice.discount > 0 ? (
             <TotalRow
-              label={discountLabel(invoice.discountPercent)}
+              label={
+                invoice.discountPercent
+                  ? t('Discount ({rate})', { rate: formatTaxRate(invoice.discountPercent) })
+                  : t('Discount')
+              }
               value={`- ${formatMoney(invoice.discount)}`}
             />
           ) : null}
           {invoice.roundOff !== 0 ? (
             <TotalRow
-              label="Round off"
+              label={t('Round off')}
               value={`${invoice.roundOff > 0 ? '+ ' : '- '}${formatMoney(Math.abs(invoice.roundOff))}`}
             />
           ) : null}
-          <TotalRow label="Grand total" value={formatMoney(invoice.grandTotal)} strong />
+          <TotalRow label={t('Grand total')} value={formatMoney(invoice.grandTotal)} strong />
         </View>
 
         {returns.length ? (
           <View style={styles.returnsBlock}>
             <Text style={styles.returnsTitle}>
-              Returned on this bill · {formatMoney(returnedSum)}
-              {fullyReturned ? ' (all of it)' : ''}
+              {t('Returned on this bill · {amount}', { amount: formatMoney(returnedSum) })}
+              {fullyReturned ? t(' (all of it)') : ''}
             </Text>
             {returns.map((r) => (
               <Pressable
@@ -433,14 +456,12 @@ export default function InvoiceDetailScreen() {
               onPress={() => router.push({ pathname: '/invoice/[id]', params: { id: became.id } })}
             >
               <Text style={styles.linkLine}>
-                {lang === 'ta-IN'
-                  ? `${became.invoiceNo} பில் ஆயிடுச்சு ›`
-                  : `Became bill ${became.invoiceNo} ›`}
+                {t('Became bill {no}', { no: became.invoiceNo })} ›
               </Text>
             </Pressable>
           ) : (
             <Button
-              label={lang === 'ta-IN' ? 'பில் ஆக்கு' : 'Convert to bill'}
+              label={t('Convert to bill')}
               onPress={confirmConvert}
               loading={converting}
               style={styles.action}
@@ -449,7 +470,7 @@ export default function InvoiceDetailScreen() {
         ) : null}
         {invoice.type !== 'quotation' && invoice.type !== 'challan' && invoice.paymentStatus !== 'paid' ? (
           <Button
-            label="Record payment"
+            label={t('Record payment')}
             tone="ghost"
             onPress={() =>
               router.push({
@@ -465,7 +486,7 @@ export default function InvoiceDetailScreen() {
           />
         ) : null}
         <Button
-          label="Edit"
+          label={t('Edit')}
           tone="ghost"
           onPress={() =>
             router.push({ pathname: '/invoice/edit/[id]', params: { id: invoice.id } })
@@ -485,16 +506,16 @@ export default function InvoiceDetailScreen() {
             style={styles.action}
           />
         ) : null}
-        <Button label={printing ? 'Opening…' : 'Print'} onPress={print} loading={printing} style={styles.action} />
+        <Button label={printing ? t('Opening…') : t('Print')} onPress={print} loading={printing} style={styles.action} />
         <Button
-          label={sharing ? 'Preparing…' : 'Share PDF'}
+          label={sharing ? t('Preparing…') : t('Share PDF')}
           onPress={share}
           loading={sharing}
           tone="ghost"
           style={styles.action}
         />
         <Pressable style={styles.deleteBtn} onPress={confirmDelete}>
-          <Text style={styles.deleteText}>Delete</Text>
+          <Text style={styles.deleteText}>{t('Delete')}</Text>
         </Pressable>
       </ScrollView>
     </>
@@ -507,9 +528,13 @@ function returnTypeFor(type: InvoiceType): InvoiceType {
 }
 
 function returnLabel(type: InvoiceType, returnedSum: number, fully: boolean): string {
-  const noun = type === 'purchase' ? 'Purchase return' : 'Sale return';
-  if (fully) return `${noun} (already fully returned)`;
-  return returnedSum > 0 ? 'Return the rest' : noun;
+  if (fully) {
+    return type === 'purchase'
+      ? t('Purchase return (already fully returned)')
+      : t('Sale return (already fully returned)');
+  }
+  if (returnedSum > 0) return t('Return the rest');
+  return type === 'purchase' ? t('Purchase return') : t('Sale return');
 }
 
 function TotalRow({ label, value, strong }: { label: string; value: string; strong?: boolean }) {

@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import DateRange from '@/components/DateRange';
+import { t } from '@/i18n';
 import { deleteParty } from '@/modules/parties/service';
 import {
   getPartyLedger,
@@ -132,9 +133,9 @@ export default function PartyLedgerScreen() {
         lang,
       });
       if (result === 'no-phone') {
-        Alert.alert('No phone number', `Add a phone number for ${ledger.party.name} first.`);
+        Alert.alert(t('No phone number'), t('Add a phone number for {name} first.', { name: ledger.party.name }));
       } else if (result === 'failed') {
-        Alert.alert('Could not open WhatsApp', 'WhatsApp does not seem to be available here.');
+        Alert.alert(t('Could not open WhatsApp'), t('WhatsApp does not seem to be available here.'));
       }
     } finally {
       setBusy(null);
@@ -147,7 +148,7 @@ export default function PartyLedgerScreen() {
     try {
       await sharePartyStatement(ledger);
     } catch (e) {
-      Alert.alert('Could not make the statement', (e as Error)?.message ?? String(e));
+      Alert.alert(t('Could not make the statement'), (e as Error)?.message ?? String(e));
     } finally {
       setBusy(null);
     }
@@ -155,10 +156,10 @@ export default function PartyLedgerScreen() {
 
   const confirmDelete = () => {
     if (!ledger) return;
-    Alert.alert('Delete party?', `"${ledger.party.name}" will be permanently removed.`, [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert(t('Delete party?'), t('"{name}" will be permanently removed.', { name: ledger.party.name }), [
+      { text: t('Cancel'), style: 'cancel' },
       {
-        text: 'Delete',
+        text: t('Delete'),
         style: 'destructive',
         onPress: async () => {
           try {
@@ -166,8 +167,8 @@ export default function PartyLedgerScreen() {
             router.back();
           } catch {
             Alert.alert(
-              'Cannot delete',
-              'This party has linked invoices or payments. Remove those first.',
+              t('Cannot delete'),
+              t('This party has linked invoices or payments. Remove those first.'),
             );
           }
         },
@@ -185,8 +186,8 @@ export default function PartyLedgerScreen() {
   if (ledger === null) {
     return (
       <View style={styles.center}>
-        <Stack.Screen options={{ title: 'Party' }} />
-        <Text style={styles.missing}>Party not found.</Text>
+        <Stack.Screen options={{ title: t('Party') }} />
+        <Text style={styles.missing}>{t('Party not found.')}</Text>
       </View>
     );
   }
@@ -205,7 +206,7 @@ export default function PartyLedgerScreen() {
               hitSlop={8}
               onPress={() => router.push({ pathname: '/party/edit/[id]', params: { id: partyId } })}
             >
-              <Text style={styles.headerAction}>Edit</Text>
+              <Text style={styles.headerAction}>{t('Edit')}</Text>
             </Pressable>
           ),
         }}
@@ -218,7 +219,7 @@ export default function PartyLedgerScreen() {
           <View style={styles.header}>
             <View style={styles.balanceCard}>
               <Text style={styles.balanceLabel}>
-                {outstanding === 0 ? 'Settled' : summary.label}
+                {t(outstanding === 0 ? 'Settled' : summary.label)}
               </Text>
               <Text style={[styles.balanceAmount, { color: summary.toneColor }]}>
                 {formatMoney(Math.abs(outstanding))}
@@ -231,7 +232,7 @@ export default function PartyLedgerScreen() {
                 router.push({ pathname: '/payment/new', params: { partyId: partyId } })
               }
             >
-              <Text style={styles.payBtnText}>+ Record payment</Text>
+              <Text style={styles.payBtnText}>{t('+ Record payment')}</Text>
             </Pressable>
 
             <View style={styles.actionRow}>
@@ -242,7 +243,7 @@ export default function PartyLedgerScreen() {
                   onPress={remind}
                   disabled={busy !== null}
                 >
-                  <Text style={styles.actionText}>Remind on WhatsApp</Text>
+                  <Text style={styles.actionText}>{t('Remind on WhatsApp')}</Text>
                 </Pressable>
               ) : null}
               <Pressable
@@ -251,21 +252,21 @@ export default function PartyLedgerScreen() {
                 disabled={busy !== null}
               >
                 <Text style={styles.actionText}>
-                  {busy === 'statement' ? 'Preparing…' : 'Send statement'}
+                  {busy === 'statement' ? t('Preparing…') : t('Send statement')}
                 </Text>
               </Pressable>
             </View>
 
             <View style={styles.details}>
-              <Detail label="Type" value={party.type === 'customer' ? 'Customer' : 'Supplier'} />
-              {party.phone ? <Detail label="Phone" value={party.phone} /> : null}
+              <Detail label={t('Type')} value={party.type === 'customer' ? t('Customer') : t('Supplier')} />
+              {party.phone ? <Detail label={t('Phone')} value={party.phone} /> : null}
               {party.gstin ? <Detail label="GSTIN" value={party.gstin} /> : null}
-              {party.address ? <Detail label="Address" value={party.address} /> : null}
-              {party.city ? <Detail label="City" value={party.city} /> : null}
-              {party.state ? <Detail label="State" value={party.state} /> : null}
+              {party.address ? <Detail label={t('Address')} value={party.address} /> : null}
+              {party.city ? <Detail label={t('City')} value={party.city} /> : null}
+              {party.state ? <Detail label={t('State')} value={party.state} /> : null}
             </View>
 
-            <Text style={styles.sectionTitle}>Ledger</Text>
+            <Text style={styles.sectionTitle}>{t('Ledger')}</Text>
 
             <View style={styles.period}>
               <View style={styles.periodRow}>
@@ -276,7 +277,7 @@ export default function PartyLedgerScreen() {
                     onPress={() => setPeriod(p.kind)}
                   >
                     <Text style={[styles.chipText, activePeriod === p.kind && styles.chipTextOn]}>
-                      {p.label}
+                      {t(p.label)}
                     </Text>
                   </Pressable>
                 ))}
@@ -284,9 +285,10 @@ export default function PartyLedgerScreen() {
               <DateRange from={from} to={to} onFrom={setFrom} onTo={setTo} />
               {range ? (
                 <Text style={styles.periodNote}>
-                  {range.from ? formatDate(range.from) : 'Start'} —{' '}
-                  {range.to ? formatDate(range.to) : 'Today'} · earlier entries are in the brought
-                  forward figure
+                  {t('{from} — {to} · earlier entries are in the brought forward figure', {
+                    from: range.from ? formatDate(range.from) : t('Start'),
+                    to: range.to ? formatDate(range.to) : t('Today'),
+                  })}
                 </Text>
               ) : null}
             </View>
@@ -300,13 +302,13 @@ export default function PartyLedgerScreen() {
             {range ? (
               <View style={styles.closingRow}>
                 <Text style={styles.closingLabel}>
-                  Closing on {range.to ? formatDate(range.to) : 'today'}
+                  {t('Closing on {date}', { date: range.to ? formatDate(range.to) : t('today') })}
                 </Text>
                 <Text style={styles.closingValue}>{formatMoney(Math.abs(balance))}</Text>
               </View>
             ) : null}
             <Pressable style={styles.deleteBtn} onPress={confirmDelete}>
-              <Text style={styles.deleteText}>Delete party</Text>
+              <Text style={styles.deleteText}>{t('Delete party')}</Text>
             </Pressable>
           </>
         }
@@ -324,6 +326,12 @@ function Detail({ label, value }: { label: string; value: string }) {
   );
 }
 
+/** "Sale · INV-12": the kind is translated, the bill number and mode are data. */
+function entryLabel(label: string): string {
+  const [head, ...rest] = label.split(' · ');
+  return [t(head), ...rest].join(' · ');
+}
+
 function LedgerRow({ entry }: { entry: LedgerEntry }) {
   const positive = entry.delta > 0;
   const deltaColor = entry.delta === 0 ? '#888' : positive ? '#1a9d5a' : '#c0392b';
@@ -331,7 +339,7 @@ function LedgerRow({ entry }: { entry: LedgerEntry }) {
   return (
     <View style={styles.entryRow}>
       <View style={styles.entryLeft}>
-        <Text style={styles.entryLabel}>{entry.label}</Text>
+        <Text style={styles.entryLabel}>{entryLabel(entry.label)}</Text>
         <Text style={styles.entryDate}>{formatDate(entry.date)}</Text>
       </View>
       <View style={styles.entryRight}>

@@ -9,6 +9,7 @@ import Button from '@/components/Button';
 import ExcelExportButton from '@/components/ExcelExportButton';
 import { shareBookExcel, type ReportBook } from '@/modules/reports/excel';
 import { shareBookPdf } from '@/modules/reports/pdf';
+import { t } from '@/i18n';
 
 export default function ReportExportButtons({ book }: { book: () => Promise<ReportBook> }) {
   const [busy, setBusy] = useState(false);
@@ -18,7 +19,7 @@ export default function ReportExportButtons({ book }: { book: () => Promise<Repo
     setBusy(true);
     book()
       .then(shareBookPdf)
-      .catch((e: unknown) => Alert.alert('PDF failed', (e as Error)?.message ?? String(e)))
+      .catch((e: unknown) => Alert.alert(t('PDF failed'), (e as Error)?.message ?? String(e)))
       .finally(() => setBusy(false));
   };
 

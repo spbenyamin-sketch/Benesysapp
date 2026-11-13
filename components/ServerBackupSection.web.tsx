@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import Button from '@/components/Button';
+import { t } from '@/i18n';
 import { api } from '@/web/api';
 import { isOwner } from '@/web/staff';
 
@@ -64,10 +65,11 @@ export default function ServerBackupSection() {
     <>
       {/* Its own divider, so staff — who see neither this nor People — get no stray line. */}
       <View style={styles.divider} />
-      <Text style={styles.sectionTitle}>Server backup</Text>
+      <Text style={styles.sectionTitle}>{t('Server backup')}</Text>
       <Text style={styles.sectionHint}>
-        The server copies all the books into a backup file every day it is switched on, and keeps
-        the last 30. To put one back, double-click restore-backup.bat on the shop computer.
+        {t(
+          'The server copies all the books into a backup file every day it is switched on, and keeps the last 30. To put one back, double-click restore-backup.bat on the shop computer.',
+        )}
       </Text>
 
       {status === null && !error ? (
@@ -76,23 +78,24 @@ export default function ServerBackupSection() {
         <View style={styles.card}>
           {latest ? (
             <Text style={[styles.line, stale && styles.warn]}>
-              Last backup: {when(latest.at)} · {Math.max(1, Math.round(latest.size / 1024))} KB
+              {t('Last backup: {when}', { when: when(latest.at) })} ·{' '}
+              {Math.max(1, Math.round(latest.size / 1024))} KB
             </Text>
           ) : (
-            <Text style={[styles.line, styles.warn]}>No backup has been taken yet.</Text>
+            <Text style={[styles.line, styles.warn]}>{t('No backup has been taken yet.')}</Text>
           )}
           {status?.error ? (
             <Text style={styles.error}>
-              The last backup failed ({when(status.error.at)}): {status.error.message}
+              {t('The last backup failed ({when}):', { when: when(status.error.at) })} {status.error.message}
             </Text>
           ) : null}
-          {status ? <Text style={styles.meta}>Saved in {status.dir}</Text> : null}
+          {status ? <Text style={styles.meta}>{t('Saved in {dir}', { dir: status.dir })}</Text> : null}
         </View>
       )}
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
-      <Button label="Back up now" tone="ghost" onPress={backUpNow} loading={busy} style={styles.save} />
+      <Button label={t('Back up now')} tone="ghost" onPress={backUpNow} loading={busy} style={styles.save} />
     </>
   );
 }

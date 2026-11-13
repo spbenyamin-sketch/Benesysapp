@@ -13,6 +13,7 @@ import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
 import { formatDate, formatMoney, formatTaxRate } from '@/utils/format';
 import { financialYear } from '@/utils/invoiceNumber';
 import type { Expense } from '@/db/schema';
+import { t } from '@/i18n';
 
 type Period = 'month' | 'fy' | 'all';
 
@@ -73,10 +74,10 @@ export default function ExpensesScreen() {
   });
 
   const confirmDelete = (row: Expense) => {
-    Alert.alert('Delete expense?', `${row.category} · ${formatMoney(row.amount)}`, [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert(t('Delete expense?'), `${row.category} · ${formatMoney(row.amount)}`, [
+      { text: t('Cancel'), style: 'cancel' },
       {
-        text: 'Delete',
+        text: t('Delete'),
         style: 'destructive',
         onPress: async () => {
           await deleteExpense(row.id);
@@ -90,8 +91,8 @@ export default function ExpensesScreen() {
     <View style={styles.container}>
       <View style={styles.header}>
         <View style={styles.kpis}>
-          <Kpi label="Spent" value={formatMoney(summary.total)} tone="#c0392b" />
-          <Kpi label="GST inside" value={formatMoney(summary.tax)} tone="#111" />
+          <Kpi label={t('Spent')} value={formatMoney(summary.total)} tone="#c0392b" />
+          <Kpi label={t('GST inside')} value={formatMoney(summary.tax)} tone="#111" />
         </View>
         <View style={styles.chips}>
           {PERIODS.map((p) => {
@@ -102,21 +103,24 @@ export default function ExpensesScreen() {
                 style={[styles.chip, active && styles.chipActive]}
                 onPress={() => setPeriod(p.key)}
               >
-                <Text style={[styles.chipText, active && styles.chipTextActive]}>{p.label}</Text>
+                <Text style={[styles.chipText, active && styles.chipTextActive]}>{t(p.label)}</Text>
               </Pressable>
             );
           })}
         </View>
         {topCategory ? (
           <Text style={styles.topLine}>
-            Biggest: {topCategory.category} · {formatMoney(topCategory.total)}
+            {t('Biggest: {category} · {amount}', {
+              category: topCategory.category,
+              amount: formatMoney(topCategory.total),
+            })}
           </Text>
         ) : null}
         <TextInput
           style={styles.search}
           value={query}
           onChangeText={setQuery}
-          placeholder="Search category, note or amount"
+          placeholder={t('Search category, note or amount')}
           placeholderTextColor="#999"
           autoCapitalize="none"
           clearButtonMode="while-editing"
@@ -131,10 +135,10 @@ export default function ExpensesScreen() {
         ListEmptyComponent={
           <Text style={styles.empty}>
             {rows.length === 0
-              ? 'No expenses yet.\nTap + to record rent, power, wages…'
+              ? t('No expenses yet.\nTap + to record rent, power, wages…')
               : query.trim()
-                ? 'No expenses match.'
-                : 'Nothing spent in this period.'}
+                ? t('No expenses match.')
+                : t('Nothing spent in this period.')}
           </Text>
         }
         renderItem={({ item }) => (
@@ -160,7 +164,7 @@ export default function ExpensesScreen() {
       <Pressable
         style={styles.fab}
         onPress={() => router.push('/expense/new')}
-        accessibilityLabel="Add expense"
+        accessibilityLabel={t('Add expense')}
       >
         <Text style={styles.fabPlus}>+</Text>
       </Pressable>

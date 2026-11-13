@@ -1,4 +1,5 @@
 import { Stack } from 'expo-router';
+import { t } from '@/i18n';
 
 // The item module runs its own header-ful stack (the root stack hides headers).
 export default function ItemLayout() {
@@ -10,10 +11,10 @@ export default function ItemLayout() {
         headerTitleStyle: { color: '#111' },
       }}
     >
-      <Stack.Screen name="new" options={{ title: 'New Item', presentation: 'modal' }} />
-      <Stack.Screen name="edit/[id]" options={{ title: 'Edit Item' }} />
-      <Stack.Screen name="adjust/[id]" options={{ title: 'Adjust Stock', presentation: 'modal' }} />
-      <Stack.Screen name="[id]" options={{ title: 'Item' }} />
+      <Stack.Screen name="new" options={{ title: t('New Item'), presentation: 'modal' }} />
+      <Stack.Screen name="edit/[id]" options={{ title: t('Edit Item') }} />
+      <Stack.Screen name="adjust/[id]" options={{ title: t('Adjust Stock'), presentation: 'modal' }} />
+      <Stack.Screen name="[id]" options={{ title: t('Item') }} />
     </Stack>
   );
 }

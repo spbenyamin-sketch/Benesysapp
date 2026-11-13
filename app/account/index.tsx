@@ -3,6 +3,7 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { t } from '@/i18n';
 import { accountBalances, type AccountBalances } from '@/modules/bankAccounts/ledger';
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
 import { formatMoney } from '@/utils/format';
@@ -18,7 +19,7 @@ function toRows(data: AccountBalances | null): Row[] {
     kind: 'account',
     id: a.account.id,
     name: a.account.name,
-    sub: a.account.type === 'cash' ? 'Cash' : 'Bank',
+    sub: a.account.type === 'cash' ? t('Cash') : t('Bank'),
     balance: a.balance,
   }));
   // Only shown when there is something in it — a shop that always names an
@@ -69,9 +70,9 @@ export default function AccountsScreen() {
         ListHeaderComponent={
           <View style={styles.header}>
             <View style={styles.totalCard}>
-              <Text style={styles.totalLabel}>In hand</Text>
+              <Text style={styles.totalLabel}>{t('In hand')}</Text>
               <Text style={styles.totalValue}>{formatMoney(data?.total ?? 0)}</Text>
-              <Text style={styles.totalHint}>Opening balances plus everything that moved</Text>
+              <Text style={styles.totalHint}>{t('Opening balances plus everything that moved')}</Text>
             </View>
           </View>
         }
@@ -87,12 +88,14 @@ export default function AccountsScreen() {
           >
             <View style={styles.rowLeft}>
               <Text style={styles.name}>
-                {item.kind === 'account' ? item.name : 'Not assigned'}
+                {item.kind === 'account' ? item.name : t('Not assigned')}
               </Text>
               <Text style={styles.sub}>
                 {item.kind === 'account'
                   ? item.sub
-                  : `${item.count} entr${item.count === 1 ? 'y' : 'ies'} with no account named`}
+                  : item.count === 1
+                    ? t('1 entry with no account named')
+                    : t('{n} entries with no account named', { n: item.count })}
               </Text>
             </View>
             <Text style={[styles.balance, item.balance < 0 && styles.negative]}>
@@ -102,8 +105,9 @@ export default function AccountsScreen() {
         )}
         ListEmptyComponent={
           <Text style={styles.empty}>
-            No accounts yet.{'\n'}Add your cash drawer and any bank account, and every payment can
-            say where the money went.
+            {t('No accounts yet.')}
+            {'\n'}
+            {t('Add your cash drawer and any bank account, and every payment can say where the money went.')}
           </Text>
         }
       />

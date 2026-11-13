@@ -15,6 +15,7 @@ import Button from '@/components/Button';
 import ItemPhoto from '@/components/ItemPhoto';
 import SelectField from '@/components/SelectField';
 import TextField from '@/components/TextField';
+import { t } from '@/i18n';
 import { normaliseBarcode } from '@/modules/items/barcode';
 import { captureItemPhoto, deleteItemPhoto, pickItemPhoto } from '@/modules/items/images';
 import { createItem, findItemByBarcode, listCategories, updateItem } from '@/modules/items/service';
@@ -105,7 +106,7 @@ export default function ItemForm({
       if (imageUri && imageUri !== originalImage) deleteItemPhoto(imageUri);
       setImageUri(uri);
     } catch (e) {
-      Alert.alert('No picture added', (e as Error)?.message ?? String(e));
+      Alert.alert(t('No picture added'), (e as Error)?.message ?? String(e));
     }
   };
 
@@ -122,7 +123,7 @@ export default function ItemForm({
   const save = async () => {
     const trimmedName = name.trim();
     if (!trimmedName) {
-      Alert.alert('Name required', 'Please enter the item name.');
+      Alert.alert(t('Name required'), t('Please enter the item name.'));
       return;
     }
     setSaving(true);
@@ -152,7 +153,7 @@ export default function ItemForm({
       router.back();
     } catch (e) {
       setSaving(false);
-      Alert.alert('Could not save', (e as Error)?.message ?? String(e));
+      Alert.alert(t('Could not save'), (e as Error)?.message ?? String(e));
     }
   };
 
@@ -210,44 +211,50 @@ export default function ItemForm({
         <View style={styles.photoRow}>
           <ItemPhoto uri={imageUri} name={name || '?'} size={92} />
           <View style={styles.photoButtons}>
-            <Text style={styles.photoLabel}>Picture</Text>
+            <Text style={styles.photoLabel}>{t('Picture')}</Text>
             <Text style={styles.hint}>
-              Shown as a big button on the Quick Bill counter — tap the picture to add it.
+              {t('Shown as a big button on the Quick Bill counter — tap the picture to add it.')}
             </Text>
             <View style={styles.photoActions}>
               <Pressable style={styles.photoBtn} onPress={() => choosePhoto(captureItemPhoto)}>
-                <Text style={styles.photoBtnText}>📷  Camera</Text>
+                <Text style={styles.photoBtnText}>{t('📷  Camera')}</Text>
               </Pressable>
               <Pressable style={styles.photoBtn} onPress={() => choosePhoto(pickItemPhoto)}>
-                <Text style={styles.photoBtnText}>🖼  Gallery</Text>
+                <Text style={styles.photoBtnText}>{t('🖼  Gallery')}</Text>
               </Pressable>
             </View>
             {imageUri ? (
               <Pressable onPress={removePhoto} hitSlop={8}>
-                <Text style={styles.photoRemove}>Remove picture</Text>
+                <Text style={styles.photoRemove}>{t('Remove picture')}</Text>
               </Pressable>
             ) : null}
           </View>
         </View>
 
-        <TextField label="Name" value={name} onChangeText={setName} placeholder="Item name" required />
+        <TextField
+          label={t('Name')}
+          value={name}
+          onChangeText={setName}
+          placeholder={t('Item name')}
+          required
+        />
         <View style={styles.row}>
           <View style={styles.col}>
             <TextField
-              label="HSN / SAC code"
+              label={t('HSN / SAC code')}
               value={hsnCode}
               onChangeText={setHsnCode}
-              placeholder="e.g. 6109"
+              placeholder={t('e.g. 6109')}
               keyboardType="numeric"
             />
           </View>
           <View style={styles.col}>
             <SelectField
-              label="Unit"
+              label={t('Unit')}
               value={unit}
               onSelect={setUnit}
               options={ITEM_UNITS}
-              placeholder="Select unit"
+              placeholder={t('Select unit')}
               allowCustom
             />
           </View>
@@ -255,36 +262,38 @@ export default function ItemForm({
         <View style={styles.barcodeRow}>
           <View style={styles.col}>
             <TextField
-              label="Barcode"
+              label={t('Barcode')}
               value={barcode}
               onChangeText={setBarcode}
-              placeholder="Scan or type"
+              placeholder={t('Scan or type')}
               autoCapitalize="characters"
               onBlur={() => void checkBarcode(barcode)}
             />
           </View>
           <Pressable style={styles.scanBtn} onPress={() => setScanning(true)}>
-            <Text style={styles.scanBtnText}>▥  Scan</Text>
+            <Text style={styles.scanBtnText}>{t('▥  Scan')}</Text>
           </Pressable>
         </View>
         {duplicateOf ? (
           <Text style={styles.warn}>
-            "{duplicateOf}" already has this barcode. Scanning it will open that item instead.
+            {t('"{name}" already has this barcode. Scanning it will open that item instead.', {
+              name: duplicateOf,
+            })}
           </Text>
         ) : null}
 
         <SelectField
-          label="Category"
+          label={t('Category')}
           value={category}
           onSelect={setCategory}
           options={categoryOptions}
-          placeholder="Select or type a new category"
+          placeholder={t('Select or type a new category')}
           allowCustom
         />
         <View style={styles.row}>
           <View style={styles.col}>
             <TextField
-              label="Sale price (₹)"
+              label={t('Sale price (₹)')}
               value={salePrice}
               onChangeText={setSalePrice}
               placeholder="0"
@@ -293,7 +302,7 @@ export default function ItemForm({
           </View>
           <View style={styles.col}>
             <TextField
-              label="Purchase price (₹)"
+              label={t('Purchase price (₹)')}
               value={purchasePrice}
               onChangeText={setPurchasePrice}
               placeholder="0"
@@ -304,7 +313,7 @@ export default function ItemForm({
         <View style={styles.row}>
           <View style={styles.col}>
             <TextField
-              label="Tax rate (%)"
+              label={t('Tax rate (%)')}
               value={taxRate}
               onChangeText={setTaxRate}
               placeholder="0"
@@ -313,7 +322,7 @@ export default function ItemForm({
           </View>
           <View style={styles.col}>
             <TextField
-              label="Opening stock"
+              label={t('Opening stock')}
               value={openingStock}
               onChangeText={setOpeningStock}
               placeholder="0"
@@ -322,35 +331,37 @@ export default function ItemForm({
           </View>
         </View>
         <TextField
-          label="Alert when stock reaches"
+          label={t('Alert when stock reaches')}
           value={minStock}
           onChangeText={setMinStock}
           placeholder="0"
           keyboardType="numeric"
         />
         <Text style={styles.hint}>
-          The item is flagged as running low at this quantity, so it can be reordered before the
-          shelf is empty. Leave blank if only an empty shelf should count.
+          {t(
+            'The item is flagged as running low at this quantity, so it can be reordered before the shelf is empty. Leave blank if only an empty shelf should count.',
+          )}
         </Text>
         <TextField
-          label="Voice name (தமிழ்)"
+          label={t('Voice name (தமிழ்)')}
           value={voiceAlias}
           onChangeText={setVoiceAlias}
-          placeholder="e.g. சர்க்கரை, sakkarai"
+          placeholder={t('e.g. சர்க்கரை, sakkarai')}
         />
         <Text style={styles.hint}>
-          What you actually SAY for this item when billing by voice. Add several, comma separated —
-          Tamil spelling, nickname, short form. Leave blank to match on the name above.
+          {t(
+            'What you actually SAY for this item when billing by voice. Add several, comma separated — Tamil spelling, nickname, short form. Leave blank to match on the name above.',
+          )}
         </Text>
 
         {editing ? (
           <Text style={styles.hint}>
-            Editing opening stock won't change current stock — use "Adjust stock" for that.
+            {t('Editing opening stock won\'t change current stock — use "Adjust stock" for that.')}
           </Text>
         ) : null}
 
         <Button
-          label={editing ? 'Save changes' : 'Add item'}
+          label={editing ? t('Save changes') : t('Add item')}
           onPress={save}
           loading={saving}
           style={styles.save}

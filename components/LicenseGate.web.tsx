@@ -28,6 +28,7 @@ import {
   View,
 } from 'react-native';
 import Button from '@/components/Button';
+import { t } from '@/i18n';
 import { signOut } from '@/modules/auth/service.web';
 import { isUsable, type LicenseStatus } from '@/modules/license/status';
 import { getLicenseStatus, installLicense } from '@/web/license';
@@ -87,11 +88,13 @@ export default function LicenseGate({ children }: { children: ReactNode }) {
       <View style={styles.flex}>
         <View style={styles.trialBar}>
           <Text style={styles.trialText}>
-            Free trial · {status.daysLeft} day{status.daysLeft === 1 ? '' : 's'} left
+            {status.daysLeft === 1
+              ? t('Free trial · 1 day left')
+              : t('Free trial · {n} days left', { n: status.daysLeft ?? 0 })}
           </Text>
           {session.user.role === 'owner' ? (
             <Pressable onPress={() => setPhase('blocked')} hitSlop={8}>
-              <Text style={styles.trialLink}>Enter licence</Text>
+              <Text style={styles.trialLink}>{t('Enter licence')}</Text>
             </Pressable>
           ) : null}
         </View>
@@ -125,27 +128,41 @@ const HEADINGS: Record<string, { title: string; blurb: (status: LicenseStatus) =
   unlicensed: {
     title: 'Activate this shop',
     blurb: () =>
-      `Send the Server ID below to ${VENDOR}. You'll get a licence back over WhatsApp — paste it here and the shop opens.`,
+      t("Send the Server ID below to {vendor}. You'll get a licence back over WhatsApp — paste it here and the shop opens.", {
+        vendor: VENDOR,
+      }),
   },
   trial: {
     title: 'Activate this shop',
     blurb: (s) =>
-      `The free trial has ${s.daysLeft} day${s.daysLeft === 1 ? '' : 's'} left. Send the Server ID below to ${VENDOR} — you'll get a licence back over WhatsApp. Paste it here.`,
+      s.daysLeft === 1
+        ? t("The free trial has 1 day left. Send the Server ID below to {vendor} — you'll get a licence back over WhatsApp. Paste it here.", {
+            vendor: VENDOR,
+          })
+        : t("The free trial has {n} days left. Send the Server ID below to {vendor} — you'll get a licence back over WhatsApp. Paste it here.", {
+            n: s.daysLeft ?? '',
+            vendor: VENDOR,
+          }),
   },
   trialOver: {
     title: 'Free trial over',
     blurb: () =>
-      `The 7-day free trial has ended. Send the Server ID below to ${VENDOR} for a licence, then paste it here — everything entered during the trial is kept.`,
+      t('The 7-day free trial has ended. Send the Server ID below to {vendor} for a licence, then paste it here — everything entered during the trial is kept.', {
+        vendor: VENDOR,
+      }),
   },
   expired: {
     title: 'Licence expired',
     blurb: (s) =>
-      `This shop's licence ran out on ${s.expiry}. Send the Server ID to ${VENDOR} for a renewal, then paste it here — your books are untouched and come straight back.`,
+      t("This shop's licence ran out on {date}. Send the Server ID to {vendor} for a renewal, then paste it here — your books are untouched and come straight back.", {
+        date: s.expiry ?? '',
+        vendor: VENDOR,
+      }),
   },
   rolledBack: {
     title: "This computer's date was changed",
     blurb: () =>
-      'The date on this computer is earlier than the last time the shop was opened. Set it back to today, then try again.',
+      t('The date on this computer is earlier than the last time the shop was opened. Set it back to today, then try again.'),
   },
 };
 
@@ -195,7 +212,7 @@ function LicenseScreen({
       await navigator.clipboard.writeText(status.systemId);
       setCopied(true);
     } catch {
-      setError('Could not copy. Select the Server ID above and copy it by hand.');
+      setError(t('Could not copy. Select the Server ID above and copy it by hand.'));
     }
   };
 
@@ -222,11 +239,11 @@ function LicenseScreen({
     <ScrollView style={styles.flex} contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled">
       <View style={styles.card}>
         <Image source={require('@/assets/images/icon.png')} style={styles.brand} />
-        <Text style={styles.title}>{heading.title}</Text>
+        <Text style={styles.title}>{t(heading.title)}</Text>
         <Text style={styles.subtle}>{heading.blurb(status)}</Text>
 
         <View style={styles.idBox}>
-          <Text style={styles.idLabel}>Server ID</Text>
+          <Text style={styles.idLabel}>{t('Server ID')}</Text>
           <Text style={styles.idValue} selectable>
             {status.systemId}
           </Text>
@@ -234,7 +251,7 @@ function LicenseScreen({
 
         {canCopy ? (
           <Button
-            label={copied ? 'Copied' : 'Copy Server ID'}
+            label={copied ? t('Copied') : t('Copy Server ID')}
             tone="ghost"
             onPress={() => void copy()}
             style={styles.wide}
@@ -244,11 +261,11 @@ function LicenseScreen({
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
         {status.state === 'rolledBack' ? (
-          <Button label="Try again" onPress={onRecheck} style={styles.wide} />
+          <Button label={t('Try again')} onPress={onRecheck} style={styles.wide} />
         ) : owner ? (
           <>
             <View style={styles.pasteBox}>
-              <Text style={styles.pasteLabel}>Paste the licence {VENDOR} sent you</Text>
+              <Text style={styles.pasteLabel}>{t('Paste the licence {vendor} sent you', { vendor: VENDOR })}</Text>
               <TextInput
                 style={styles.paste}
                 value={pasted}
@@ -263,14 +280,14 @@ function LicenseScreen({
             </View>
 
             <Button
-              label="Activate"
+              label={t('Activate')}
               onPress={() => void apply(pasted)}
               disabled={!pasted.trim()}
               loading={busy}
               style={styles.wide}
             />
             <Button
-              label="Choose a licence file instead"
+              label={t('Choose a licence file instead')}
               tone="ghost"
               onPress={() => void importFile()}
               style={styles.wide}
@@ -280,19 +297,18 @@ function LicenseScreen({
           // Staff can see what is wrong and who has to fix it, and get out of the
           // way — otherwise the owner cannot reach the sign-in form to do it.
           <Text style={styles.subtle}>
-            Only the shop owner can install the licence. Sign out and let them sign in on this
-            computer.
+            {t('Only the shop owner can install the licence. Sign out and let them sign in on this computer.')}
           </Text>
         )}
 
         {status.state === 'trial' ? (
           <Pressable onPress={onRecheck} hitSlop={8}>
-            <Text style={styles.switch}>Back to the shop</Text>
+            <Text style={styles.switch}>{t('Back to the shop')}</Text>
           </Pressable>
         ) : null}
 
         <Pressable onPress={() => void signOut()} hitSlop={8}>
-          <Text style={styles.switch}>Sign out</Text>
+          <Text style={styles.switch}>{t('Sign out')}</Text>
         </Pressable>
       </View>
     </ScrollView>

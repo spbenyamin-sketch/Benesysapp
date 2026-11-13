@@ -17,7 +17,8 @@ import TextField from '@/components/TextField';
 import AccountPicker from '@/modules/bankAccounts/AccountPicker';
 import { createExpense, deleteExpense, expenseTax, updateExpense } from '@/modules/expenses/service';
 import { matchOption } from '@/modules/voice/match';
-import { t } from '@/modules/voice/phrases';
+import { t } from '@/i18n';
+import { t as vt } from '@/modules/voice/phrases';
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
 import { EXPENSE_CATEGORIES } from '@/utils/constants';
 import {
@@ -65,11 +66,11 @@ export default function ExpenseForm({ expense }: { expense?: Expense }) {
   const save = async () => {
     const trimmedCategory = category.trim();
     if (!trimmedCategory) {
-      Alert.alert('Category required', 'Pick what this money was spent on.');
+      Alert.alert(t('Category required'), t('Pick what this money was spent on.'));
       return;
     }
     if (paise <= 0) {
-      Alert.alert('Amount required', 'Enter an amount greater than zero.');
+      Alert.alert(t('Amount required'), t('Enter an amount greater than zero.'));
       return;
     }
     setSaving(true);
@@ -88,16 +89,16 @@ export default function ExpenseForm({ expense }: { expense?: Expense }) {
       router.back();
     } catch (e) {
       setSaving(false);
-      Alert.alert('Could not save', (e as Error)?.message ?? String(e));
+      Alert.alert(t('Could not save'), (e as Error)?.message ?? String(e));
     }
   };
 
   const confirmDelete = () => {
     if (!expense) return;
-    Alert.alert('Delete expense?', `${expense.category} · ${formatMoney(expense.amount)}`, [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert(t('Delete expense?'), `${expense.category} · ${formatMoney(expense.amount)}`, [
+      { text: t('Cancel'), style: 'cancel' },
       {
-        text: 'Delete',
+        text: t('Delete'),
         style: 'destructive',
         onPress: async () => {
           await deleteExpense(expense.id);
@@ -145,7 +146,7 @@ export default function ExpenseForm({ expense }: { expense?: Expense }) {
       case 'clear':
         setAmount('');
         setNotes('');
-        return t('cleared', lang);
+        return vt('cleared', lang);
       case 'action':
         if (intent.action !== 'delete' || !editing) return false;
         confirmDelete();
@@ -162,27 +163,27 @@ export default function ExpenseForm({ expense }: { expense?: Expense }) {
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
         <SelectField
-          label="Category"
+          label={t('Category')}
           value={category}
           onSelect={setCategory}
           options={EXPENSE_CATEGORIES}
-          placeholder="What was it spent on?"
+          placeholder={t('What was it spent on?')}
           required
           allowCustom
         />
 
         <TextField
-          label="Amount paid (₹)"
+          label={t('Amount paid (₹)')}
           value={amount}
           onChangeText={setAmount}
           placeholder="0"
           keyboardType="numeric"
           required
         />
-        <Text style={styles.hint}>Enter the total on the bill — GST included.</Text>
+        <Text style={styles.hint}>{t('Enter the total on the bill — GST included.')}</Text>
 
         <View>
-          <Text style={styles.label}>GST in this amount</Text>
+          <Text style={styles.label}>{t('GST in this amount')}</Text>
           <View style={styles.slabRow}>
             {SLABS.map((bp) => {
               const active = taxRate === bp;
@@ -193,7 +194,7 @@ export default function ExpenseForm({ expense }: { expense?: Expense }) {
                   onPress={() => setTaxRate(bp)}
                 >
                   <Text style={[styles.slabText, active && styles.slabTextActive]}>
-                    {bp === 0 ? 'None' : `${taxRateToInput(bp)}%`}
+                    {bp === 0 ? t('None') : `${taxRateToInput(bp)}%`}
                   </Text>
                 </Pressable>
               );
@@ -201,32 +202,35 @@ export default function ExpenseForm({ expense }: { expense?: Expense }) {
           </View>
           {taxRate > 0 && paise > 0 ? (
             <Text style={styles.split}>
-              Taxable {formatMoney(split.amount)} + GST {formatMoney(split.tax)}
+              {t('Taxable {taxable} + GST {gst}', {
+                taxable: formatMoney(split.amount),
+                gst: formatMoney(split.tax),
+              })}
             </Text>
           ) : null}
         </View>
 
-        <AccountPicker value={accountId} onChange={setAccountId} label="Paid from" />
+        <AccountPicker value={accountId} onChange={setAccountId} label={t('Paid from')} />
 
         <TextField
-          label="Date"
+          label={t('Date')}
           value={date}
           onChangeText={setDate}
           placeholder="YYYY-MM-DD"
           autoCapitalize="none"
         />
-        <TextField label="Notes" value={notes} onChangeText={setNotes} placeholder="Optional" multiline />
+        <TextField label={t('Notes')} value={notes} onChangeText={setNotes} placeholder={t('Optional')} multiline />
 
         <BooksToggle value={accounted} onChange={setAccounted} />
 
         <Button
-          label={editing ? 'Save changes' : 'Add expense'}
+          label={editing ? t('Save changes') : t('Add expense')}
           onPress={save}
           loading={saving}
           style={styles.save}
         />
         {editing ? (
-          <Button label="Delete expense" tone="danger" onPress={confirmDelete} />
+          <Button label={t('Delete expense')} tone="danger" onPress={confirmDelete} />
         ) : null}
       </ScrollView>
     </KeyboardAvoidingView>

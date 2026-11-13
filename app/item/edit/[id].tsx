@@ -1,4 +1,5 @@
 import { useLocalSearchParams } from 'expo-router';
+import { t } from '@/i18n';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import ItemForm from '@/modules/items/ItemForm';
@@ -24,7 +25,7 @@ export default function EditItemScreen() {
   if (item === null) {
     return (
       <View style={styles.center}>
-        <Text style={styles.missing}>Item not found.</Text>
+        <Text style={styles.missing}>{t('Item not found.')}</Text>
       </View>
     );
   }

@@ -1,6 +1,7 @@
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { t } from '@/i18n';
 import { getInvoice } from '@/modules/invoices/service';
 import InvoiceForm from '@/modules/invoices/InvoiceForm';
 import type { InvoiceType } from '@/utils/invoiceNumber';
@@ -37,7 +38,7 @@ export default function EditInvoiceScreen() {
   if (type === undefined) {
     return (
       <View style={styles.center}>
-        <Stack.Screen options={{ title: 'Edit' }} />
+        <Stack.Screen options={{ title: t('Edit') }} />
         <ActivityIndicator size="large" />
       </View>
     );
@@ -45,15 +46,15 @@ export default function EditInvoiceScreen() {
   if (type === null) {
     return (
       <View style={styles.center}>
-        <Stack.Screen options={{ title: 'Edit' }} />
-        <Text style={styles.missing}>That document no longer exists.</Text>
+        <Stack.Screen options={{ title: t('Edit') }} />
+        <Text style={styles.missing}>{t('That document no longer exists.')}</Text>
       </View>
     );
   }
 
   return (
     <>
-      <Stack.Screen options={{ title: TITLES[type] }} />
+      <Stack.Screen options={{ title: t(TITLES[type]) }} />
       <InvoiceForm type={type} editInvoiceId={invoiceId} />
     </>
   );

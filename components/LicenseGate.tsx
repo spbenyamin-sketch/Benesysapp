@@ -20,6 +20,7 @@ import {
   View,
 } from 'react-native';
 import Button from '@/components/Button';
+import { t } from '@/i18n';
 import { getSystemId } from '@/modules/license/device';
 import { activateFromFile, checkLicense, isUsable, type LicenseStatus } from '@/modules/license/service';
 
@@ -60,17 +61,17 @@ const HEADINGS: Record<string, { icon: string; title: string; blurb: string }> =
   unlicensed: {
     icon: '🔑',
     title: 'Activate Billing App',
-    blurb: `Send the System ID below to ${VENDOR}. You'll get a licence back — paste it in the box below and tap Activate.`,
+    blurb: "Send the System ID below to {vendor}. You'll get a licence back — paste it in the box below and tap Activate.",
   },
   expired: {
     icon: '⏳',
     title: 'Licence expired',
-    blurb: `Your licence has run out. Send the System ID to ${VENDOR} for a renewal, then paste it below — your shop data is untouched and comes straight back.`,
+    blurb: 'Your licence has run out. Send the System ID to {vendor} for a renewal, then paste it below — your shop data is untouched and comes straight back.',
   },
   trialOver: {
     icon: '⏳',
     title: 'Free trial over',
-    blurb: `Your 7-day free trial has ended. Send the System ID below to ${VENDOR} for a licence, then paste it below — everything you entered during the trial is kept.`,
+    blurb: 'Your 7-day free trial has ended. Send the System ID below to {vendor} for a licence, then paste it below — everything you entered during the trial is kept.',
   },
   rolledBack: {
     icon: '⚠️',
@@ -107,7 +108,7 @@ function ActivationScreen({
     try {
       const result = await activateFromFile(text);
       if (!result.ok) {
-        setError(result.reason ?? 'That licence was not accepted.');
+        setError(result.reason ?? t('That licence was not accepted.'));
         return;
       }
       onActivated();
@@ -145,22 +146,22 @@ function ActivationScreen({
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled">
         <Text style={styles.brand}>{heading.icon}</Text>
-        <Text style={styles.title}>{heading.title}</Text>
-        <Text style={styles.subtle}>{heading.blurb}</Text>
+        <Text style={styles.title}>{t(heading.title)}</Text>
+        <Text style={styles.subtle}>{t(heading.blurb, { vendor: VENDOR })}</Text>
 
         <View style={styles.idBox}>
-          <Text style={styles.idLabel}>System ID</Text>
+          <Text style={styles.idLabel}>{t('System ID')}</Text>
           <Text style={styles.idValue} selectable>
             {status.systemId}
           </Text>
         </View>
 
-        <Button label="Send System ID" tone="ghost" onPress={send} style={styles.wide} />
+        <Button label={t('Send System ID')} tone="ghost" onPress={send} style={styles.wide} />
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
         <View style={styles.pasteBox}>
-          <Text style={styles.pasteLabel}>Paste the licence {VENDOR} sent you</Text>
+          <Text style={styles.pasteLabel}>{t('Paste the licence {vendor} sent you', { vendor: VENDOR })}</Text>
           <TextInput
             style={styles.paste}
             value={pasted}
@@ -173,12 +174,12 @@ function ActivationScreen({
             spellCheck={false}
           />
           <Text style={styles.pasteHelp}>
-            Hold on the message in WhatsApp → Copy, then hold in the box above → Paste.
+            {t('Hold on the message in WhatsApp → Copy, then hold in the box above → Paste.')}
           </Text>
         </View>
 
         <Button
-          label="Activate"
+          label={t('Activate')}
           onPress={activatePasted}
           disabled={!pasted.trim()}
           loading={busy}
@@ -186,15 +187,16 @@ function ActivationScreen({
         />
 
         <Button
-          label="Import licence file instead"
+          label={t('Import licence file instead')}
           tone="ghost"
           onPress={importFile}
           style={styles.wide}
         />
 
         <Text style={styles.help}>
-          If {VENDOR} sent a file rather than a message, save it to Downloads first, then tap
-          Import.
+          {t('If {vendor} sent a file rather than a message, save it to Downloads first, then tap Import.', {
+            vendor: VENDOR,
+          })}
         </Text>
       </ScrollView>
     </KeyboardAvoidingView>

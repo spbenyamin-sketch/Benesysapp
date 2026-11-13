@@ -1,6 +1,7 @@
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useEffect, useRef } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { t } from '@/i18n';
 import { createScanLock } from '@/modules/items/barcode';
 
 // Full-screen scanner. The shop points the phone at a packet instead of hunting
@@ -84,25 +85,26 @@ export default function BarcodeScanner({
 
         {permission?.granted ? (
           <View style={styles.overlay} pointerEvents="box-none">
-            <Text style={styles.hint}>Hold the barcode inside the box</Text>
+            <Text style={styles.hint}>{t('Hold the barcode inside the box')}</Text>
             <View style={styles.frame} />
           </View>
         ) : (
           <View style={styles.message}>
             <Text style={styles.messageTitle}>
-              {permission ? 'The camera is switched off' : 'Opening the camera…'}
+              {permission ? t('The camera is switched off') : t('Opening the camera…')}
             </Text>
             {permission ? (
               <Text style={styles.messageBody}>
-                Scanning needs the camera. Turn it on for Billing App in your phone's Settings, or
-                just type the item name instead.
+                {t(
+                  "Scanning needs the camera. Turn it on for Billing App in your phone's Settings, or just type the item name instead.",
+                )}
               </Text>
             ) : null}
           </View>
         )}
 
-        <Pressable style={styles.close} onPress={onClose} hitSlop={12} accessibilityLabel="Close">
-          <Text style={styles.closeText}>Close</Text>
+        <Pressable style={styles.close} onPress={onClose} hitSlop={12} accessibilityLabel={t('Close')}>
+          <Text style={styles.closeText}>{t('Close')}</Text>
         </Pressable>
       </View>
     </Modal>

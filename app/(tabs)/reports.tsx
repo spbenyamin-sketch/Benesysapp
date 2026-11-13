@@ -1,5 +1,6 @@
 import { useRouter, type Href } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { t } from '@/i18n';
 
 const REPORTS: { href: Href; emoji: string; title: string; sub: string }[] = [
   {
@@ -80,8 +81,8 @@ export default function ReportsScreen() {
         <Pressable key={r.title} style={styles.card} onPress={() => router.push(r.href)}>
           <Text style={styles.emoji}>{r.emoji}</Text>
           <View style={styles.cardText}>
-            <Text style={styles.title}>{r.title}</Text>
-            <Text style={styles.sub}>{r.sub}</Text>
+            <Text style={styles.title}>{t(r.title)}</Text>
+            <Text style={styles.sub}>{t(r.sub)}</Text>
           </View>
           <Text style={styles.chevron}>›</Text>
         </Pressable>

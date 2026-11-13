@@ -15,6 +15,7 @@ import BarcodeScanner from '@/components/BarcodeScanner';
 import BooksToggle from '@/components/BooksToggle';
 import Button from '@/components/Button';
 import PickerField, { type PickerOption } from '@/components/PickerField';
+import { t } from '@/i18n';
 import {
   createInvoiceWithItems,
   getInvoiceWithItems,
@@ -28,11 +29,10 @@ import { partyDetailLines } from '@/modules/parties/describe';
 import { listParties } from '@/modules/parties/service';
 import { getDefaultTaxMode, getSetting } from '@/modules/settings/service';
 import { bestMatch, spokenNames } from '@/modules/voice/match';
-import { addedLine, removedLine, t, totalLine } from '@/modules/voice/phrases';
+import { addedLine, removedLine, t as phrase, totalLine } from '@/modules/voice/phrases';
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
 import {
   computeTotals,
-  discountLabel,
   supplyType,
   TAX_MODE_LABEL,
   type TaxMode,
@@ -103,7 +103,7 @@ function todayISO(): string {
 // Credit terms a counter actually says out loud. Days from the bill's own date,
 // so moving the bill date moves the presets with it.
 const DUE_PRESETS = [0, 7, 15, 30];
-const duePresetLabel = (days: number) => (days === 0 ? 'Today' : `${days} days`);
+const duePresetLabel = (days: number) => (days === 0 ? t('Today') : t('{n} days', { n: days }));
 /** What "Add due date" starts at — a month's credit, the commonest term. */
 const DEFAULT_DUE_DAYS = 30;
 
@@ -115,13 +115,14 @@ const DEFAULT_DUE_DAYS = 30;
 function confirmOverReturn(already: number, now: number, billTotal: number): Promise<boolean> {
   return new Promise((resolve) => {
     Alert.alert(
-      'More than the bill',
-      `${formatMoney(already)} has already been returned on a bill of ${formatMoney(
-        billTotal,
-      )}. This one adds ${formatMoney(now)}, which takes the total past what was sold.`,
+      t('More than the bill'),
+      t(
+        '{already} has already been returned on a bill of {total}. This one adds {now}, which takes the total past what was sold.',
+        { already: formatMoney(already), total: formatMoney(billTotal), now: formatMoney(now) },
+      ),
       [
-        { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
-        { text: 'Return anyway', onPress: () => resolve(true) },
+        { text: t('Cancel'), style: 'cancel', onPress: () => resolve(false) },
+        { text: t('Return anyway'), onPress: () => resolve(true) },
       ],
       { cancelable: true, onDismiss: () => resolve(false) },
     );
@@ -132,13 +133,14 @@ function confirmOverReturn(already: number, now: number, billTotal: number): Pro
 function confirmOverpaid(paid: number, newTotal: number): Promise<boolean> {
   return new Promise((resolve) => {
     Alert.alert(
-      'Already paid more than this',
-      `${formatMoney(paid)} has been received against this bill, but the new total is ${formatMoney(
-        newTotal,
-      )}. ${formatMoney(paid - newTotal)} will show as owed back to them.`,
+      t('Already paid more than this'),
+      t(
+        '{paid} has been received against this bill, but the new total is {total}. {back} will show as owed back to them.',
+        { paid: formatMoney(paid), total: formatMoney(newTotal), back: formatMoney(paid - newTotal) },
+      ),
       [
-        { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
-        { text: 'Save anyway', onPress: () => resolve(true) },
+        { text: t('Cancel'), style: 'cancel', onPress: () => resolve(false) },
+        { text: t('Save anyway'), onPress: () => resolve(true) },
       ],
       { cancelable: true, onDismiss: () => resolve(false) },
     );
@@ -372,7 +374,7 @@ export default function InvoiceForm({
   const scanned = async (code: string) => {
     const hit = await findItemByBarcode(code);
     if (!hit) {
-      Alert.alert('No item with that barcode');
+      Alert.alert(t('No item with that barcode'));
       setScanAttempt((n) => n + 1);
       return;
     }
@@ -441,19 +443,22 @@ export default function InvoiceForm({
   const party = useMemo(() => parties.find((p) => p.id === partyId), [parties, partyId]);
   const supply = supplyType(bizState, party?.state);
   const taxLabel =
-    supply === 'inter' ? 'IGST' : taxMode === 'inclusive' ? 'CGST + SGST (in rate)' : 'CGST + SGST';
+    supply === 'inter' ? 'IGST' : taxMode === 'inclusive' ? t('CGST + SGST (in rate)') : 'CGST + SGST';
 
   const save = async () => {
     if (!partyId) {
-      Alert.alert('Party required', `Select a ${isSupplierSide ? 'supplier' : 'customer'} first.`);
+      Alert.alert(
+        t('Party required'),
+        isSupplierSide ? t('Select a supplier first.') : t('Select a customer first.'),
+      );
       return;
     }
     if (parsedLines.length === 0) {
-      Alert.alert('No items', 'Add at least one item to the invoice.');
+      Alert.alert(t('No items'), t('Add at least one item to the invoice.'));
       return;
     }
     if (parsedLines.some((l) => l.qty <= 0)) {
-      Alert.alert('Check quantities', 'Every line needs a quantity greater than zero.');
+      Alert.alert(t('Check quantities'), t('Every line needs a quantity greater than zero.'));
       return;
     }
     // Cutting a bill below what the customer has already handed over is allowed
@@ -516,7 +521,7 @@ export default function InvoiceForm({
       router.replace({ pathname: '/invoice/[id]', params: { id: inv.id } });
     } catch (e) {
       setSaving(false);
-      Alert.alert('Could not save', (e as Error)?.message ?? String(e));
+      Alert.alert(t('Could not save'), t((e as Error)?.message ?? String(e)));
     }
   };
 
@@ -532,7 +537,7 @@ export default function InvoiceForm({
     switch (intent.kind) {
       case 'selectParty': {
         const hit = bestMatch(intent.query, parties);
-        if (!hit) return t('noParty', lang);
+        if (!hit) return phrase('noParty', lang);
         setPartyId(hit.value.id);
         return hit.value.name;
       }
@@ -545,7 +550,7 @@ export default function InvoiceForm({
             setPartyId(party.value.id);
             return party.value.name;
           }
-          return t('noMatch', lang);
+          return phrase('noMatch', lang);
         }
         // Fractions are real quantities here — "அரை கிலோ சர்க்கரை" is 0.5 kg,
         // not 1. Only a zero/negative reading falls back to a single unit.
@@ -555,16 +560,16 @@ export default function InvoiceForm({
       }
       case 'removeLine': {
         const hit = bestMatch(intent.itemQuery, items);
-        if (!hit) return t('noMatch', lang);
+        if (!hit) return phrase('noMatch', lang);
         const line = lines.find((l) => l.itemId === hit.value.id);
-        if (!line) return t('noMatch', lang);
+        if (!line) return phrase('noMatch', lang);
         removeLine(line.key);
         return removedLine(hit.value.name, lang);
       }
       case 'setQty': {
         const hit = bestMatch(intent.itemQuery, items);
         const line = hit ? lines.find((l) => l.itemId === hit.value.id) : undefined;
-        if (!line) return t('noMatch', lang);
+        if (!line) return phrase('noMatch', lang);
         updateLine(line.key, { qtyStr: String(intent.qty) });
         return true;
       }
@@ -582,20 +587,20 @@ export default function InvoiceForm({
         return false;
       case 'setTaxMode':
         setTaxMode(intent.mode);
-        return t(intent.mode === 'inclusive' ? 'taxIncl' : 'taxExcl', lang);
+        return phrase(intent.mode === 'inclusive' ? 'taxIncl' : 'taxExcl', lang);
       case 'total':
         return totalLine(formatMoney(totals.grandTotal), lang);
       case 'clear':
         setLines([]);
         setDiscountStr('');
-        return t('cleared', lang);
+        return phrase('cleared', lang);
       case 'action':
         // Nothing on this screen can be edited or deleted as a record — a bare
         // "delete" means "throw away what I have typed so far".
         if (intent.action !== 'delete') return false;
         setLines([]);
         setDiscountStr('');
-        return t('cleared', lang);
+        return phrase('cleared', lang);
       case 'submit':
         void save();
         return true;
@@ -608,26 +613,26 @@ export default function InvoiceForm({
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
         <PickerField
-          label={isSupplierSide ? 'Supplier' : 'Customer'}
+          label={isSupplierSide ? t('Supplier') : t('Customer')}
           value={partyId}
           onSelect={setPartyId}
           options={partyOptions}
-          placeholder={`Select ${isSupplierSide ? 'supplier' : 'customer'}`}
+          placeholder={isSupplierSide ? t('Select supplier') : t('Select customer')}
           required
-          emptyText="No parties yet — add one from the Parties tab."
-          searchPlaceholder="Search by name, phone, town or GSTIN"
+          emptyText={t('No parties yet — add one from the Parties tab.')}
+          searchPlaceholder={t('Search by name, phone, town or GSTIN')}
         />
 
         {/* What the supplier printed on their bill — the number GSTR-2B lists and
             the accountant matches on. Ours is still generated as usual. */}
         {isPurchase ? (
           <View style={styles.field}>
-            <Text style={styles.label}>Supplier bill no. (optional)</Text>
+            <Text style={styles.label}>{t('Supplier bill no. (optional)')}</Text>
             <TextInput
               style={styles.dateInput}
               value={supplierNo}
               onChangeText={setSupplierNo}
-              placeholder="As printed on their bill"
+              placeholder={t('As printed on their bill')}
               placeholderTextColor="#aaa"
               autoCapitalize="characters"
             />
@@ -636,7 +641,7 @@ export default function InvoiceForm({
 
         <View style={styles.field}>
           <View style={styles.sectionRow}>
-            <Text style={styles.label}>Date</Text>
+            <Text style={styles.label}>{t('Date')}</Text>
             {/* Only a bill that money is owed on can fall due. */}
             {type === 'sale' || type === 'purchase' ? (
               <Pressable
@@ -649,7 +654,7 @@ export default function InvoiceForm({
                   });
                 }}
               >
-                <Text style={styles.toggleLink}>{showDue ? 'No due date' : 'Add due date'}</Text>
+                <Text style={styles.toggleLink}>{showDue ? t('No due date') : t('Add due date')}</Text>
               </Pressable>
             ) : null}
           </View>
@@ -664,7 +669,7 @@ export default function InvoiceForm({
 
         {showDue ? (
           <View style={styles.field}>
-            <Text style={styles.label}>Due date</Text>
+            <Text style={styles.label}>{t('Due date')}</Text>
             <TextInput
               style={styles.dateInput}
               value={dueDate}
@@ -693,7 +698,7 @@ export default function InvoiceForm({
         ) : null}
 
         <View style={styles.sectionRow}>
-          <Text style={styles.sectionTitle}>Items</Text>
+          <Text style={styles.sectionTitle}>{t('Items')}</Text>
           {lines.length > 0 ? (
             <View style={styles.sectionRight}>
               {showLineDiscount ? (
@@ -701,7 +706,7 @@ export default function InvoiceForm({
               ) : null}
               <Pressable onPress={() => setShowLineDiscount((v) => !v)} hitSlop={8}>
                 <Text style={styles.toggleLink}>
-                  {showLineDiscount ? 'Hide item discount' : 'Discount per item'}
+                  {showLineDiscount ? t('Hide item discount') : t('Discount per item')}
                 </Text>
               </Pressable>
             </View>
@@ -723,9 +728,9 @@ export default function InvoiceForm({
                 for anything in between (1.2 kg). */}
             <View style={styles.qtyBlock}>
               <Text style={styles.miniLabel}>
-                Qty ({l.unit})
+                {t('Qty ({unit})', { unit: l.unit })}
                 {isFractionalUnit(l.unit) ? (
-                  <Text style={styles.miniHint}>  · decimals ok</Text>
+                  <Text style={styles.miniHint}>  · {t('decimals ok')}</Text>
                 ) : null}
               </Text>
               <View style={styles.qtyRow}>
@@ -769,7 +774,7 @@ export default function InvoiceForm({
 
             <View style={styles.lineInputs}>
               <View style={styles.lineCol}>
-                <Text style={styles.miniLabel}>Rate (₹)</Text>
+                <Text style={styles.miniLabel}>{t('Rate (₹)')}</Text>
                 <TextInput
                   style={styles.miniInput}
                   value={l.rateStr}
@@ -785,7 +790,7 @@ export default function InvoiceForm({
                       the rupees it comes to sit beside the label — same row, no
                       extra height to knock the columns out of line. */}
                   <Text style={styles.miniLabel}>
-                    Discount ({DISCOUNT_UNIT[lineDiscountMode]})
+                    {t('Discount ({unit})', { unit: DISCOUNT_UNIT[lineDiscountMode] })}
                     {linePercent && (computed[i]?.discount ?? 0) > 0 ? (
                       <Text style={styles.miniHint}>  · {formatMoney(computed[i].discount)}</Text>
                     ) : null}
@@ -801,7 +806,7 @@ export default function InvoiceForm({
                 </View>
               ) : null}
               <View style={styles.lineAmount}>
-                <Text style={styles.miniLabel}>Amount</Text>
+                <Text style={styles.miniLabel}>{t('Amount')}</Text>
                 <Text style={styles.amountVal}>{formatMoney(computed[i]?.amount ?? 0)}</Text>
               </View>
             </View>
@@ -813,17 +818,17 @@ export default function InvoiceForm({
         <View style={styles.addItemRow}>
           <View style={styles.addItemPicker}>
             <PickerField
-              label="Add item"
+              label={t('Add item')}
               value={null}
               onSelect={addLine}
               options={itemOptions}
-              placeholder="Tap to add an item"
-              emptyText="No items yet — add one from the Items tab."
+              placeholder={t('Tap to add an item')}
+              emptyText={t('No items yet — add one from the Items tab.')}
             />
           </View>
           <Pressable style={styles.scanBtn} onPress={() => setScanning(true)} hitSlop={6}>
             <Text style={styles.scanIcon}>▥</Text>
-            <Text style={styles.scanLabel}>Scan</Text>
+            <Text style={styles.scanLabel}>{t('Scan')}</Text>
           </Pressable>
         </View>
         <BarcodeScanner
@@ -835,7 +840,9 @@ export default function InvoiceForm({
 
         <View style={styles.field}>
           <View style={styles.sectionRow}>
-            <Text style={styles.label}>Discount ({DISCOUNT_UNIT[discountMode]})</Text>
+            <Text style={styles.label}>
+              {t('Discount ({unit})', { unit: DISCOUNT_UNIT[discountMode] })}
+            </Text>
             <UnitToggle mode={discountMode} onChange={setDiscountMode} />
           </View>
           <TextInput
@@ -847,7 +854,9 @@ export default function InvoiceForm({
             placeholderTextColor="#aaa"
           />
           {billPercent && totals.discount > 0 ? (
-            <Text style={styles.miniHint}>= {formatMoney(totals.discount)} off this bill</Text>
+            <Text style={styles.miniHint}>
+              {t('= {amount} off this bill', { amount: formatMoney(totals.discount) })}
+            </Text>
           ) : null}
         </View>
 
@@ -861,61 +870,70 @@ export default function InvoiceForm({
               onPress={() => setTaxMode(mode)}
             >
               <Text style={[styles.taxModeText, taxMode === mode && styles.taxModeTextOn]}>
-                {TAX_MODE_LABEL[mode]}
+                {t(TAX_MODE_LABEL[mode])}
               </Text>
             </Pressable>
           ))}
         </View>
 
         <View style={styles.totals}>
-          <TotalRow label={taxMode === 'inclusive' ? 'Taxable value' : 'Subtotal'} value={formatMoney(totals.subtotal)} />
+          <TotalRow label={taxMode === 'inclusive' ? t('Taxable value') : t('Subtotal')} value={formatMoney(totals.subtotal)} />
           <TotalRow label={taxLabel} value={formatMoney(totals.taxTotal)} />
           {totals.discount > 0 ? (
             <TotalRow
-              label={discountLabel(discountPercent)}
+              label={
+                discountPercent
+                  ? t('Discount ({rate})', { rate: formatTaxRate(discountPercent) })
+                  : t('Discount')
+              }
               value={`- ${formatMoney(totals.discount)}`}
             />
           ) : null}
           {totals.roundOff !== 0 ? (
             <TotalRow
-              label="Round off"
+              label={t('Round off')}
               value={`${totals.roundOff > 0 ? '+ ' : '- '}${formatMoney(Math.abs(totals.roundOff))}`}
             />
           ) : null}
-          <TotalRow label="Grand total" value={formatMoney(totals.grandTotal)} strong />
+          <TotalRow label={t('Grand total')} value={formatMoney(totals.grandTotal)} strong />
           {supply === 'inter' ? (
             <Text style={styles.supplyNote}>
-              Interstate supply{party?.state ? ` to ${party.state}` : ''} — IGST is charged instead
-              of CGST + SGST.
+              {party?.state
+                ? t('Interstate supply to {state} — IGST is charged instead of CGST + SGST.', {
+                    state: party.state,
+                  })
+                : t('Interstate supply — IGST is charged instead of CGST + SGST.')}
             </Text>
           ) : null}
         </View>
 
         <Button
-          label={isEdit ? 'Save changes' : titles.cta}
+          label={isEdit ? t('Save changes') : t(titles.cta)}
           onPress={save}
           loading={saving}
           style={styles.save}
         />
         {isReturn && sourceInvoiceId && alreadyReturned > 0 ? (
           <Text style={styles.returnNote}>
-            {formatMoney(alreadyReturned)} of this {formatMoney(sourceTotal)} bill has already been
-            returned.
+            {t('{returned} of this {total} bill has already been returned.', {
+              returned: formatMoney(alreadyReturned),
+              total: formatMoney(sourceTotal),
+            })}
           </Text>
         ) : null}
 
         <Text style={styles.hint}>
           {isEdit
-            ? 'The bill number stays the same. Stock is corrected to match the new lines, and the payment status is worked out again.'
+            ? t('The bill number stays the same. Stock is corrected to match the new lines, and the payment status is worked out again.')
             : type === 'sale'
-              ? 'Stock decreases when you save. Record payment from the invoice screen.'
+              ? t('Stock decreases when you save. Record payment from the invoice screen.')
               : isPurchase
-                ? 'Stock increases when you save, and each item’s purchase price is updated to the rate you paid. Record payment from the invoice screen.'
+                ? t('Stock increases when you save, and each item’s purchase price is updated to the rate you paid. Record payment from the invoice screen.')
                 : type === 'saleReturn'
-                  ? 'Stock comes back in when you save, and the customer’s balance drops by this much. Record the refund from the invoice screen if you pay them back in cash.'
+                  ? t('Stock comes back in when you save, and the customer’s balance drops by this much. Record the refund from the invoice screen if you pay them back in cash.')
                   : type === 'purchaseReturn'
-                    ? 'Stock goes back out when you save, and you owe the supplier this much less. Record the refund from the invoice screen if they pay you back. The item’s purchase price is left alone — the rate here is what was paid, not a new cost.'
-                    : 'Quotations and challans don’t affect stock or ledgers.'}
+                    ? t('Stock goes back out when you save, and you owe the supplier this much less. Record the refund from the invoice screen if they pay you back. The item’s purchase price is left alone — the rate here is what was paid, not a new cost.')
+                    : t('Quotations and challans don’t affect stock or ledgers.')}
         </Text>
       </ScrollView>
     </KeyboardAvoidingView>

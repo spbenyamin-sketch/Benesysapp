@@ -10,6 +10,7 @@ import { usePathname, useRouter } from 'expo-router';
 import type { ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Button from '@/components/Button';
+import { t } from '@/i18n';
 import { useAllowedScreens } from '@/modules/auth/allowed';
 import { SCREEN_LABEL, screenOfPath, type Screen } from '@/modules/auth/screens';
 
@@ -38,13 +39,18 @@ export default function ScreenGuard({ children }: { children: ReactNode }) {
       {children}
       {blocked ? (
         <View style={styles.cover}>
-          <Text style={styles.title}>Not your screen</Text>
+          <Text style={styles.title}>{t('Not your screen')}</Text>
           <Text style={styles.body}>
-            {SCREEN_LABEL[needed]} is switched off for your account. Ask the shop owner if you need
-            it.
+            {t('{screen} is switched off for your account. Ask the shop owner if you need it.', {
+              screen: t(SCREEN_LABEL[needed]),
+            })}
           </Text>
           <Button
-            label={allowed.length ? `Go to ${SCREEN_LABEL[allowed[0]]}` : 'Go to Settings'}
+            label={
+              allowed.length
+                ? t('Go to {screen}', { screen: t(SCREEN_LABEL[allowed[0]]) })
+                : t('Go to Settings')
+            }
             onPress={() => router.replace(home)}
             style={styles.button}
           />

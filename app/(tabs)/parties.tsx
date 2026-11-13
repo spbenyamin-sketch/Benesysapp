@@ -1,10 +1,11 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { t } from '@/i18n';
 import { partyDetailLines, partySearchText } from '@/modules/parties/describe';
 import { listPartiesWithBalance, type PartyWithBalance } from '@/modules/parties/ledger';
 import { bestMatch, spokenNames } from '@/modules/voice/match';
-import { t } from '@/modules/voice/phrases';
+import { t as say } from '@/modules/voice/phrases';
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
 import { balanceSummary, formatMoney } from '@/utils/format';
 
@@ -54,7 +55,7 @@ export default function PartiesScreen() {
       const q = intent.kind === 'selectParty' ? intent.query : intent.itemQuery;
       if (open(q, 0.8)) return true;
       setQuery(q);
-      return t('noParty', lang);
+      return say('noParty', lang);
     }
     if (intent.kind === 'clear') {
       setQuery('');
@@ -70,7 +71,7 @@ export default function PartiesScreen() {
           style={styles.search}
           value={query}
           onChangeText={setQuery}
-          placeholder="Search by name, phone, town or GSTIN"
+          placeholder={t('Search by name, phone, town or GSTIN')}
           placeholderTextColor="#999"
           autoCapitalize="none"
           clearButtonMode="while-editing"
@@ -85,8 +86,8 @@ export default function PartiesScreen() {
         ListEmptyComponent={
           <Text style={styles.empty}>
             {rows.length === 0
-              ? 'No parties yet.\nTap + to add your first party.'
-              : 'No matches.'}
+              ? t('No parties yet.\nTap + to add your first party.')
+              : t('No matches.')}
           </Text>
         }
         renderItem={({ item }) => {
@@ -114,7 +115,7 @@ export default function PartiesScreen() {
                 <Text style={[styles.amount, { color: summary.toneColor }]}>
                   {formatMoney(Math.abs(balance))}
                 </Text>
-                <Text style={styles.balLabel}>{balance === 0 ? 'Settled' : summary.label}</Text>
+                <Text style={styles.balLabel}>{balance === 0 ? t('Settled') : t(summary.label)}</Text>
               </View>
             </Pressable>
           );
@@ -124,7 +125,7 @@ export default function PartiesScreen() {
       <Pressable
         style={styles.fab}
         onPress={() => router.push('/party/new')}
-        accessibilityLabel="Add party"
+        accessibilityLabel={t('Add party')}
       >
         <Text style={styles.fabPlus}>+</Text>
       </Pressable>

@@ -10,6 +10,7 @@ import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Alert, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import Button from '@/components/Button';
+import { t } from '@/i18n';
 import { activateFromFile, checkLicense, WARN_DAYS, type LicenseStatus } from '@/modules/license/service';
 import { formatDate } from '@/utils/format';
 
@@ -45,14 +46,14 @@ export default function LicenseCard() {
     try {
       const result = await activateFromFile(text);
       if (!result.ok) {
-        Alert.alert('Licence not accepted', result.reason ?? 'That licence is not valid for this phone.');
+        Alert.alert(t('Licence not accepted'), result.reason ?? t('That licence is not valid for this phone.'));
         return;
       }
       setPasted(null);
       load();
-      Alert.alert('Licence updated', `Valid until ${formatDate(result.license!.expiry)}.`);
+      Alert.alert(t('Licence updated'), t('Valid until {date}.', { date: formatDate(result.license!.expiry) }));
     } catch (e) {
-      Alert.alert('Could not read that licence', (e as Error)?.message ?? String(e));
+      Alert.alert(t('Could not read that licence'), (e as Error)?.message ?? String(e));
     } finally {
       setBusy(false);
     }
@@ -66,7 +67,7 @@ export default function LicenseCard() {
     try {
       text = await new File(picked.assets[0].uri).text();
     } catch (e) {
-      Alert.alert('Could not read that file', (e as Error)?.message ?? String(e));
+      Alert.alert(t('Could not read that file'), (e as Error)?.message ?? String(e));
       return;
     }
     await apply(text);
@@ -79,30 +80,30 @@ export default function LicenseCard() {
   return (
     <View style={styles.wrap}>
       <View style={styles.row}>
-        <Text style={styles.label}>System ID</Text>
+        <Text style={styles.label}>{t('System ID')}</Text>
         <Text style={styles.value} selectable>
           {status.systemId}
         </Text>
       </View>
 
       <View style={styles.row}>
-        <Text style={styles.label}>{status.trial ? 'Free trial' : 'Licence'}</Text>
+        <Text style={styles.label}>{status.trial ? t('Free trial') : t('Licence')}</Text>
         <Text style={[styles.value, warn && styles.warnText]}>
           {status.expiry
             ? `${formatDate(status.expiry)}${
                 status.daysLeft !== undefined
                   ? status.daysLeft < 0
-                    ? ' · expired'
-                    : ` · ${status.daysLeft} day${status.daysLeft === 1 ? '' : 's'} left`
+                    ? ` · ${t('expired')}`
+                    : ` · ${status.daysLeft === 1 ? t('1 day left') : t('{n} days left', { n: status.daysLeft })}`
                   : ''
               }`
-            : 'Not activated'}
+            : t('Not activated')}
         </Text>
       </View>
 
       {status.client ? (
         <View style={styles.row}>
-          <Text style={styles.label}>Issued to</Text>
+          <Text style={styles.label}>{t('Issued to')}</Text>
           <Text style={styles.value}>{status.client}</Text>
         </View>
       ) : null}
@@ -110,8 +111,8 @@ export default function LicenseCard() {
       {warn ? (
         <Text style={styles.warnBanner}>
           {status.trial
-            ? 'Ask your vendor for a licence before the trial ends — the app stops opening after the last day. Your data is kept.'
-            : 'Ask your vendor for a renewal file before this runs out — the app stops opening on the expiry date.'}
+            ? t('Ask your vendor for a licence before the trial ends — the app stops opening after the last day. Your data is kept.')
+            : t('Ask your vendor for a renewal file before this runs out — the app stops opening on the expiry date.')}
         </Text>
       ) : null}
 
@@ -121,7 +122,7 @@ export default function LicenseCard() {
             style={styles.paste}
             value={pasted}
             onChangeText={setPasted}
-            placeholder={'Paste the renewal your vendor sent — {"app":"billing-app", …}'}
+            placeholder={`${t('Paste the renewal your vendor sent')} — {"app":"billing-app", …}`}
             placeholderTextColor="#aaa"
             multiline
             autoFocus
@@ -131,13 +132,13 @@ export default function LicenseCard() {
           />
           <View style={styles.buttons}>
             <Button
-              label="Cancel"
+              label={t('Cancel')}
               tone="ghost"
               onPress={() => setPasted(null)}
               style={styles.flex}
             />
             <Button
-              label="Activate"
+              label={t('Activate')}
               onPress={() => void apply(pasted)}
               disabled={!pasted.trim()}
               loading={busy}
@@ -148,16 +149,16 @@ export default function LicenseCard() {
       ) : (
         <>
           <View style={styles.buttons}>
-            <Button label="Send System ID" tone="ghost" onPress={send} style={styles.flex} />
+            <Button label={t('Send System ID')} tone="ghost" onPress={send} style={styles.flex} />
             <Button
-              label="Paste licence"
+              label={t('Paste licence')}
               tone="ghost"
               onPress={() => setPasted('')}
               style={styles.flex}
             />
           </View>
           <Button
-            label="Import licence file"
+            label={t('Import licence file')}
             tone="ghost"
             onPress={importFile}
             loading={busy}

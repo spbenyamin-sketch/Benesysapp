@@ -3,9 +3,10 @@ import { useCallback, useMemo, useState } from 'react';
 import { Alert, FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import BarcodeScanner from '@/components/BarcodeScanner';
 import ItemPhoto from '@/components/ItemPhoto';
+import { t } from '@/i18n';
 import { findItemByBarcode, listItems } from '@/modules/items/service';
 import { bestMatch, spokenNames } from '@/modules/voice/match';
-import { t } from '@/modules/voice/phrases';
+import { t as say } from '@/modules/voice/phrases';
 import { stockLevel, STOCK_LABEL, STOCK_TONE } from '@/modules/items/stockLevel';
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
 import { formatMoney, formatQty, formatTaxRate } from '@/utils/format';
@@ -51,10 +52,10 @@ export default function ItemsScreen() {
       router.push({ pathname: '/item/[id]', params: { id: hit.id } });
       return;
     }
-    Alert.alert('No item has this barcode', `Add a new item for ${code}?`, [
-      { text: 'Not now', style: 'cancel' },
+    Alert.alert(t('No item has this barcode'), t('Add a new item for {code}?', { code }), [
+      { text: t('Not now'), style: 'cancel' },
       {
-        text: 'Add item',
+        text: t('Add item'),
         onPress: () => router.push({ pathname: '/item/new', params: { barcode: code } }),
       },
     ]);
@@ -78,7 +79,7 @@ export default function ItemsScreen() {
         return true;
       }
       setQuery(intent.itemQuery);
-      return t('noMatch', lang);
+      return say('noMatch', lang);
     }
     if (intent.kind === 'clear') {
       setQuery('');
@@ -94,7 +95,7 @@ export default function ItemsScreen() {
           style={styles.search}
           value={query}
           onChangeText={setQuery}
-          placeholder="Search items by name"
+          placeholder={t('Search items by name')}
           placeholderTextColor="#999"
           autoCapitalize="none"
           clearButtonMode="while-editing"
@@ -102,9 +103,9 @@ export default function ItemsScreen() {
         <Pressable
           style={styles.scanBtn}
           onPress={() => setScanning(true)}
-          accessibilityLabel="Scan barcode"
+          accessibilityLabel={t('Scan barcode')}
         >
-          <Text style={styles.scanBtnText}>▥  Scan</Text>
+          <Text style={styles.scanBtnText}>▥  {t('Scan')}</Text>
         </Pressable>
       </View>
 
@@ -116,8 +117,8 @@ export default function ItemsScreen() {
         ListEmptyComponent={
           <Text style={styles.empty}>
             {items.length === 0
-              ? 'No items yet.\nTap + to add your first item.'
-              : 'No matches.'}
+              ? t('No items yet.\nTap + to add your first item.')
+              : t('No matches.')}
           </Text>
         }
         renderItem={({ item }) => {
@@ -140,7 +141,7 @@ export default function ItemsScreen() {
                   {formatQty(item.currentStock)} {item.unit}
                 </Text>
                 <Text style={[styles.stockLabel, level !== 'ok' && { color: STOCK_TONE[level] }]}>
-                  {STOCK_LABEL[level]}
+                  {t(STOCK_LABEL[level])}
                 </Text>
               </View>
             </Pressable>
@@ -151,7 +152,7 @@ export default function ItemsScreen() {
       <Pressable
         style={styles.fab}
         onPress={() => router.push('/item/new')}
-        accessibilityLabel="Add item"
+        accessibilityLabel={t('Add item')}
       >
         <Text style={styles.fabPlus}>+</Text>
       </Pressable>

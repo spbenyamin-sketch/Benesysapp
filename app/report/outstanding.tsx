@@ -8,6 +8,7 @@ import { partyOutstanding, type Outstanding } from '@/modules/reports/service';
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
 import { formatMoney } from '@/utils/format';
 import type { PartyWithBalance } from '@/modules/parties/ledger';
+import { t } from '@/i18n';
 
 type Section = { title: string; tone: string; total: number; rows: PartyWithBalance[] };
 
@@ -38,8 +39,8 @@ export default function OutstandingReportScreen() {
 
   const sections: Section[] = data
     ? [
-        { title: 'To collect (receivables)', tone: '#1a9d5a', total: data.totalReceivable, rows: data.receivables },
-        { title: 'To pay (payables)', tone: '#c0392b', total: data.totalPayable, rows: data.payables },
+        { title: t('To collect (receivables)'), tone: '#1a9d5a', total: data.totalReceivable, rows: data.receivables },
+        { title: t('To pay (payables)'), tone: '#c0392b', total: data.totalPayable, rows: data.payables },
       ]
     : [];
 
@@ -63,7 +64,7 @@ export default function OutstandingReportScreen() {
             </Text>
           </View>
           {section.rows.length === 0 ? (
-            <Text style={styles.empty}>Nothing here.</Text>
+            <Text style={styles.empty}>{t('Nothing here.')}</Text>
           ) : (
             section.rows.map((r) => (
               <Pressable

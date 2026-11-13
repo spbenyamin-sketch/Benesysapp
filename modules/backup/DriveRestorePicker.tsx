@@ -13,6 +13,7 @@ import {
   View,
 } from 'react-native';
 import Button from '@/components/Button';
+import { t } from '@/i18n';
 import {
   connectDrive,
   getDriveStatus,
@@ -76,12 +77,15 @@ export default function DriveRestorePicker({
 
   const restore = (backup: DriveBackup) => {
     Alert.alert(
-      'Restore this backup?',
-      `Everything currently in the app will be DELETED and replaced with "${backup.name}" from ${new Date(backup.createdTime).toLocaleString()}. This cannot be undone.`,
+      t('Restore this backup?'),
+      t('Everything currently in the app will be DELETED and replaced with "{file}" from {when}. This cannot be undone.', {
+        file: backup.name,
+        when: new Date(backup.createdTime).toLocaleString(),
+      }),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('Cancel'), style: 'cancel' },
         {
-          text: 'Restore',
+          text: t('Restore'),
           style: 'destructive',
           onPress: async () => {
             setBusy(true);
@@ -90,11 +94,16 @@ export default function DriveRestorePicker({
               onRestored?.(counts);
               onClose();
               Alert.alert(
-                'Restored from Drive',
-                `${counts.parties} parties, ${counts.items} items, ${counts.invoices} invoices, ${counts.payments} payments loaded.`,
+                t('Restored from Drive'),
+                t('{parties} parties, {items} items, {invoices} invoices, {payments} payments loaded.', {
+                  parties: counts.parties,
+                  items: counts.items,
+                  invoices: counts.invoices,
+                  payments: counts.payments,
+                }),
               );
             } catch (e) {
-              Alert.alert('Restore failed', (e as Error)?.message ?? String(e));
+              Alert.alert(t('Restore failed'), (e as Error)?.message ?? String(e));
             } finally {
               setBusy(false);
             }
@@ -109,7 +118,7 @@ export default function DriveRestorePicker({
       <View style={styles.backdrop}>
         <View style={styles.sheet}>
           <View style={styles.header}>
-            <Text style={styles.title}>Restore from Google Drive</Text>
+            <Text style={styles.title}>{t('Restore from Google Drive')}</Text>
             <Pressable onPress={onClose} hitSlop={10}>
               <Text style={styles.close}>✕</Text>
             </Pressable>
@@ -120,14 +129,14 @@ export default function DriveRestorePicker({
           ) : error ? (
             <View style={styles.pad}>
               <Text style={styles.error}>{error}</Text>
-              <Button label="Try again" tone="ghost" onPress={load} />
+              <Button label={t('Try again')} tone="ghost" onPress={load} />
             </View>
           ) : !connected ? (
             <View style={styles.pad}>
               <Text style={styles.hint}>
-                Sign in with the Google account you backed up to, and your data comes back.
+                {t('Sign in with the Google account you backed up to, and your data comes back.')}
               </Text>
-              <Button label="Sign in with Google" onPress={connect} />
+              <Button label={t('Sign in with Google')} onPress={connect} />
             </View>
           ) : (
             <FlatList
@@ -136,8 +145,9 @@ export default function DriveRestorePicker({
               style={styles.list}
               ListEmptyComponent={
                 <Text style={styles.hint}>
-                  No backups in this Google account yet. If you used a different account, close this
-                  and connect that one.
+                  {t(
+                    'No backups in this Google account yet. If you used a different account, close this and connect that one.',
+                  )}
                 </Text>
               }
               renderItem={({ item, index }) => (
@@ -145,7 +155,7 @@ export default function DriveRestorePicker({
                   <View style={styles.rowLeft}>
                     <Text style={styles.rowTitle}>
                       {new Date(item.createdTime).toLocaleString()}
-                      {index === 0 ? '  · newest' : ''}
+                      {index === 0 ? `  · ${t('newest')}` : ''}
                     </Text>
                     <Text style={styles.rowSub}>
                       {item.name}

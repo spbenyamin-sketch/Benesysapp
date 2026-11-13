@@ -13,6 +13,7 @@ import {
 import Button from '@/components/Button';
 import SelectField from '@/components/SelectField';
 import TextField from '@/components/TextField';
+import { t } from '@/i18n';
 import { createParty, updateParty } from '@/modules/parties/service';
 import { matchOption } from '@/modules/voice/match';
 import { useVoiceCommands } from '@/modules/voice/VoiceProvider';
@@ -42,7 +43,7 @@ export default function PartyForm({ party }: { party?: Party }) {
   const save = async () => {
     const trimmedName = name.trim();
     if (!trimmedName) {
-      Alert.alert('Name required', 'Please enter the party name.');
+      Alert.alert(t('Name required'), t('Please enter the party name.'));
       return;
     }
     setSaving(true);
@@ -66,7 +67,7 @@ export default function PartyForm({ party }: { party?: Party }) {
       router.back();
     } catch (e) {
       setSaving(false);
-      Alert.alert('Could not save', (e as Error)?.message ?? String(e));
+      Alert.alert(t('Could not save'), (e as Error)?.message ?? String(e));
     }
   };
 
@@ -132,81 +133,87 @@ export default function PartyForm({ party }: { party?: Party }) {
     >
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
         <View style={styles.typeRow}>
-          {(['customer', 'supplier'] as const).map((t) => {
-            const active = type === t;
+          {(['customer', 'supplier'] as const).map((kind) => {
+            const active = type === kind;
             return (
               <Pressable
-                key={t}
+                key={kind}
                 style={[styles.typeChip, active && styles.typeChipActive]}
-                onPress={() => setType(t)}
+                onPress={() => setType(kind)}
               >
                 <Text style={[styles.typeText, active && styles.typeTextActive]}>
-                  {t === 'customer' ? 'Customer' : 'Supplier'}
+                  {kind === 'customer' ? t('Customer') : t('Supplier')}
                 </Text>
               </Pressable>
             );
           })}
         </View>
 
-        <TextField label="Name" value={name} onChangeText={setName} placeholder="Party name" required />
         <TextField
-          label="Phone"
+          label={t('Name')}
+          value={name}
+          onChangeText={setName}
+          placeholder={t('Party name')}
+          required
+        />
+        <TextField
+          label={t('Phone')}
           value={phone}
           onChangeText={setPhone}
-          placeholder="Mobile number"
+          placeholder={t('Mobile number')}
           keyboardType="phone-pad"
         />
         <TextField
           label="GSTIN"
           value={gstin}
           onChangeText={setGstin}
-          placeholder="15-digit GST number"
+          placeholder={t('15-digit GST number')}
           autoCapitalize="characters"
         />
         <TextField
-          label="Address"
+          label={t('Address')}
           value={address}
           onChangeText={setAddress}
-          placeholder="Billing address"
+          placeholder={t('Billing address')}
           multiline
         />
         <View style={styles.row}>
           <View style={styles.col}>
-            <TextField label="City" value={city} onChangeText={setCity} placeholder="City" />
+            <TextField label={t('City')} value={city} onChangeText={setCity} placeholder={t('City')} />
           </View>
           <View style={styles.col}>
             <SelectField
-              label="State"
+              label={t('State')}
               value={state}
               onSelect={setState}
               options={INDIAN_STATES}
-              placeholder="Select state"
+              placeholder={t('Select state')}
             />
           </View>
         </View>
         <TextField
-          label="Opening balance (₹)"
+          label={t('Opening balance (₹)')}
           value={opening}
           onChangeText={setOpening}
           placeholder="0"
           keyboardType="numeric"
         />
         <Text style={styles.hint}>
-          Positive = they owe you at the start. Enter a negative amount if you owe them.
+          {t('Positive = they owe you at the start. Enter a negative amount if you owe them.')}
         </Text>
 
         <TextField
-          label="Voice name (தமிழ்)"
+          label={t('Voice name (தமிழ்)')}
           value={voiceAlias}
           onChangeText={setVoiceAlias}
-          placeholder="e.g. ராஜேஷ் அண்ணா, rajesh stores"
+          placeholder={t('e.g. ராஜேஷ் அண்ணா, rajesh stores')}
         />
         <Text style={styles.hint}>
-          What you say for this party when using voice commands. Comma separated for several.
+          {t('What you say for this party when using voice commands. Comma separated for several.')}
         </Text>
 
         <Button
-          label={editing ? 'Save changes' : 'Add party'}
+          label={editing ? t('Save changes') : t('Add party')}
           onPress={save}
           loading={saving}
           style={styles.save}

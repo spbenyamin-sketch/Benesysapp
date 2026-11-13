@@ -25,7 +25,8 @@ import {
   type Direction,
 } from '@/modules/payments/service';
 import { bestMatch, spokenNames } from '@/modules/voice/match';
-import { t } from '@/modules/voice/phrases';
+import { t } from '@/i18n';
+import { t as vt } from '@/modules/voice/phrases';
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
 import { formatDate, formatMoney, paiseToRupeeInput, parseRupeesToPaise } from '@/utils/format';
 import type { Invoice, Party, Payment } from '@/db/schema';
@@ -177,7 +178,7 @@ export default function PaymentForm({
         // (A bare number arrives as setField 'amount' instead — see the parser.)
         const query = intent.kind === 'selectParty' ? intent.query : intent.itemQuery;
         const hit = bestMatch(query, parties);
-        if (!hit) return t('noParty', lang);
+        if (!hit) return vt('noParty', lang);
         setPartyId(hit.value.id);
         return hit.value.name;
       }
@@ -201,7 +202,7 @@ export default function PaymentForm({
       case 'clear':
         setAmount('');
         setNotes('');
-        return t('cleared', lang);
+        return vt('cleared', lang);
       case 'action':
         if (intent.action !== 'delete') return false;
         if (editing) {
@@ -211,7 +212,7 @@ export default function PaymentForm({
         // Nothing saved to delete yet — clear what has been typed instead.
         setAmount('');
         setNotes('');
-        return t('cleared', lang);
+        return vt('cleared', lang);
       case 'submit':
         void save();
         return true;
@@ -222,12 +223,12 @@ export default function PaymentForm({
 
   const save = async () => {
     if (partyId == null) {
-      Alert.alert('Party required', 'Select who this payment is with.');
+      Alert.alert(t('Party required'), t('Select who this payment is with.'));
       return;
     }
     const paise = parseRupeesToPaise(amount);
     if (paise <= 0) {
-      Alert.alert('Amount required', 'Enter a payment amount greater than zero.');
+      Alert.alert(t('Amount required'), t('Enter a payment amount greater than zero.'));
       return;
     }
     setSaving(true);
@@ -249,19 +250,21 @@ export default function PaymentForm({
       router.back();
     } catch (e) {
       setSaving(false);
-      Alert.alert('Could not save', (e as Error)?.message ?? String(e));
+      Alert.alert(t('Could not save'), (e as Error)?.message ?? String(e));
     }
   };
 
   const confirmDelete = () => {
     if (!payment) return;
     Alert.alert(
-      'Delete payment?',
-      `${formatMoney(payment.amount)}. The invoice's paid status will be recalculated.`,
+      t('Delete payment?'),
+      t("{amount}. The invoice's paid status will be recalculated.", {
+        amount: formatMoney(payment.amount),
+      }),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('Cancel'), style: 'cancel' },
         {
-          text: 'Delete',
+          text: t('Delete'),
           style: 'destructive',
           onPress: async () => {
             await deletePayment(payment.id);
@@ -276,7 +279,7 @@ export default function PaymentForm({
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
         <View>
-          <Text style={styles.label}>Direction</Text>
+          <Text style={styles.label}>{t('Direction')}</Text>
           <View style={styles.modeRow}>
             {DIRECTIONS.map((d) => {
               const active = dir === d.key;
@@ -289,38 +292,38 @@ export default function PaymentForm({
                   ]}
                   onPress={() => setDir(d.key)}
                 >
-                  <Text style={[styles.modeText, active && styles.modeTextActive]}>{d.label}</Text>
+                  <Text style={[styles.modeText, active && styles.modeTextActive]}>{t(d.label)}</Text>
                 </Pressable>
               );
             })}
           </View>
           <Text style={styles.hint}>
-            {dir === 'in' ? 'Money received from this party.' : 'Money paid to this party.'}
+            {dir === 'in' ? t('Money received from this party.') : t('Money paid to this party.')}
           </Text>
         </View>
 
         <PickerField
-          label={dir === 'out' ? 'Paid to' : 'Received from'}
+          label={dir === 'out' ? t('Paid to') : t('Received from')}
           value={partyId}
           onSelect={(id) => {
             setPartyId(id);
             setInvoiceId(null); // clear stale link when party changes
           }}
           options={partyOptions}
-          placeholder="Select party"
+          placeholder={t('Select party')}
           required
           emptyText={
             !narrowToSide
-              ? 'No parties yet — add one from the Parties tab.'
+              ? t('No parties yet — add one from the Parties tab.')
               : dir === 'in'
-                ? 'No customers yet — add one from the Parties tab.'
-                : 'No suppliers yet — add one from the Parties tab.'
+                ? t('No customers yet — add one from the Parties tab.')
+                : t('No suppliers yet — add one from the Parties tab.')
           }
-          searchPlaceholder="Search by name, phone, town or GSTIN"
+          searchPlaceholder={t('Search by name, phone, town or GSTIN')}
         />
 
         <TextField
-          label="Amount (₹)"
+          label={t('Amount (₹)')}
           value={amount}
           onChangeText={setAmount}
           placeholder="0"
@@ -329,7 +332,7 @@ export default function PaymentForm({
         />
 
         <View>
-          <Text style={styles.label}>Mode</Text>
+          <Text style={styles.label}>{t('Mode')}</Text>
           <View style={styles.modeRow}>
             {MODES.map((m) => {
               const active = mode === m.key;
@@ -339,7 +342,7 @@ export default function PaymentForm({
                   style={[styles.modeChip, active && styles.modeChipActive]}
                   onPress={() => setMode(m.key)}
                 >
-                  <Text style={[styles.modeText, active && styles.modeTextActive]}>{m.label}</Text>
+                  <Text style={[styles.modeText, active && styles.modeTextActive]}>{t(m.label)}</Text>
                 </Pressable>
               );
             })}
@@ -351,44 +354,44 @@ export default function PaymentForm({
         <AccountPicker
           value={accountId}
           onChange={setAccountId}
-          label={dir === 'in' ? 'Received into' : 'Paid from'}
+          label={dir === 'in' ? t('Received into') : t('Paid from')}
         />
 
         {invoiceOptions.length > 0 ? (
           <View>
             <PickerField
-              label="Against invoice (optional)"
+              label={t('Against invoice (optional)')}
               value={invoiceId}
               onSelect={setInvoiceId}
               options={invoiceOptions}
-              placeholder="On-account (no specific invoice)"
+              placeholder={t('On-account (no specific invoice)')}
             />
             {invoiceId != null ? (
               <Pressable onPress={() => setInvoiceId(null)}>
-                <Text style={styles.clearLink}>Clear — record as on-account</Text>
+                <Text style={styles.clearLink}>{t('Clear — record as on-account')}</Text>
               </Pressable>
             ) : null}
           </View>
         ) : null}
 
         <TextField
-          label="Date"
+          label={t('Date')}
           value={date}
           onChangeText={setDate}
           placeholder="YYYY-MM-DD"
           autoCapitalize="none"
         />
-        <TextField label="Notes" value={notes} onChangeText={setNotes} placeholder="Optional" multiline />
+        <TextField label={t('Notes')} value={notes} onChangeText={setNotes} placeholder={t('Optional')} multiline />
 
         <BooksToggle value={accounted} onChange={setAccounted} />
 
         <Button
-          label={editing ? 'Save changes' : 'Record payment'}
+          label={editing ? t('Save changes') : t('Record payment')}
           onPress={save}
           loading={saving}
           style={styles.save}
         />
-        {editing ? <Button label="Delete payment" tone="danger" onPress={confirmDelete} /> : null}
+        {editing ? <Button label={t('Delete payment')} tone="danger" onPress={confirmDelete} /> : null}
       </ScrollView>
     </KeyboardAvoidingView>
   );

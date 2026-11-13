@@ -1,4 +1,5 @@
 import { Stack } from 'expo-router';
+import { t } from '@/i18n';
 
 // The party module runs its own header-ful stack (the root stack hides headers).
 export default function PartyLayout() {
@@ -10,9 +11,9 @@ export default function PartyLayout() {
         headerTitleStyle: { color: '#111' },
       }}
     >
-      <Stack.Screen name="new" options={{ title: 'New Party', presentation: 'modal' }} />
-      <Stack.Screen name="edit/[id]" options={{ title: 'Edit Party' }} />
-      <Stack.Screen name="[id]" options={{ title: 'Party' }} />
+      <Stack.Screen name="new" options={{ title: t('New Party'), presentation: 'modal' }} />
+      <Stack.Screen name="edit/[id]" options={{ title: t('Edit Party') }} />
+      <Stack.Screen name="[id]" options={{ title: t('Party') }} />
     </Stack>
   );
 }

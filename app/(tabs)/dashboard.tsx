@@ -1,6 +1,7 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { FlatList, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { t } from '@/i18n';
 import { getDriveStatus } from '@/modules/backup/drive';
 import { listInvoicesWithParty, type InvoiceWithParty } from '@/modules/invoices/service';
 import { listPartiesWithBalance } from '@/modules/parties/ledger';
@@ -99,25 +100,25 @@ export default function DashboardScreen() {
         <View style={styles.headerWrap}>
           <View style={styles.actions}>
             <ActionButton
-              label="+ New Sale"
+              label={t('+ New Sale')}
               tone="#208AEF"
               onPress={() => router.push({ pathname: '/invoice/new', params: { type: 'sale' } })}
             />
             <ActionButton
-              label="+ New Purchase"
+              label={t('+ New Purchase')}
               tone="#1a9d5a"
               onPress={() => router.push({ pathname: '/invoice/new', params: { type: 'purchase' } })}
             />
           </View>
           <View style={styles.actions}>
             <ActionButton
-              label="Quotation"
+              label={t('Quotation')}
               tone="#6c5ce7"
               small
               onPress={() => router.push({ pathname: '/invoice/new', params: { type: 'quotation' } })}
             />
             <ActionButton
-              label="Challan"
+              label={t('Challan')}
               tone="#e17055"
               small
               onPress={() => router.push({ pathname: '/invoice/new', params: { type: 'challan' } })}
@@ -126,7 +127,7 @@ export default function DashboardScreen() {
 
           <View style={styles.actions}>
             <ActionButton
-              label="↓ Payment In"
+              label={t('↓ Payment In')}
               tone="#00897b"
               small
               onPress={() =>
@@ -134,7 +135,7 @@ export default function DashboardScreen() {
               }
             />
             <ActionButton
-              label="↑ Payment Out"
+              label={t('↑ Payment Out')}
               tone="#c0392b"
               small
               onPress={() =>
@@ -145,13 +146,13 @@ export default function DashboardScreen() {
 
           <View style={styles.actions}>
             <ActionButton
-              label="− Expense"
+              label={t('− Expense')}
               tone="#8e44ad"
               small
               onPress={() => router.push('/expense/new')}
             />
             <ActionButton
-              label="Expense List"
+              label={t('Expense List')}
               tone="#636e72"
               small
               onPress={() => router.push('/expense')}
@@ -159,17 +160,18 @@ export default function DashboardScreen() {
           </View>
 
           <View style={styles.kpis}>
-            <Kpi label="Today's sales" value={formatMoney(todaySales)} tone="#111" />
-            <Kpi label="To collect" value={formatMoney(receivable)} tone="#1a9d5a" />
-            <Kpi label="To pay" value={formatMoney(payable)} tone="#c0392b" />
+            <Kpi label={t("Today's sales")} value={formatMoney(todaySales)} tone="#111" />
+            <Kpi label={t('To collect')} value={formatMoney(receivable)} tone="#1a9d5a" />
+            <Kpi label={t('To pay')} value={formatMoney(payable)} tone="#c0392b" />
           </View>
 
           {driveMissing ? (
             <Pressable style={styles.driveBanner} onPress={() => router.push('/settings')}>
-              <Text style={styles.driveTitle}>⚠ Your bills are only on this phone</Text>
+              <Text style={styles.driveTitle}>{t('⚠ Your bills are only on this phone')}</Text>
               <Text style={styles.driveText}>
-                If the phone is lost or the app is removed, they are gone. Sign in with Google in
-                Settings to keep a copy in your Drive ›
+                {t(
+                  'If the phone is lost or the app is removed, they are gone. Sign in with Google in Settings to keep a copy in your Drive ›',
+                )}
               </Text>
             </Pressable>
           ) : null}
@@ -177,15 +179,17 @@ export default function DashboardScreen() {
           {reorderCount > 0 ? (
             <Pressable style={styles.reorderBanner} onPress={() => router.push('/report/stock')}>
               <Text style={styles.reorderText}>
-                {reorderCount} item{reorderCount === 1 ? '' : 's'} to reorder ›
+                {reorderCount === 1
+                  ? t('1 item to reorder ›')
+                  : t('{n} items to reorder ›', { n: reorderCount })}
               </Text>
             </Pressable>
           ) : null}
 
           <View style={styles.sectionHead}>
-            <Text style={styles.sectionTitle}>Recent</Text>
+            <Text style={styles.sectionTitle}>{t('Recent')}</Text>
             <Pressable onPress={() => router.push('/invoice')} hitSlop={8}>
-              <Text style={styles.seeAll}>All bills ›</Text>
+              <Text style={styles.seeAll}>{t('All bills ›')}</Text>
             </Pressable>
           </View>
         </View>
@@ -197,7 +201,7 @@ export default function DashboardScreen() {
         >
           <View style={styles.rowLeft}>
             <Text style={styles.rowNo}>
-              {item.invoiceNo} <Text style={styles.rowTag}>· {TYPE_TAG[item.type]}</Text>
+              {item.invoiceNo} <Text style={styles.rowTag}>· {t(TYPE_TAG[item.type])}</Text>
             </Text>
             <Text style={styles.rowSub}>
               {item.partyName} · {formatDate(item.date)}
@@ -207,7 +211,7 @@ export default function DashboardScreen() {
         </Pressable>
       )}
       ListEmptyComponent={
-        <Text style={styles.empty}>No invoices yet.{'\n'}Tap “New Sale” to create your first.</Text>
+        <Text style={styles.empty}>{t('No invoices yet.\nTap “New Sale” to create your first.')}</Text>
       }
     />
   );

@@ -4,6 +4,7 @@ import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import ExpenseForm from '@/modules/expenses/ExpenseForm';
 import { getExpense } from '@/modules/expenses/service';
 import type { Expense } from '@/db/schema';
+import { t } from '@/i18n';
 
 export default function EditExpenseScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -24,7 +25,7 @@ export default function EditExpenseScreen() {
   if (expense === null) {
     return (
       <View style={styles.center}>
-        <Text style={styles.missing}>Expense not found.</Text>
+        <Text style={styles.missing}>{t('Expense not found.')}</Text>
       </View>
     );
   }

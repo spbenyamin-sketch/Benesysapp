@@ -1,4 +1,5 @@
 import { Stack, useLocalSearchParams } from 'expo-router';
+import { t } from '@/i18n';
 import InvoiceForm from '@/modules/invoices/InvoiceForm';
 import type { InvoiceType } from '@/utils/invoiceNumber';
 
@@ -29,13 +30,13 @@ export default function NewInvoiceScreen() {
     partyId?: string;
     from?: string;
   }>();
-  const t = (VALID.includes(type as InvoiceType) ? type : 'sale') as InvoiceType;
+  const kind = (VALID.includes(type as InvoiceType) ? type : 'sale') as InvoiceType;
   const initialPartyId = Number(partyId) || undefined;
   const sourceInvoiceId = Number(from) || undefined;
   return (
     <>
-      <Stack.Screen options={{ title: TITLES[t] }} />
-      <InvoiceForm type={t} initialPartyId={initialPartyId} sourceInvoiceId={sourceInvoiceId} />
+      <Stack.Screen options={{ title: t(TITLES[kind]) }} />
+      <InvoiceForm type={kind} initialPartyId={initialPartyId} sourceInvoiceId={sourceInvoiceId} />
     </>
   );
 }

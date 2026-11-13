@@ -1,4 +1,5 @@
 import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { t } from '@/i18n';
 import { financialYear } from '@/utils/invoiceNumber';
 
 // Simple ISO (YYYY-MM-DD) from/to inputs — no date-picker lib. Defaults come
@@ -21,7 +22,7 @@ export default function DateRange({
   return (
     <View style={styles.row}>
       <View style={styles.col}>
-        <Text style={styles.label}>From</Text>
+        <Text style={styles.label}>{t('From')}</Text>
         <TextInput
           style={styles.input}
           value={from}
@@ -32,7 +33,7 @@ export default function DateRange({
         />
       </View>
       <View style={styles.col}>
-        <Text style={styles.label}>To</Text>
+        <Text style={styles.label}>{t('To')}</Text>
         <TextInput
           style={styles.input}
           value={to}

@@ -23,6 +23,7 @@ import {
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
 import { formatDate, formatMoney } from '@/utils/format';
 import { downloadFile, isWeb } from '@/utils/webFile';
+import { t } from '@/i18n';
 
 export default function GstReportScreen() {
   const { lang } = useVoice();
@@ -71,7 +72,7 @@ export default function GstReportScreen() {
     if (busy) return;
     setBusy(true);
     shareGstr1(month)
-      .catch((e: unknown) => Alert.alert('Export failed', (e as Error)?.message ?? String(e)))
+      .catch((e: unknown) => Alert.alert(t('Export failed'), (e as Error)?.message ?? String(e)))
       .finally(() => setBusy(false));
   };
 
@@ -93,68 +94,69 @@ export default function GstReportScreen() {
       <DateRange from={from} to={to} onFrom={setFrom} onTo={setTo} />
 
       <View style={styles.block}>
-        <Text style={styles.blockTitle}>Output tax (on sales)</Text>
-        <Line label="Taxable sales" value={formatMoney(data?.taxableSales ?? 0)} />
+        <Text style={styles.blockTitle}>{t('Output tax (on sales)')}</Text>
+        <Line label={t('Taxable sales')} value={formatMoney(data?.taxableSales ?? 0)} />
         <TaxHeadLines totals={output} />
-        <Line label="GST collected" value={formatMoney(data?.outputTax ?? 0)} strong />
+        <Line label={t('GST collected')} value={formatMoney(data?.outputTax ?? 0)} strong />
       </View>
 
       <View style={styles.block}>
-        <Text style={styles.blockTitle}>Input tax (on purchases)</Text>
-        <Line label="Taxable purchases" value={formatMoney(data?.taxablePurchases ?? 0)} />
+        <Text style={styles.blockTitle}>{t('Input tax (on purchases)')}</Text>
+        <Line label={t('Taxable purchases')} value={formatMoney(data?.taxablePurchases ?? 0)} />
         <TaxHeadLines totals={input} />
-        <Line label="GST paid (input credit)" value={formatMoney(data?.inputTax ?? 0)} strong />
+        <Line label={t('GST paid (input credit)')} value={formatMoney(data?.inputTax ?? 0)} strong />
       </View>
 
       <View style={styles.netCard}>
-        <Text style={styles.netLabel}>{netPayable >= 0 ? 'Net GST payable' : 'Net input credit'}</Text>
+        <Text style={styles.netLabel}>{netPayable >= 0 ? t('Net GST payable') : t('Net input credit')}</Text>
         <Text style={[styles.netValue, { color: netPayable >= 0 ? '#c0392b' : '#1a9d5a' }]}>
           {formatMoney(Math.abs(netPayable))}
         </Text>
-        <Text style={styles.netHint}>Output tax − input tax</Text>
+        <Text style={styles.netHint}>{t('Output tax − input tax')}</Text>
       </View>
 
       {/* The bills the shop kept out of its books are out of these figures too.
           Said here, with the money, so nobody discovers it at the CA's desk. */}
       {data?.leftOutCount ? (
         <Text style={styles.leftOut}>
-          {data.leftOutCount} document(s) worth {formatMoney(data.leftOutTotal)} are marked
-          &ldquo;not in books&rdquo; and are left out of everything on this screen, and out of the
-          GSTR-1 file below.
+          {t(
+            '{n} document(s) worth {amount} are marked “not in books” and are left out of everything on this screen, and out of the GSTR-1 file below.',
+            { n: data.leftOutCount, amount: formatMoney(data.leftOutTotal) },
+          )}
         </Text>
       ) : null}
 
       <ReportExportButtons book={() => gstBook(from, to)} />
       <Text style={styles.disclaimer}>
-        The Excel file has 5 sheets: summary, sales &amp; purchase rate-wise slabs, and the
-        invoice lists. Summary figures for reference only — not a filed GSTR return.
+        {t(
+          'The Excel file has 5 sheets: summary, sales & purchase rate-wise slabs, and the invoice lists. Summary figures for reference only — not a filed GSTR return.',
+        )}
       </Text>
 
       {/* Filing is a separate job from reading the summary, so it gets its own
           block with its own month — a return covers a calendar month. */}
       <View style={styles.filing}>
-        <Text style={styles.blockTitle}>File for this month</Text>
+        <Text style={styles.blockTitle}>{t('File for this month')}</Text>
         <View style={styles.monthRow}>
           <Step label="‹" onPress={() => setMonth(shiftMonth(month, -1))} />
           <Text style={styles.monthLabel}>{monthLabel(month)}</Text>
           <Step label="›" onPress={() => setMonth(shiftMonth(month, 1))} />
         </View>
 
-        <Line label="Outward taxable supplies (3.1a)" value={rupees(filing?.outward.txval)} />
-        <Line label="Tax on them" value={rupees(taxOf(filing?.outward))} />
-        <Line label="Eligible input tax (4A5)" value={rupees(taxOf(filing?.itc))} />
+        <Line label={t('Outward taxable supplies (3.1a)')} value={rupees(filing?.outward.txval)} />
+        <Line label={t('Tax on them')} value={rupees(taxOf(filing?.outward))} />
+        <Line label={t('Eligible input tax (4A5)')} value={rupees(taxOf(filing?.itc))} />
         <Line
-          label={(filing?.netPayable ?? 0) >= 0 ? 'To pay' : 'Credit carried forward'}
+          label={(filing?.netPayable ?? 0) >= 0 ? t('To pay') : t('Credit carried forward')}
           value={rupees(Math.abs(filing?.netPayable ?? 0))}
           strong
         />
 
-        <Button label="⬇  Export GSTR-1 JSON" tone="ghost" onPress={exportJson} loading={busy} />
+        <Button label={`⬇  ${t('Export GSTR-1 JSON')}`} tone="ghost" onPress={exportJson} loading={busy} />
         <Text style={styles.disclaimer}>
-          The JSON the government&apos;s offline utility reads — sales, counter trade, credit
-          notes, HSN and the numbers issued. Give it to your CA: it is a statement of the month,
-          not a filed return, and purchases are not in it (those come from your suppliers&apos;
-          returns).
+          {t(
+            "The JSON the government's offline utility reads — sales, counter trade, credit notes, HSN and the numbers issued. Give it to your CA: it is a statement of the month, not a filed return, and purchases are not in it (those come from your suppliers' returns).",
+          )}
         </Text>
       </View>
     </ScrollView>
@@ -174,7 +176,7 @@ async function shareGstr1(month: string): Promise<string> {
   const data = await gstr1Report(month);
   if (!data.gstin) {
     throw new Error(
-      'This shop has no GSTIN saved. Add it under Settings → Business — a GSTR-1 without one is rejected.',
+      t('This shop has no GSTIN saved. Add it under Settings → Business — a GSTR-1 without one is rejected.'),
     );
   }
   const filename = gstr1Filename(data.gstin, data.fp);

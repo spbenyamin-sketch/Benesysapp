@@ -8,6 +8,7 @@ import { dayBookBook } from '@/modules/reports/excel';
 import ReportExportButtons from '@/modules/reports/ReportExportButtons';
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
 import { addDays, formatDate, formatMoney } from '@/utils/format';
+import { t } from '@/i18n';
 
 const KIND_TONE: Record<DayBookKind, string> = {
   sale: '#208AEF',
@@ -87,26 +88,26 @@ export default function DayBookScreen() {
             <Text style={styles.dayLabel}>{formatDate(day)}</Text>
             {day !== todayISO() ? (
               <Pressable hitSlop={8} onPress={() => setDay(todayISO())}>
-                <Text style={styles.todayLink}>Today</Text>
+                <Text style={styles.todayLink}>{t('Today')}</Text>
               </Pressable>
             ) : null}
           </View>
 
           <View style={styles.cashCard}>
             <View style={styles.cashCell}>
-              <Text style={styles.cashLabel}>Received</Text>
+              <Text style={styles.cashLabel}>{t('Received')}</Text>
               <Text style={[styles.cashValue, { color: '#1a9d5a' }]}>
                 {formatMoney(s?.cashIn ?? 0)}
               </Text>
             </View>
             <View style={styles.cashCell}>
-              <Text style={styles.cashLabel}>Paid out</Text>
+              <Text style={styles.cashLabel}>{t('Paid out')}</Text>
               <Text style={[styles.cashValue, { color: '#c0392b' }]}>
                 {formatMoney(s?.cashOut ?? 0)}
               </Text>
             </View>
             <View style={styles.cashCell}>
-              <Text style={styles.cashLabel}>Net cash</Text>
+              <Text style={styles.cashLabel}>{t('Net cash')}</Text>
               <Text style={[styles.cashValue, styles.cashStrong]}>
                 {formatMoney(s?.netCash ?? 0)}
               </Text>
@@ -114,16 +115,16 @@ export default function DayBookScreen() {
           </View>
 
           <View style={styles.billedRow}>
-            <Billed label="Sales billed" value={s?.salesBilled ?? 0} />
-            <Billed label="Purchases billed" value={s?.purchasesBilled ?? 0} />
-            {s?.returnsBilled ? <Billed label="Sale returns" value={s.returnsBilled} /> : null}
+            <Billed label={t('Sales billed')} value={s?.salesBilled ?? 0} />
+            <Billed label={t('Purchases billed')} value={s?.purchasesBilled ?? 0} />
+            {s?.returnsBilled ? <Billed label={t('Sale returns')} value={s.returnsBilled} /> : null}
             {s?.purchaseReturnsBilled ? (
-              <Billed label="Purchase returns" value={s.purchaseReturnsBilled} />
+              <Billed label={t('Purchase returns')} value={s.purchaseReturnsBilled} />
             ) : null}
-            {s?.expenses ? <Billed label="Expenses" value={s.expenses} /> : null}
+            {s?.expenses ? <Billed label={t('Expenses')} value={s.expenses} /> : null}
           </View>
           <Text style={styles.hint}>
-            Billed figures include credit — only the cash row above is money that moved.
+            {t('Billed figures include credit — only the cash row above is money that moved.')}
           </Text>
 
           <ReportExportButtons book={() => dayBookBook(day)} />
@@ -144,7 +145,7 @@ export default function DayBookScreen() {
           <View style={styles.rowLeft}>
             <Text style={styles.rowTitle} numberOfLines={1}>
               <Text style={[styles.rowTag, { color: KIND_TONE[item.kind] }]}>
-                {DAY_BOOK_LABEL[item.kind]}
+                {t(DAY_BOOK_LABEL[item.kind])}
               </Text>
               {'  '}
               {item.title}
@@ -160,7 +161,7 @@ export default function DayBookScreen() {
           </Text>
         </Pressable>
       )}
-      ListEmptyComponent={<Text style={styles.empty}>Nothing happened on this day.</Text>}
+      ListEmptyComponent={<Text style={styles.empty}>{t('Nothing happened on this day.')}</Text>}
     />
   );
 }

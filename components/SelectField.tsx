@@ -9,6 +9,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import { t } from '@/i18n';
 
 // Lightweight dropdown (no picker lib): a pressable that opens a searchable
 // bottom sheet. With allowCustom, whatever the user types can be chosen too.
@@ -23,7 +24,7 @@ export default function SelectField({
   value,
   onSelect,
   options,
-  placeholder = 'Select…',
+  placeholder = t('Select…'),
   required = false,
   searchable = true,
   allowCustom = false,
@@ -91,7 +92,7 @@ export default function SelectField({
                 style={styles.search}
                 value={query}
                 onChangeText={setQuery}
-                placeholder={allowCustom ? 'Search or type a new value' : 'Search'}
+                placeholder={allowCustom ? t('Search or type a new value') : t('Search')}
                 placeholderTextColor="#aaa"
                 autoCapitalize="none"
               />
@@ -106,7 +107,7 @@ export default function SelectField({
               ListHeaderComponent={
                 showCustom ? (
                   <Pressable style={styles.option} onPress={() => choose(trimmed)}>
-                    <Text style={styles.customText}>＋  Use “{trimmed}”</Text>
+                    <Text style={styles.customText}>＋  {t('Use “{value}”', { value: trimmed })}</Text>
                   </Pressable>
                 ) : null
               }
@@ -123,11 +124,11 @@ export default function SelectField({
                 );
               }}
               ListEmptyComponent={
-                showCustom ? null : <Text style={styles.emptyText}>No matches</Text>
+                showCustom ? null : <Text style={styles.emptyText}>{t('No matches')}</Text>
               }
             />
             <Pressable style={styles.closeBtn} onPress={close}>
-              <Text style={styles.closeText}>Close</Text>
+              <Text style={styles.closeText}>{t('Close')}</Text>
             </Pressable>
           </View>
         </View>

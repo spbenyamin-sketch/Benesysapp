@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import Button from '@/components/Button';
 import TextField from '@/components/TextField';
+import { t } from '@/i18n';
 import { validatePassword, validateUsername } from '@/modules/auth/service.web';
 import {
   allowedScreens,
@@ -28,9 +29,9 @@ const message = (e: unknown) => (e as Error)?.message ?? String(e);
 /** "all screens" reads better than "5 of 5" on the row everyone glances at. */
 function screenCount(person: ShopUser): string {
   const n = allowedScreens(person).length;
-  if (n === SCREENS.length) return 'all screens';
-  if (n === 0) return 'no screens';
-  return `${n} of ${SCREENS.length} screens`;
+  if (n === SCREENS.length) return t('all screens');
+  if (n === 0) return t('no screens');
+  return t('{n} of {total} screens', { n, total: SCREENS.length });
 }
 
 export default function StaffSection() {
@@ -62,10 +63,11 @@ export default function StaffSection() {
 
   return (
     <>
-      <Text style={styles.sectionTitle}>People — who can sign in</Text>
+      <Text style={styles.sectionTitle}>{t('People — who can sign in')}</Text>
       <Text style={styles.sectionHint}>
-        Everyone here bills into the same books. Staff do the billing; owners can also manage this
-        list. Switching someone off, or giving them a new password, signs them out everywhere.
+        {t(
+          'Everyone here bills into the same books. Staff do the billing; owners can also manage this list. Switching someone off, or giving them a new password, signs them out everywhere.',
+        )}
       </Text>
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -95,7 +97,7 @@ export default function StaffSection() {
           }}
         />
       ) : (
-        <Button label="Add a person" tone="ghost" onPress={() => setAdding(true)} style={styles.save} />
+        <Button label={t('Add a person')} tone="ghost" onPress={() => setAdding(true)} style={styles.save} />
       )}
     </>
   );
@@ -113,7 +115,7 @@ function ScreenPicker({
 }) {
   return (
     <>
-      <Text style={styles.pickTitle}>Screens they can open</Text>
+      <Text style={styles.pickTitle}>{t('Screens they can open')}</Text>
       {SCREENS.map((screen) => {
         const on = value.includes(screen);
         return (
@@ -124,14 +126,14 @@ function ScreenPicker({
           >
             <Text style={[styles.optionText, on && styles.optionTextOn]}>
               {on ? '✓  ' : '○  '}
-              {SCREEN_LABEL[screen]}
+              {t(SCREEN_LABEL[screen])}
             </Text>
-            <Text style={styles.optionHint}>{SCREEN_HINT[screen]}</Text>
+            <Text style={styles.optionHint}>{t(SCREEN_HINT[screen])}</Text>
           </Pressable>
         );
       })}
       <Text style={styles.meta}>
-        Settings stays open to everyone — it is where they sign out and change their own password.
+        {t('Settings stays open to everyone — it is where they sign out and change their own password.')}
       </Text>
     </>
   );
@@ -190,13 +192,13 @@ function PersonRow({
         <View style={styles.cardText}>
           <Text style={styles.name}>
             {person.displayName || person.username}
-            {isSelf ? '  (you)' : ''}
+            {isSelf ? `  ${t('(you)')}` : ''}
           </Text>
           <Text style={styles.meta}>
             {person.username}
-            {person.email ? ` · ${person.email}` : ''} · {person.role === 'owner' ? 'Owner' : 'Staff'}
+            {person.email ? ` · ${person.email}` : ''} · {person.role === 'owner' ? t('Owner') : t('Staff')}
             {person.role === 'owner' ? '' : ` · ${screenCount(person)}`}
-            {person.active ? '' : ' · switched off'}
+            {person.active ? '' : ` · ${t('switched off')}`}
           </Text>
         </View>
         <Text style={styles.chevron}>{open ? '▴' : '▾'}</Text>
@@ -205,35 +207,35 @@ function PersonRow({
       {open ? (
         <View style={styles.cardBody}>
           <TextField
-            label="Display name"
+            label={t('Display name')}
             value={name}
             onChangeText={setName}
-            placeholder="Name on the bill"
+            placeholder={t('Name on the bill')}
           />
           <Button
-            label="Save name"
+            label={t('Save name')}
             tone="ghost"
             loading={busy}
             onPress={() => void save({ displayName: name.trim() || null })}
           />
 
           <TextField
-            label="New password"
+            label={t('New password')}
             value={password}
             onChangeText={setPassword}
             placeholder="••••••••"
             secureTextEntry
             autoCapitalize="none"
           />
-          <Button label="Set password" tone="ghost" loading={busy} onPress={setNewPassword} />
+          <Button label={t('Set password')} tone="ghost" loading={busy} onPress={setNewPassword} />
 
           {person.role === 'owner' ? (
-            <Text style={styles.selfHint}>An owner opens every screen — that is what owner means.</Text>
+            <Text style={styles.selfHint}>{t('An owner opens every screen — that is what owner means.')}</Text>
           ) : (
             <>
               <ScreenPicker value={screens} onChange={setScreens} />
               <Button
-                label="Save screens"
+                label={t('Save screens')}
                 tone="ghost"
                 loading={busy}
                 onPress={() => void save({ screens })}
@@ -243,18 +245,18 @@ function PersonRow({
 
           {isSelf ? (
             <Text style={styles.selfHint}>
-              You cannot take away your own owner access or switch yourself off — ask another owner.
+              {t('You cannot take away your own owner access or switch yourself off — ask another owner.')}
             </Text>
           ) : (
             <>
               <Button
-                label={person.role === 'owner' ? 'Make staff' : 'Make owner'}
+                label={person.role === 'owner' ? t('Make staff') : t('Make owner')}
                 tone="ghost"
                 loading={busy}
                 onPress={() => void save({ role: person.role === 'owner' ? 'staff' : 'owner' })}
               />
               <Button
-                label={person.active ? 'Switch off' : 'Switch back on'}
+                label={person.active ? t('Switch off') : t('Switch back on')}
                 tone={person.active ? 'danger' : 'ghost'}
                 loading={busy}
                 onPress={() => void save({ active: !person.active })}
@@ -312,34 +314,35 @@ function AddPerson({
   return (
     <View style={styles.card}>
       <View style={styles.cardIntro}>
-        <Text style={styles.name}>Add a person</Text>
+        <Text style={styles.name}>{t('Add a person')}</Text>
         <Text style={styles.meta}>
-          They sign in with this username and password. Tell it to them — nobody can read it back
-          later, it can only be set again.
+          {t(
+            'They sign in with this username and password. Tell it to them — nobody can read it back later, it can only be set again.',
+          )}
         </Text>
       </View>
       <View style={styles.cardBody}>
         <TextField
-          label="Username"
+          label={t('Username')}
           value={username}
           onChangeText={setUsername}
           placeholder="kavitha"
           autoCapitalize="none"
           required
         />
-        <TextField label="Display name" value={name} onChangeText={setName} placeholder="Kavitha" />
+        <TextField label={t('Display name')} value={name} onChangeText={setName} placeholder="Kavitha" />
         <TextField
-          label="Password"
+          label={t('Password')}
           value={password}
           onChangeText={setPassword}
-          placeholder="at least 8 characters"
+          placeholder={t('at least 8 characters')}
           secureTextEntry
           autoCapitalize="none"
           required
         />
         <Pressable style={[styles.option, owner && styles.optionOn]} onPress={() => setOwner(!owner)}>
           <Text style={[styles.optionText, owner && styles.optionTextOn]}>
-            {owner ? '✓  Owner — can also manage people' : 'Staff — billing only'}
+            {owner ? t('✓  Owner — can also manage people') : t('Staff — billing only')}
           </Text>
         </Pressable>
 
@@ -347,8 +350,8 @@ function AddPerson({
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
-        <Button label="Add" loading={busy} onPress={() => void submit()} />
-        <Button label="Cancel" tone="ghost" onPress={onCancel} />
+        <Button label={t('Add')} loading={busy} onPress={() => void submit()} />
+        <Button label={t('Cancel')} tone="ghost" onPress={onCancel} />
       </View>
     </View>
   );

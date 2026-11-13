@@ -5,11 +5,12 @@
 import { useState } from 'react';
 import { Alert, StyleSheet } from 'react-native';
 import Button from '@/components/Button';
+import { t } from '@/i18n';
 import { useVoiceCommands } from '@/modules/voice/VoiceProvider';
 
 export default function ExcelExportButton({
   onExport,
-  label = '⬇  Export to Excel',
+  label = t('⬇  Export to Excel'),
 }: {
   /** Builds + shares the workbook; resolves with the written file uri. */
   onExport: () => Promise<string>;
@@ -21,7 +22,7 @@ export default function ExcelExportButton({
     if (busy) return;
     setBusy(true);
     onExport()
-      .catch((e: unknown) => Alert.alert('Export failed', (e as Error)?.message ?? String(e)))
+      .catch((e: unknown) => Alert.alert(t('Export failed'), (e as Error)?.message ?? String(e)))
       .finally(() => setBusy(false));
   };
 

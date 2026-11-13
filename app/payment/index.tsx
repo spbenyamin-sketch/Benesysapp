@@ -11,6 +11,7 @@ import {
 import { NotInBooks } from '@/components/BooksToggle';
 import { useVoice, useVoiceCommands } from '@/modules/voice/VoiceProvider';
 import { formatDate, formatMoney } from '@/utils/format';
+import { t } from '@/i18n';
 
 type Filter = 'all' | 'in' | 'out';
 
@@ -65,12 +66,15 @@ export default function PaymentsScreen() {
 
   const confirmDelete = (row: PaymentWithParty) => {
     Alert.alert(
-      'Delete payment?',
-      `${formatMoney(row.amount)} · ${row.partyName}. The invoice's paid status will be recalculated.`,
+      t('Delete payment?'),
+      t("{amount} · {party}. The invoice's paid status will be recalculated.", {
+        amount: formatMoney(row.amount),
+        party: row.partyName,
+      }),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('Cancel'), style: 'cancel' },
         {
-          text: 'Delete',
+          text: t('Delete'),
           style: 'destructive',
           onPress: async () => {
             await deletePayment(row.id);
@@ -85,8 +89,8 @@ export default function PaymentsScreen() {
     <View style={styles.container}>
       <View style={styles.header}>
         <View style={styles.kpis}>
-          <Kpi label="Received (in)" value={formatMoney(totals.inSum)} tone="#1a9d5a" />
-          <Kpi label="Paid (out)" value={formatMoney(totals.outSum)} tone="#c0392b" />
+          <Kpi label={t('Received (in)')} value={formatMoney(totals.inSum)} tone="#1a9d5a" />
+          <Kpi label={t('Paid (out)')} value={formatMoney(totals.outSum)} tone="#c0392b" />
         </View>
         <View style={styles.chips}>
           {FILTERS.map((f) => {
@@ -97,7 +101,7 @@ export default function PaymentsScreen() {
                 style={[styles.chip, active && styles.chipActive]}
                 onPress={() => setFilter(f.key)}
               >
-                <Text style={[styles.chipText, active && styles.chipTextActive]}>{f.label}</Text>
+                <Text style={[styles.chipText, active && styles.chipTextActive]}>{t(f.label)}</Text>
               </Pressable>
             );
           })}
@@ -106,7 +110,7 @@ export default function PaymentsScreen() {
           style={styles.search}
           value={query}
           onChangeText={setQuery}
-          placeholder="Search party, note, bill no or amount"
+          placeholder={t('Search party, note, bill no or amount')}
           placeholderTextColor="#999"
           autoCapitalize="none"
           clearButtonMode="while-editing"
@@ -121,8 +125,8 @@ export default function PaymentsScreen() {
         ListEmptyComponent={
           <Text style={styles.empty}>
             {rows.length === 0
-              ? 'No payments yet.\nTap + to record one.'
-              : 'No payments match.'}
+              ? t('No payments yet.\nTap + to record one.')
+              : t('No payments match.')}
           </Text>
         }
         renderItem={({ item }) => {
@@ -137,7 +141,7 @@ export default function PaymentsScreen() {
                 <Text style={styles.name}>{item.partyName}</Text>
                 <Text style={styles.sub}>
                   {formatDate(item.date)} · {item.mode.toUpperCase()}
-                  {item.invoiceNo ? ` · ${item.invoiceNo}` : ' · On-account'}
+                  {item.invoiceNo ? ` · ${item.invoiceNo}` : ` · ${t('On-account')}`}
                   {item.accounted ? null : <NotInBooks inline />}
                 </Text>
               </View>
@@ -146,7 +150,7 @@ export default function PaymentsScreen() {
                   {dir === 'in' ? '+' : '−'}
                   {formatMoney(item.amount)}
                 </Text>
-                <Text style={styles.dirLabel}>{dir === 'in' ? 'In' : 'Out'}</Text>
+                <Text style={styles.dirLabel}>{dir === 'in' ? t('In') : t('Out')}</Text>
               </View>
             </Pressable>
           );
@@ -161,7 +165,7 @@ export default function PaymentsScreen() {
             params: filter === 'all' ? {} : { direction: filter },
           })
         }
-        accessibilityLabel="Record payment"
+        accessibilityLabel={t('Record payment')}
       >
         <Text style={styles.fabPlus}>+</Text>
       </Pressable>

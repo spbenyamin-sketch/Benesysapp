@@ -21,6 +21,7 @@ import {
 } from 'react-native';
 import Button from '@/components/Button';
 import TextField from '@/components/TextField';
+import { t } from '@/i18n';
 import {
   getAccount,
   isRegistered,
@@ -136,10 +137,10 @@ function LockScreen({ account, onUnlocked }: { account: Account | null; onUnlock
   return (
     <View style={styles.center}>
       <Text style={styles.lockIcon}>🔒</Text>
-      <Text style={styles.title}>Billing App is locked</Text>
+      <Text style={styles.title}>{t('Billing App is locked')}</Text>
       {account ? <Text style={styles.subtle}>{account.username}</Text> : null}
-      {failed ? <Text style={styles.error}>Unlock cancelled or not recognised.</Text> : null}
-      <Button label="Unlock" onPress={unlock} loading={busy} style={styles.wide} />
+      {failed ? <Text style={styles.error}>{t('Unlock cancelled or not recognised.')}</Text> : null}
+      <Button label={t('Unlock')} onPress={unlock} loading={busy} style={styles.wide} />
     </View>
   );
 }
@@ -176,7 +177,7 @@ function AccountScreen({
   const submit = async () => {
     setError(null);
     if (signingUp && password !== confirm) {
-      setError('Passwords do not match.');
+      setError(t('Passwords do not match.'));
       return;
     }
     setBusy(true);
@@ -207,14 +208,14 @@ function AccountScreen({
     setError(null);
     setNotice(null);
     if (password !== confirm) {
-      setError('Passwords do not match.');
+      setError(t('Passwords do not match.'));
       return;
     }
     setBusy(true);
     try {
       await resetPasswordWithDeviceLock(password);
       const acc = await getAccount();
-      if (!acc) throw new Error('No account on this device yet.');
+      if (!acc) throw new Error(t('No account on this device yet.'));
       onDone(await signIn(acc.username, password));
     } catch (e) {
       setError((e as Error)?.message ?? String(e));
@@ -226,12 +227,12 @@ function AccountScreen({
   const offerRestore = (acc: Account) => {
     setBusy(false);
     Alert.alert(
-      'Restore your data?',
-      'If you used this app before and backed up to Google Drive, sign in with that same Google account and everything comes back.',
+      t('Restore your data?'),
+      t('If you used this app before and backed up to Google Drive, sign in with that same Google account and everything comes back.'),
       [
-        { text: 'Start fresh', style: 'cancel', onPress: () => onDone(acc) },
+        { text: t('Start fresh'), style: 'cancel', onPress: () => onDone(acc) },
         {
-          text: 'Restore from Drive',
+          text: t('Restore from Drive'),
           onPress: () => {
             setPendingAccount(acc);
             setDrivePicker(true);
@@ -247,19 +248,19 @@ function AccountScreen({
       <ScrollView contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled">
         <Image source={require('@/assets/images/icon.png')} style={styles.brand} />
         <Text style={styles.title}>
-          {resetting ? 'Set a new password' : signingUp ? 'Create your account' : 'Welcome back'}
+          {resetting ? t('Set a new password') : signingUp ? t('Create your account') : t('Welcome back')}
         </Text>
         <Text style={styles.subtle}>
           {resetting
-            ? 'Nobody can email you a reset — nothing leaves this phone. Instead the phone itself will ask for your fingerprint, PIN or pattern, and then you choose a new password.'
+            ? t('Nobody can email you a reset — nothing leaves this phone. Instead the phone itself will ask for your fingerprint, PIN or pattern, and then you choose a new password.')
             : signingUp
-              ? 'Your login stays on this phone — there is no server. Your data can be backed up to your own Google Drive.'
-              : 'Sign in to open your shop data.'}
+              ? t('Your login stays on this phone — there is no server. Your data can be backed up to your own Google Drive.')
+              : t('Sign in to open your shop data.')}
         </Text>
 
         {signingUp ? (
           <TextField
-            label="Email"
+            label={t('Email')}
             value={email}
             onChangeText={setEmail}
             placeholder="you@gmail.com"
@@ -271,7 +272,7 @@ function AccountScreen({
 
         {resetting ? null : (
           <TextField
-            label={signingUp ? 'Username' : 'Username or email'}
+            label={signingUp ? t('Username') : t('Username or email')}
             value={username}
             onChangeText={setUsername}
             placeholder="shopowner"
@@ -281,7 +282,7 @@ function AccountScreen({
         )}
 
         <TextField
-          label={resetting ? 'New password' : 'Password'}
+          label={resetting ? t('New password') : t('Password')}
           value={password}
           onChangeText={setPassword}
           placeholder="••••••"
@@ -292,7 +293,7 @@ function AccountScreen({
 
         {signingUp || resetting ? (
           <TextField
-            label="Confirm password"
+            label={t('Confirm password')}
             value={confirm}
             onChangeText={setConfirm}
             placeholder="••••••"
@@ -308,10 +309,10 @@ function AccountScreen({
         <Button
           label={
             resetting
-              ? '🔒  Check phone lock & save'
+              ? t('🔒  Check phone lock & save')
               : signingUp
-                ? 'Create account'
-                : 'Sign in'
+                ? t('Create account')
+                : t('Sign in')
           }
           onPress={resetting ? resetAndEnter : submit}
           loading={busy}
@@ -332,7 +333,7 @@ function AccountScreen({
             hitSlop={8}
           >
             <Text style={styles.switch}>
-              {resetting ? 'Back to sign in' : 'Forgot your password?'}
+              {resetting ? t('Back to sign in') : t('Forgot your password?')}
             </Text>
           </Pressable>
         ) : null}
@@ -340,15 +341,15 @@ function AccountScreen({
         {signingUp ? (
           <>
             <Text style={styles.warn}>
-              Nothing leaves this phone, so nobody can email you a reset. If you forget it, the
-              phone’s own fingerprint or PIN can set a new one — so keep a screen lock on this
-              phone, and write the password down somewhere safe anyway.
+              {t(
+                'Nothing leaves this phone, so nobody can email you a reset. If you forget it, the phone’s own fingerprint or PIN can set a new one — so keep a screen lock on this phone, and write the password down somewhere safe anyway.',
+              )}
             </Text>
 
             {/* The reinstall path: the phone's data is gone but Drive still has
                 it. Restoring here brings the shop back before the first bill. */}
             <Button
-              label="☁  Restore from Google Drive"
+              label={t('☁  Restore from Google Drive')}
               tone="ghost"
               onPress={() => setDrivePicker(true)}
               style={styles.wide}
@@ -359,7 +360,7 @@ function AccountScreen({
         {resetting ? null : (
           <Pressable onPress={onSwitch} hitSlop={8}>
             <Text style={styles.switch}>
-              {signingUp ? 'Already have an account? Sign in' : 'Create a new account instead'}
+              {signingUp ? t('Already have an account? Sign in') : t('Create a new account instead')}
             </Text>
           </Pressable>
         )}
@@ -375,8 +376,8 @@ function AccountScreen({
         onRestored={() =>
           setNotice(
             pendingAccount
-              ? 'Your data is back.'
-              : 'Your data is back. Create an account here to open it.',
+              ? t('Your data is back.')
+              : t('Your data is back. Create an account here to open it.'),
           )
         }
       />

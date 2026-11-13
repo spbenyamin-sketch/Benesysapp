@@ -1,4 +1,5 @@
 import { useLocalSearchParams } from 'expo-router';
+import { t } from '@/i18n';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import PartyForm from '@/modules/parties/PartyForm';
@@ -24,7 +25,7 @@ export default function EditPartyScreen() {
   if (party === null) {
     return (
       <View style={styles.center}>
-        <Text style={styles.missing}>Party not found.</Text>
+        <Text style={styles.missing}>{t('Party not found.')}</Text>
       </View>
     );
   }

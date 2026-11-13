@@ -17,6 +17,8 @@ import SelectField from '@/components/SelectField';
 import ServerBackupSection from '@/components/ServerBackupSection';
 import StaffSection from '@/components/StaffSection';
 import TextField from '@/components/TextField';
+import { APP_LANG_LABEL, t, type AppLang } from '@/i18n';
+import { useAppLang } from '@/i18n/I18nProvider';
 import {
   deleteBrandImage,
   pickBrandImage,
@@ -67,10 +69,20 @@ import { VOICE_LANG_LABEL, type VoiceLang } from '@/modules/voice/types';
 import { INDIAN_STATES } from '@/utils/constants';
 import { TAX_MODE_LABEL, type TaxMode } from '@/utils/gst';
 import { financialYear } from '@/utils/invoiceNumber';
+import { getSession } from '@/web/session';
 
 // Keys persisted in the settings key/value table.
 /** The web app is Online mode: no phone lock, licence file, backups or voice. */
 const isWeb = Platform.OS === 'web';
+
+/**
+ * Online mode: the server refuses a staff member's changes to the shop's
+ * profile, print, tax and numbering settings, so the controls are not offered.
+ * The phone (Offline mode) is always its owner.
+ */
+function canEditShop(): boolean {
+  return !isWeb || getSession()?.user.role === 'owner';
+}
 
 const KEYS = {
   name: 'business_name',
@@ -121,15 +133,19 @@ export default function SettingsScreen() {
   const [drivePicker, setDrivePicker] = useState(false);
   const { status, lang, speakBack, enabled, changeLang, changeSpeakBack, changeEnabled, setHelpOpen } =
     useVoice();
+  const { lang: appLang, setLang: setAppLang } = useAppLang();
+  const shopEditable = canEditShop();
 
   // Voice: every button and field on this screen — "பேக்அப்", "லாக் ஆன்",
   // "ஜிஎஸ்டின் 33ABC…", "பெயர் பென்சிஸ்", "சேமி", "சைன் அவுட்".
   useVoiceCommands((intent) => {
     if (intent.kind === 'setTaxMode') {
+      if (!shopEditable) return false;
       pickTaxMode(intent.mode);
       return true;
     }
     if (intent.kind === 'submit') {
+      if (!shopEditable) return false;
       void saveProfile();
       return true;
     }
@@ -256,7 +272,7 @@ export default function SettingsScreen() {
       await setSetting(kind === 'logo' ? KEYS.logo : KEYS.signature, picked);
       if (previous && previous !== picked) deleteBrandImage(previous);
     } catch (e) {
-      Alert.alert('Could not use that image', (e as Error)?.message ?? String(e));
+      Alert.alert(t('Could not use that image'), (e as Error)?.message ?? String(e));
     }
   };
 
@@ -284,9 +300,9 @@ export default function SettingsScreen() {
         setSetting(KEYS.terms, terms.trim()),
         setSetting(KEYS.upi, upi.trim()),
       ]);
-      Alert.alert('Saved', 'Business profile updated. It will appear on invoice PDFs.');
+      Alert.alert(t('Saved'), t('Business profile updated. It will appear on invoice PDFs.'));
     } catch (e) {
-      Alert.alert('Could not save', (e as Error)?.message ?? String(e));
+      Alert.alert(t('Could not save'), (e as Error)?.message ?? String(e));
     } finally {
       setSaving(false);
     }
@@ -307,8 +323,8 @@ export default function SettingsScreen() {
   const toggleLock = async (next: boolean) => {
     if (next && !lockEnrolled) {
       Alert.alert(
-        'No screen lock set',
-        'Set a fingerprint, PIN or pattern in your phone Settings first, then enable this.',
+        t('No screen lock set'),
+        t('Set a fingerprint, PIN or pattern in your phone Settings first, then enable this.'),
       );
       return;
     }
@@ -337,9 +353,9 @@ export default function SettingsScreen() {
     try {
       const res = await runBackupNow(new Date().toISOString(), BACKUP_UPLOADERS);
       setAuto(await getAutoBackupConfig());
-      Alert.alert('Backup done', res.message);
+      Alert.alert(t('Backup done'), res.message);
     } catch (e) {
-      Alert.alert('Backup failed', (e as Error)?.message ?? String(e));
+      Alert.alert(t('Backup failed'), (e as Error)?.message ?? String(e));
     } finally {
       setBackingUp(false);
     }
@@ -359,12 +375,12 @@ export default function SettingsScreen() {
       setDrive(await getDriveStatus());
       if (email) {
         Alert.alert(
-          'Google Drive connected',
-          `Backups will go to ${email}. Sign in with this same account after a reinstall to get your data back.`,
+          t('Google Drive connected'),
+          t('Backups will go to {email}. Sign in with this same account after a reinstall to get your data back.', { email }),
         );
       }
     } catch (e) {
-      Alert.alert('Could not connect', (e as Error)?.message ?? String(e));
+      Alert.alert(t('Could not connect'), (e as Error)?.message ?? String(e));
     } finally {
       setDriveBusy(false);
     }
@@ -372,12 +388,12 @@ export default function SettingsScreen() {
 
   const disconnect = () => {
     Alert.alert(
-      'Disconnect Google Drive?',
-      'Backups already in Drive stay there. New backups will only be kept on this phone.',
+      t('Disconnect Google Drive?'),
+      t('Backups already in Drive stay there. New backups will only be kept on this phone.'),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('Cancel'), style: 'cancel' },
         {
-          text: 'Disconnect',
+          text: t('Disconnect'),
           style: 'destructive',
           onPress: async () => {
             await disconnectDrive();
@@ -393,9 +409,9 @@ export default function SettingsScreen() {
     try {
       const now = new Date().toISOString();
       const name = await backupToDriveNow(now, await backupJson(now));
-      Alert.alert('Uploaded', `${name} is in your Google Drive.`);
+      Alert.alert(t('Uploaded'), t('{name} is in your Google Drive.', { name }));
     } catch (e) {
-      Alert.alert('Upload failed', (e as Error)?.message ?? String(e));
+      Alert.alert(t('Upload failed'), (e as Error)?.message ?? String(e));
     } finally {
       setDriveBusy(false);
     }
@@ -405,19 +421,19 @@ export default function SettingsScreen() {
     // react-native-web's Alert shows nothing, so the browser's own confirm asks
     // instead, and a reload brings the sign-in screen back.
     if (isWeb) {
-      if (window.confirm('Sign out? You will need your password to get back in.')) {
+      if (window.confirm(t('Sign out? You will need your password to get back in.'))) {
         void signOut().then(() => window.location.reload());
       }
       return;
     }
-    Alert.alert('Sign out?', 'You will need your password to get back in.', [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert(t('Sign out?'), t('You will need your password to get back in.'), [
+      { text: t('Cancel'), style: 'cancel' },
       {
-        text: 'Sign out',
+        text: t('Sign out'),
         style: 'destructive',
         onPress: async () => {
           await signOut();
-          Alert.alert('Signed out', 'Close and reopen the app to sign in again.');
+          Alert.alert(t('Signed out'), t('Close and reopen the app to sign in again.'));
         },
       },
     ]);
@@ -428,7 +444,7 @@ export default function SettingsScreen() {
     try {
       await shareBackupFile(new Date().toISOString());
     } catch (e) {
-      Alert.alert('Backup failed', (e as Error)?.message ?? String(e));
+      Alert.alert(t('Backup failed'), (e as Error)?.message ?? String(e));
     } finally {
       setExporting(false);
     }
@@ -439,23 +455,30 @@ export default function SettingsScreen() {
     if (res.canceled || !res.assets?.[0]) return;
     const asset = res.assets[0];
     Alert.alert(
-      'Restore and overwrite?',
-      `This will DELETE all current data and replace it with "${asset.name}". This cannot be undone.`,
+      t('Restore and overwrite?'),
+      t('This will DELETE all current data and replace it with "{file}". This cannot be undone.', {
+        file: asset.name,
+      }),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('Cancel'), style: 'cancel' },
         {
-          text: 'Restore',
+          text: t('Restore'),
           style: 'destructive',
           onPress: async () => {
             setRestoring(true);
             try {
               const counts = await restoreBackup(asset.uri);
               Alert.alert(
-                'Restored',
-                `${counts.parties} parties, ${counts.items} items, ${counts.invoices} invoices, ${counts.payments} payments loaded.`,
+                t('Restored'),
+                t('{parties} parties, {items} items, {invoices} invoices, {payments} payments loaded.', {
+                  parties: counts.parties,
+                  items: counts.items,
+                  invoices: counts.invoices,
+                  payments: counts.payments,
+                }),
               );
             } catch (e) {
-              Alert.alert('Restore failed', (e as Error)?.message ?? String(e));
+              Alert.alert(t('Restore failed'), (e as Error)?.message ?? String(e));
             } finally {
               setRestoring(false);
             }
@@ -477,80 +500,112 @@ export default function SettingsScreen() {
         <View style={styles.accountBar}>
           <View style={styles.accountWho}>
             <Text style={styles.accountName} numberOfLines={1}>
-              {account?.username ?? 'Signed in'}
+              {account?.username ?? t('Signed in')}
             </Text>
             <Text style={styles.accountHint} numberOfLines={1}>
-              {isWeb ? 'This shop’s online books' : 'This phone’s books'}
+              {isWeb ? t('This shop’s online books') : t('This phone’s books')}
             </Text>
           </View>
           <Pressable style={styles.signOutBtn} onPress={doSignOut}>
-            <Text style={styles.signOutText}>Sign out</Text>
+            <Text style={styles.signOutText}>{t('Sign out')}</Text>
           </Pressable>
         </View>
         )}
 
-        <Text style={styles.sectionTitle}>Business profile</Text>
-        <Text style={styles.sectionHint}>Shown on the invoice PDFs you share.</Text>
-        <TextField label="Business name" value={name} onChangeText={setName} placeholder="My Business" />
+        {/* The screen's own language, apart from what the mic listens for. It
+            sits at the top so a shop that cannot read English can still find it
+            — the second chip is written in Tamil either way. */}
+        <Text style={styles.sectionTitle}>{t('App language')} — மொழி</Text>
+        <View style={styles.optionRow}>
+          {(['en', 'ta'] as AppLang[]).map((l) => (
+            <Pressable
+              key={l}
+              style={[styles.option, appLang === l && styles.optionOn]}
+              onPress={() => setAppLang(l)}
+            >
+              <Text style={[styles.optionText, appLang === l && styles.optionTextOn]}>
+                {APP_LANG_LABEL[l]}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+        <Text style={styles.sectionHint}>
+          {t('Changes the words on screen. Printed bills and reports stay in English.')}
+        </Text>
+
+        <View style={styles.divider} />
+
+        {shopEditable ? (
+        <>
+        <Text style={styles.sectionTitle}>{t('Business profile')}</Text>
+        <Text style={styles.sectionHint}>{t('Shown on the invoice PDFs you share.')}</Text>
+        <TextField label={t('Business name')} value={name} onChangeText={setName} placeholder={t('My Business')} />
         <TextField
           label="GSTIN"
           value={gstin}
           onChangeText={setGstin}
-          placeholder="15-digit GST number"
+          placeholder={t('15-digit GST number')}
           autoCapitalize="characters"
         />
-        <TextField label="Address" value={address} onChangeText={setAddress} placeholder="Business address" multiline />
+        <TextField
+          label={t('Address')}
+          value={address}
+          onChangeText={setAddress}
+          placeholder={t('Business address')}
+          multiline
+        />
         <SelectField
-          label="State"
+          label={t('State')}
           value={bizState}
           onSelect={setBizState}
           options={INDIAN_STATES}
-          placeholder="Select state"
+          placeholder={t('Select state')}
         />
         <Text style={styles.sectionHint}>
-          Your own state. A bill to the same state prints CGST + SGST; anywhere else prints IGST.
+          {t('Your own state. A bill to the same state prints CGST + SGST; anywhere else prints IGST.')}
         </Text>
         <TextField
-          label="Phone"
+          label={t('Phone')}
           value={phone}
           onChangeText={setPhone}
-          placeholder="Contact number"
+          placeholder={t('Contact number')}
           keyboardType="phone-pad"
         />
         <TextField
-          label="Invoice prefix (sales)"
+          label={t('Invoice prefix (sales)')}
           value={prefix}
           onChangeText={setPrefix}
           placeholder="INV"
           autoCapitalize="characters"
         />
         <Text style={styles.sectionHint}>
-          Sale invoices are numbered like {`{prefix}`}/2026-27/001. Leave blank for “INV”.
+          {t('Sale invoices are numbered like PREFIX/2026-27/001. Leave blank for “INV”.')}
         </Text>
         <TextField
-          label="Start sale numbers from"
+          label={t('Start sale numbers from')}
           value={startNo}
           onChangeText={(v) => setStartNo(v.replace(/[^0-9]/g, ''))}
           placeholder="1"
           keyboardType="number-pad"
         />
         <Text style={styles.sectionHint}>
-          Moving from another app? Enter your next bill number (e.g. 501) and this year’s sales carry
-          on from there. Numbering starts again at 001 next April.
+          {t(
+            'Moving from another app? Enter your next bill number (e.g. 501) and this year’s sales carry on from there. Numbering starts again at 001 next April.',
+          )}
         </Text>
 
         {/* Everything below is optional and prints only when it is filled in —
             a shop that ignores this section gets the bill it got before. */}
         <View style={styles.brandRow}>
           <BrandImageField
-            label="Logo"
+            label={t('Logo')}
             uri={logo}
             square
             onPick={() => chooseBrandImage('logo')}
             onClear={() => clearBrandImage('logo')}
           />
           <BrandImageField
-            label="Signature"
+            label={t('Signature')}
             uri={signature}
             onPick={() => chooseBrandImage('signature')}
             onClear={() => clearBrandImage('signature')}
@@ -558,33 +613,33 @@ export default function SettingsScreen() {
         </View>
 
         <TextField
-          label="Terms on the bill"
+          label={t('Terms on the bill')}
           value={terms}
           onChangeText={setTerms}
-          placeholder="Goods once sold will not be taken back."
+          placeholder={t('Goods once sold will not be taken back.')}
           multiline
         />
 
         <TextField
-          label="UPI id"
+          label={t('UPI id')}
           value={upi}
           onChangeText={setUpi}
           placeholder="shop@okaxis"
           autoCapitalize="none"
         />
         <Text style={styles.sectionHint}>
-          Printed on the bill as a scan-to-pay code, with the amount already in it. Leave blank for
-          no code.
+          {t('Printed on the bill as a scan-to-pay code, with the amount already in it. Leave blank for no code.')}
         </Text>
 
-        <Button label="Save profile" onPress={saveProfile} loading={saving} style={styles.save} />
+        <Button label={t('Save profile')} onPress={saveProfile} loading={saving} style={styles.save} />
 
         <View style={styles.divider} />
 
-        <Text style={styles.sectionTitle}>GST entry method</Text>
+        <Text style={styles.sectionTitle}>{t('GST entry method')}</Text>
         <Text style={styles.sectionHint}>
-          The default for new bills. Counter shops usually price with GST already inside the rate;
-          B2B invoicing usually adds it on top. You can still flip it on any single invoice.
+          {t(
+            'The default for new bills. Counter shops usually price with GST already inside the rate; B2B invoicing usually adds it on top. You can still flip it on any single invoice.',
+          )}
         </Text>
         <View style={styles.optionRow}>
           {(['exclusive', 'inclusive'] as TaxMode[]).map((mode) => (
@@ -594,20 +649,20 @@ export default function SettingsScreen() {
               onPress={() => pickTaxMode(mode)}
             >
               <Text style={[styles.optionText, taxMode === mode && styles.optionTextOn]}>
-                {TAX_MODE_LABEL[mode]}
+                {t(TAX_MODE_LABEL[mode])}
               </Text>
             </Pressable>
           ))}
         </View>
         <Text style={styles.sectionHint}>
           {taxMode === 'inclusive'
-            ? 'Example: ₹118 rate at 18% → taxable ₹100 + GST ₹18. Customer pays ₹118.'
-            : 'Example: ₹100 rate at 18% → GST ₹18. Customer pays ₹118.'}
+            ? t('Example: ₹118 rate at 18% → taxable ₹100 + GST ₹18. Customer pays ₹118.')
+            : t('Example: ₹100 rate at 18% → GST ₹18. Customer pays ₹118.')}
         </Text>
 
         <View style={styles.divider} />
 
-        <Text style={styles.sectionTitle}>Paper size</Text>
+        <Text style={styles.sectionTitle}>{t('Paper size')}</Text>
         <View style={styles.optionRow}>
           {(['a4', 'thermal58', 'thermal80'] as PrintFormat[]).map((format) => (
             <Pressable
@@ -616,39 +671,50 @@ export default function SettingsScreen() {
               onPress={() => pickPaper(format)}
             >
               <Text style={[styles.optionText, paper === format && styles.optionTextOn]}>
-                {PRINT_FORMAT_LABEL[format]}
+                {t(PRINT_FORMAT_LABEL[format])}
               </Text>
             </Pressable>
           ))}
         </View>
         <Text style={styles.sectionHint}>
-          Choose the roll your counter printer takes — 58mm is the small one, 80mm the wider.
-          Every Print and Share button then uses it; A4 stays the full tax invoice sheet.
+          {t(
+            'Choose the roll your counter printer takes — 58mm is the small one, 80mm the wider. Every Print and Share button then uses it; A4 stays the full tax invoice sheet.',
+          )}
         </Text>
 
         <View style={styles.divider} />
+        </>
+        ) : (
+        <>
+        <Text style={styles.sectionHint}>
+          {t('The shop’s profile, bill printing, GST and numbering can be changed by an owner only.')}
+        </Text>
+
+        <View style={styles.divider} />
+        </>
+        )}
 
         {/* Voice and the phone-bound licence are phone features; the web app is
             Online mode at a desk. */}
         {isWeb ? null : (
         <>
-        <Text style={styles.sectionTitle}>Voice commands — குரல் கட்டளை</Text>
+        <Text style={styles.sectionTitle}>{t('Voice commands')} — குரல் கட்டளை</Text>
         <View style={styles.optionRow}>
           <Pressable
             style={[styles.option, enabled && styles.optionOn]}
             onPress={() => changeEnabled(!enabled)}
           >
             <Text style={[styles.optionText, enabled && styles.optionTextOn]}>
-              {enabled ? '🎙  Mic button on' : '🚫  Mic button hidden'}
+              {enabled ? t('🎙  Mic button on') : t('🚫  Mic button hidden')}
             </Text>
           </Pressable>
         </View>
         <Text style={styles.sectionHint}>
           {!enabled
-            ? 'The floating mic is off every screen. Turn it back on here whenever you want it.'
+            ? t('The floating mic is off every screen. Turn it back on here whenever you want it.')
             : status.available
-              ? 'Tap the 🎙 button on any screen and speak. Say “உதவி” / “help” for the full list.'
-              : 'Not available in Expo Go — the microphone needs the development build. See VOICE-SETUP.md.'}
+              ? t('Tap the 🎙 button on any screen and speak. Say “உதவி” / “help” for the full list.')
+              : t('Not available in Expo Go — the microphone needs the development build. See VOICE-SETUP.md.')}
         </Text>
         {enabled ? (
         <>
@@ -671,12 +737,12 @@ export default function SettingsScreen() {
             onPress={() => changeSpeakBack(!speakBack)}
           >
             <Text style={[styles.optionText, speakBack && styles.optionTextOn]}>
-              {speakBack ? '🔊  Speaks confirmations' : '🔇  Silent confirmations'}
+              {speakBack ? t('🔊  Speaks confirmations') : t('🔇  Silent confirmations')}
             </Text>
           </Pressable>
         </View>
         <Button
-          label="What can I say?"
+          label={t('What can I say?')}
           tone="ghost"
           onPress={() => setHelpOpen(true)}
           style={styles.save}
@@ -686,9 +752,9 @@ export default function SettingsScreen() {
 
         <View style={styles.divider} />
 
-        <Text style={styles.sectionTitle}>Licence</Text>
+        <Text style={styles.sectionTitle}>{t('Licence')}</Text>
         <Text style={styles.sectionHint}>
-          This copy is tied to this phone. Send the System ID to your vendor to renew.
+          {t('This copy is tied to this phone. Send the System ID to your vendor to renew.')}
         </Text>
         <LicenseCard />
 
@@ -698,12 +764,13 @@ export default function SettingsScreen() {
 
         {isWeb ? (
           <>
-            <Text style={styles.sectionTitle}>Account</Text>
+            <Text style={styles.sectionTitle}>{t('Account')}</Text>
             {account ? (
               <Text style={styles.sectionHint}>
                 {account.username}
                 {account.email ? ` · ${account.email}` : ''}
-                {'\n'}Signed in to this shop’s online books.
+                {'\n'}
+                {t('Signed in to this shop’s online books.')}
               </Text>
             ) : null}
 
@@ -714,11 +781,12 @@ export default function SettingsScreen() {
           </>
         ) : (
         <>
-        <Text style={styles.sectionTitle}>Account &amp; lock</Text>
+        <Text style={styles.sectionTitle}>{t('Account & lock')}</Text>
         {account ? (
           <Text style={styles.sectionHint}>
             {account.username} · {account.email}
-            {'\n'}Stored only on this phone — restoring a backup never changes your login.
+            {'\n'}
+            {t('Stored only on this phone — restoring a backup never changes your login.')}
           </Text>
         ) : null}
         <View style={styles.optionRow}>
@@ -727,33 +795,33 @@ export default function SettingsScreen() {
             onPress={() => toggleLock(!lockOn)}
           >
             <Text style={[styles.optionText, lockOn && styles.optionTextOn]}>
-              {lockOn ? `🔒  App lock on — ${lockLabel}` : `🔓  App lock off`}
+              {lockOn ? t('🔒  App lock on — {kind}', { kind: t(lockLabel) }) : t('🔓  App lock off')}
             </Text>
           </Pressable>
         </View>
         <Text style={styles.sectionHint}>
           {lockEnrolled
-            ? 'Asks for your phone’s fingerprint/PIN when the app opens and each time you come back to it.'
-            : 'Set a fingerprint, PIN or pattern on your phone first to use this.'}
+            ? t('Asks for your phone’s fingerprint/PIN when the app opens and each time you come back to it.')
+            : t('Set a fingerprint, PIN or pattern on your phone first to use this.')}
         </Text>
 
         <View style={styles.divider} />
 
-        <Text style={styles.sectionTitle}>Automatic backup</Text>
+        <Text style={styles.sectionTitle}>{t('Automatic backup')}</Text>
         <View style={styles.optionRow}>
           <Pressable
             style={[styles.option, auto?.enabled && styles.optionOn]}
             onPress={() => toggleAuto(!auto?.enabled)}
           >
             <Text style={[styles.optionText, auto?.enabled && styles.optionTextOn]}>
-              {auto?.enabled ? '✓  Automatic backup on' : 'Automatic backup off'}
+              {auto?.enabled ? t('✓  Automatic backup on') : t('Automatic backup off')}
             </Text>
           </Pressable>
         </View>
 
         {auto?.enabled ? (
           <>
-            <Text style={styles.sectionHint}>How many times a day?</Text>
+            <Text style={styles.sectionHint}>{t('How many times a day?')}</Text>
             <View style={styles.optionRow}>
               {PER_DAY_CHOICES.map((n) => (
                 <Pressable
@@ -767,21 +835,23 @@ export default function SettingsScreen() {
                 </Pressable>
               ))}
             </View>
-            <Text style={styles.sectionHint}>{PER_DAY_LABEL[auto.perDay]}</Text>
+            <Text style={styles.sectionHint}>{t(PER_DAY_LABEL[auto.perDay])}</Text>
 
             <Text style={styles.sectionHint}>
-              Each run saves a snapshot on the phone (last 10 kept) and uploads it to Google Drive
-              when an account is connected below.
+              {t(
+                'Each run saves a snapshot on the phone (last 10 kept) and uploads it to Google Drive when an account is connected below.',
+              )}
             </Text>
 
             <Text style={styles.sectionHint}>
               {auto.lastAt
-                ? `Last backup: ${new Date(auto.lastAt).toLocaleString()}\n${auto.lastResult ?? ''}`
-                : 'No automatic backup has run yet.'}
+                ? `${t('Last backup: {when}', { when: new Date(auto.lastAt).toLocaleString() })}\n${auto.lastResult ?? ''}`
+                : t('No automatic backup has run yet.')}
             </Text>
             <Text style={styles.sectionHint}>
-              Android stops apps in the background, so a due backup runs the next time you open the
-              app (and while it stays open).
+              {t(
+                'Android stops apps in the background, so a due backup runs the next time you open the app (and while it stays open).',
+              )}
             </Text>
           </>
         ) : null}
@@ -792,23 +862,25 @@ export default function SettingsScreen() {
             onPress={() => toggleOnExit(!auto?.onExit)}
           >
             <Text style={[styles.optionText, auto?.onExit && styles.optionTextOn]}>
-              {auto?.onExit ? '✓  Ask to back up when closing' : 'Do not ask when closing'}
+              {auto?.onExit ? t('✓  Ask to back up when closing') : t('Do not ask when closing')}
             </Text>
           </Pressable>
         </View>
         <Text style={styles.sectionHint}>
-          Pressing back to close the app asks whether to back up first, so a day’s billing is never
-          left only on the phone overnight.
+          {t(
+            'Pressing back to close the app asks whether to back up first, so a day’s billing is never left only on the phone overnight.',
+          )}
         </Text>
 
-        <Button label="Back up now" onPress={backupNow} loading={backingUp} tone="ghost" style={styles.save} />
+        <Button label={t('Back up now')} onPress={backupNow} loading={backingUp} tone="ghost" style={styles.save} />
 
         <View style={styles.divider} />
 
-        <Text style={styles.sectionTitle}>Google Drive backup</Text>
+        <Text style={styles.sectionTitle}>{t('Google Drive backup')}</Text>
         <Text style={styles.sectionHint}>
-          Like WhatsApp: sign in once and every backup goes to your own Google Drive. After a
-          reinstall, sign in with the same account and your data comes straight back.
+          {t(
+            'Like WhatsApp: sign in once and every backup goes to your own Google Drive. After a reinstall, sign in with the same account and your data comes straight back.',
+          )}
         </Text>
 
         {drive?.connected ? (
@@ -816,54 +888,56 @@ export default function SettingsScreen() {
             <View style={styles.optionRow}>
               <Pressable style={[styles.option, styles.optionOn]} onPress={disconnect}>
                 <Text style={[styles.optionText, styles.optionTextOn]}>
-                  ✓  {drive.email ?? 'Google account connected'}
+                  ✓  {drive.email ?? t('Google account connected')}
                 </Text>
               </Pressable>
             </View>
             <Text style={styles.sectionHint}>
-              Backups live in a “Benesys Billing Backups” folder in that account. The app can only
-              see the files it made there — nothing else in your Drive.
+              {t(
+                'Backups live in a “Benesys Billing Backups” folder in that account. The app can only see the files it made there — nothing else in your Drive.',
+              )}
             </Text>
             <Button
-              label="Back up to Drive now"
+              label={t('Back up to Drive now')}
               onPress={driveBackupNow}
               loading={driveBusy}
               tone="ghost"
               style={styles.save}
             />
             <Button
-              label="Restore from Drive"
+              label={t('Restore from Drive')}
               onPress={() => setDrivePicker(true)}
               tone="danger"
               style={styles.save}
             />
             <Pressable onPress={disconnect} hitSlop={8}>
-              <Text style={styles.linkDanger}>Disconnect this Google account</Text>
+              <Text style={styles.linkDanger}>{t('Disconnect this Google account')}</Text>
             </Pressable>
           </>
         ) : (
           <>
             <Text style={styles.driveWarn}>
-              ⚠ Right now every backup is only on this phone. If the phone is lost, broken or the
-              app is uninstalled, your bills go with it. Sign in once to keep a copy in Drive.
+              {t(
+                '⚠ Right now every backup is only on this phone. If the phone is lost, broken or the app is uninstalled, your bills go with it. Sign in once to keep a copy in Drive.',
+              )}
             </Text>
             <Button
-              label="Sign in with Google"
+              label={t('Sign in with Google')}
               onPress={connect}
               loading={driveBusy}
               style={styles.save}
             />
             <Text style={styles.sectionHint}>
               {drive?.configured
-                ? 'Nothing leaves the phone until you sign in.'
-                : 'Needs a one-time Google client ID — see DRIVE-SETUP.md, then paste it below.'}
+                ? t('Nothing leaves the phone until you sign in.')
+                : t('Needs a one-time Google client ID — see DRIVE-SETUP.md, then paste it below.')}
             </Text>
           </>
         )}
 
         <Pressable onPress={() => setShowClientId((v) => !v)} hitSlop={8}>
           <Text style={styles.link}>
-            {showClientId ? 'Hide Google client ID' : 'Google client ID (advanced)'}
+            {showClientId ? t('Hide Google client ID') : t('Google client ID (advanced)')}
           </Text>
         </Pressable>
         {showClientId ? (
@@ -877,28 +951,30 @@ export default function SettingsScreen() {
               autoCapitalize="none"
             />
             <Text style={styles.sectionHint}>
-              From your own Google Cloud project (Android client, package com.benesys.billingapp).
-              Steps are in DRIVE-SETUP.md. Not a secret — Android clients have none.
+              {t(
+                'From your own Google Cloud project (Android client, package com.benesys.billingapp). Steps are in DRIVE-SETUP.md. Not a secret — Android clients have none.',
+              )}
             </Text>
           </>
         ) : null}
 
         <View style={styles.divider} />
 
-        <Text style={styles.sectionTitle}>Local backup &amp; restore</Text>
+        <Text style={styles.sectionTitle}>{t('Local backup & restore')}</Text>
         <Text style={styles.sectionHint}>
-          Save a JSON copy of everything wherever you like — a memory card, Drive, WhatsApp to
-          yourself. Restore replaces everything from such a file.
+          {t(
+            'Save a JSON copy of everything wherever you like — a memory card, Drive, WhatsApp to yourself. Restore replaces everything from such a file.',
+          )}
         </Text>
         <Button
-          label="Save backup file"
+          label={t('Save backup file')}
           onPress={exportBackup}
           loading={exporting}
           tone="ghost"
           style={styles.save}
         />
         <Button
-          label="Restore from file"
+          label={t('Restore from file')}
           onPress={restore}
           loading={restoring}
           tone="danger"
@@ -949,12 +1025,12 @@ function BrandImageField({
         {uri ? (
           <Image source={{ uri }} style={styles.brandImage} resizeMode="contain" />
         ) : (
-          <Text style={styles.brandAdd}>+ Add</Text>
+          <Text style={styles.brandAdd}>+ {t('Add')}</Text>
         )}
       </Pressable>
       {uri ? (
         <Pressable hitSlop={8} onPress={onClear}>
-          <Text style={styles.brandRemove}>Remove</Text>
+          <Text style={styles.brandRemove}>{t('Remove')}</Text>
         </Pressable>
       ) : null}
     </View>

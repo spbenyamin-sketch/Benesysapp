@@ -6,6 +6,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Button from '@/components/Button';
 import TextField from '@/components/TextField';
+import { t } from '@/i18n';
 import {
   canRegisterShop,
   checkSession,
@@ -63,9 +64,9 @@ export default function AuthGate({ children }: { children: ReactNode }) {
   if (phase === 'offline') {
     return (
       <View style={styles.center}>
-        <Text style={styles.title}>Cannot reach the server</Text>
-        <Text style={styles.subtle}>Make sure start-web.bat is running on the shop computer.</Text>
-        <Button label="Try again" onPress={() => setPhase('checking')} style={styles.narrow} />
+        <Text style={styles.title}>{t('Cannot reach the server')}</Text>
+        <Text style={styles.subtle}>{t('Make sure start-web.bat is running on the shop computer.')}</Text>
+        <Button label={t('Try again')} onPress={() => setPhase('checking')} style={styles.narrow} />
       </View>
     );
   }
@@ -93,11 +94,11 @@ function SignInScreen({ mode, onSwitch }: { mode: 'login' | 'register'; onSwitch
     setError(null);
     if (registering) {
       const problem =
-        (shopName.trim() ? null : 'Shop name is required.') ??
+        (shopName.trim() ? null : t('Shop name is required.')) ??
         validateEmail(email) ??
         validateUsername(username) ??
         validatePassword(password) ??
-        (password === confirm ? null : 'Passwords do not match.');
+        (password === confirm ? null : t('Passwords do not match.'));
       if (problem) {
         setError(problem);
         return;
@@ -118,21 +119,20 @@ function SignInScreen({ mode, onSwitch }: { mode: 'login' | 'register'; onSwitch
     <ScrollView style={styles.flex} contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled">
       <View style={styles.card}>
         <Image source={require('@/assets/images/icon.png')} style={styles.brand} />
-        <Text style={styles.title}>{registering ? 'Register your shop' : 'Sign in'}</Text>
+        <Text style={styles.title}>{registering ? t('Register your shop') : t('Sign in')}</Text>
         {/* Signing in needs no explanation; registering a shop does. */}
         {registering ? (
           <Text style={styles.subtle}>
-            Creates the shop on this server with you as its owner. Add your staff from Settings
-            afterwards.
+            {t('Creates the shop on this server with you as its owner. Add your staff from Settings afterwards.')}
           </Text>
         ) : null}
 
         {registering ? (
-          <TextField label="Shop name" value={shopName} onChangeText={setShopName} placeholder="Kannan Stores" required />
+          <TextField label={t('Shop name')} value={shopName} onChangeText={setShopName} placeholder="Kannan Stores" required />
         ) : null}
         {registering ? (
           <TextField
-            label="Email"
+            label={t('Email')}
             value={email}
             onChangeText={setEmail}
             placeholder="you@gmail.com"
@@ -142,7 +142,7 @@ function SignInScreen({ mode, onSwitch }: { mode: 'login' | 'register'; onSwitch
           />
         ) : null}
         <TextField
-          label={registering ? 'Username' : 'Username or email'}
+          label={registering ? t('Username') : t('Username or email')}
           value={username}
           onChangeText={setUsername}
           placeholder="shopowner"
@@ -150,7 +150,7 @@ function SignInScreen({ mode, onSwitch }: { mode: 'login' | 'register'; onSwitch
           required
         />
         <TextField
-          label="Password"
+          label={t('Password')}
           value={password}
           onChangeText={setPassword}
           placeholder="••••••••"
@@ -160,7 +160,7 @@ function SignInScreen({ mode, onSwitch }: { mode: 'login' | 'register'; onSwitch
         />
         {registering ? (
           <TextField
-            label="Confirm password"
+            label={t('Confirm password')}
             value={confirm}
             onChangeText={setConfirm}
             placeholder="••••••••"
@@ -172,29 +172,29 @@ function SignInScreen({ mode, onSwitch }: { mode: 'login' | 'register'; onSwitch
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
-        <Button label={registering ? 'Register shop' : 'Sign in'} onPress={submit} loading={busy} style={styles.wide} />
+        <Button label={registering ? t('Register shop') : t('Sign in')} onPress={submit} loading={busy} style={styles.wide} />
 
         {/* There is no mail server to send a reset link through, so the honest
             answer is where to go: the owner resets staff in the app, and the
             computer holding the books resets the owner. */}
         {registering ? null : (
           <Pressable onPress={() => setForgot(!forgot)} hitSlop={8}>
-            <Text style={styles.switch}>Forgot your password?</Text>
+            <Text style={styles.switch}>{t('Forgot your password?')}</Text>
           </Pressable>
         )}
         {forgot && !registering ? (
           <Text style={styles.forgot}>
-            Staff: ask the shop owner — they set it in Settings → People.{'\n\n'}
-            Owner: on the computer that runs the books, double-click{' '}
-            <Text style={styles.code}>reset-password.bat</Text> (next to start-web.bat). It asks
-            which account and what the new password should be.
+            {t('Staff: ask the shop owner — they set it in Settings → People.')}{'\n\n'}
+            {t('Owner: on the computer that runs the books, double-click')}{' '}
+            <Text style={styles.code}>reset-password.bat</Text>{' '}
+            {t('(next to start-web.bat). It asks which account and what the new password should be.')}
           </Text>
         ) : null}
 
         {onSwitch ? (
           <Pressable onPress={onSwitch} hitSlop={8}>
             <Text style={styles.switch}>
-              {registering ? 'Already have an account? Sign in' : 'New shop? Register it here'}
+              {registering ? t('Already have an account? Sign in') : t('New shop? Register it here')}
             </Text>
           </Pressable>
         ) : null}

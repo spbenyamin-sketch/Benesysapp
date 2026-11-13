@@ -1,4 +1,5 @@
 import { useLocalSearchParams } from 'expo-router';
+import { t } from '@/i18n';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import AccountForm from '@/modules/bankAccounts/AccountForm';
@@ -24,7 +25,7 @@ export default function EditAccountScreen() {
   if (account === null) {
     return (
       <View style={styles.center}>
-        <Text style={styles.missing}>Account not found.</Text>
+        <Text style={styles.missing}>{t('Account not found.')}</Text>
       </View>
     );
   }

@@ -13,6 +13,7 @@ import { shareTallyXml } from '@/modules/tally/share';
 import { countLeftOut, loadTallyExport } from '@/modules/tally/service';
 import type { TallyOptions, TallyPayload } from '@/modules/tally/types';
 import { formatMoney } from '@/utils/format';
+import { t } from '@/i18n';
 
 type Kind = keyof NonNullable<TallyOptions['kinds']>;
 
@@ -63,12 +64,12 @@ export default function TallyExportScreen() {
   const exportNow = () => {
     if (busy || !payload) return;
     if (!counts?.vouchers) {
-      Alert.alert('Nothing to send', 'No entries in this range are marked as in the books.');
+      Alert.alert(t('Nothing to send'), t('No entries in this range are marked as in the books.'));
       return;
     }
     setBusy(true);
     shareTallyXml(payload, options)
-      .catch((e: unknown) => Alert.alert('Export failed', (e as Error)?.message ?? String(e)))
+      .catch((e: unknown) => Alert.alert(t('Export failed'), (e as Error)?.message ?? String(e)))
       .finally(() => setBusy(false));
   };
 
@@ -77,7 +78,7 @@ export default function TallyExportScreen() {
       <DateRange from={from} to={to} onFrom={setFrom} onTo={setTo} />
 
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>What goes in the file</Text>
+        <Text style={styles.cardTitle}>{t('What goes in the file')}</Text>
         <View style={styles.chips}>
           {KINDS.map(({ key, label }) => {
             const on = kinds[key];
@@ -87,7 +88,7 @@ export default function TallyExportScreen() {
                 style={[styles.chip, on && styles.chipOn]}
                 onPress={() => setKinds((k) => ({ ...k, [key]: !k[key] }))}
               >
-                <Text style={[styles.chipText, on && styles.chipTextOn]}>{label}</Text>
+                <Text style={[styles.chipText, on && styles.chipTextOn]}>{t(label)}</Text>
               </Pressable>
             );
           })}
@@ -97,24 +98,27 @@ export default function TallyExportScreen() {
         <Pressable style={styles.masterRow} onPress={() => setMasters((m) => !m)}>
           <Text style={styles.masterBox}>{masters ? '☑' : '☐'}</Text>
           <Text style={styles.masterText}>
-            Create the ledgers this file needs (parties, sales, GST, expense heads)
+            {t('Create the ledgers this file needs (parties, sales, GST, expense heads)')}
           </Text>
         </Pressable>
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>In this range</Text>
+        <Text style={styles.cardTitle}>{t('In this range')}</Text>
         {payload === null ? (
-          <Text style={styles.subtle}>Reading the books…</Text>
+          <Text style={styles.subtle}>{t('Reading the books…')}</Text>
         ) : (
           <>
             <Text style={styles.count}>
-              {counts?.vouchers ?? 0} voucher(s){masters ? ` · ${counts?.ledgers ?? 0} ledger(s)` : ''}
+              {t('{n} voucher(s)', { n: counts?.vouchers ?? 0 })}
+              {masters ? ` · ${t('{n} ledger(s)', { n: counts?.ledgers ?? 0 })}` : ''}
             </Text>
             {leftOut?.count ? (
               <Text style={styles.leftOut}>
-                {leftOut.count} entry(ies) worth {formatMoney(leftOut.total)} are marked
-                “not in books” and stay out of this file.
+                {t('{n} entry(ies) worth {amount} are marked “not in books” and stay out of this file.', {
+                  n: leftOut.count,
+                  amount: formatMoney(leftOut.total),
+                })}
               </Text>
             ) : null}
           </>
@@ -122,23 +126,22 @@ export default function TallyExportScreen() {
       </View>
 
       <Button
-        label={busy ? 'Preparing…' : '⬇  Export Tally XML'}
+        label={busy ? t('Preparing…') : `⬇  ${t('Export Tally XML')}`}
         onPress={exportNow}
         loading={busy}
       />
 
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Tell your accountant</Text>
+        <Text style={styles.cardTitle}>{t('Tell your accountant')}</Text>
         <Text style={styles.howto}>
-          Open Tally → Gateway of Tally → Import → Vouchers → choose this file. The ledgers it
-          needs are created on the way in. Import a period once.
+          {t(
+            'Open Tally → Gateway of Tally → Import → Vouchers → choose this file. The ledgers it needs are created on the way in. Import a period once.',
+          )}
         </Text>
         <Text style={styles.subtle}>
-          Bills, credit and debit notes, receipts, payments and expenses that are marked in the
-          books. Quotations and delivery challans are not accounting entries and are left out, and
-          no opening balance is ever sent — your accountant’s own opening balances stay as they
-          are. An expense is treated as local (CGST + SGST), because a bill for the shop’s own
-          overheads carries no place of supply.
+          {t(
+            'Bills, credit and debit notes, receipts, payments and expenses that are marked in the books. Quotations and delivery challans are not accounting entries and are left out, and no opening balance is ever sent — your accountant’s own opening balances stay as they are. An expense is treated as local (CGST + SGST), because a bill for the shop’s own overheads carries no place of supply.',
+          )}
         </Text>
       </View>
     </ScrollView>
